@@ -227,6 +227,16 @@ export function rowLines(row: AlternativeRow, columns: ReadonlyArray<Alternative
 /** The row as one sentence (a point's accessible name). */
 export const rowText = (row: AlternativeRow, columns: ReadonlyArray<AlternativeColumn>): string => rowLines(row, columns).map((l) => `${l.label}: ${l.value}`).join('; ');
 
+/** Direct labels at the series' ends, pushed apart so no two are closer than `gap` (deterministic: sorted by y, then spread within bounds). */
+export function spreadLabels(items: ReadonlyArray<{ key: string; y: number }>, gap: number, top: number, bottom: number): Map<string, number> {
+  const s = items.slice().sort((a, b) => a.y - b.y || a.key.localeCompare(b.key)).map((x) => ({ ...x }));
+  for (let i = 1; i < s.length; i += 1) if (s[i]!.y - s[i - 1]!.y < gap) s[i]!.y = s[i - 1]!.y + gap;
+  const over = s.length === 0 ? 0 : s[s.length - 1]!.y - bottom;
+  if (over > 0) for (const x of s) x.y -= over;
+  for (let i = 0; i < s.length; i += 1) if (s[i]!.y < top + i * gap) s[i]!.y = top + i * gap;
+  return new Map(s.map((x) => [x.key, round2(x.y)]));
+}
+
 /* ───────────────────────── TIME SERIES (CMP-060, VIZ-01) ───────────────────────── */
 
 export interface SeriesIn { key: string; label: string; points: ReadonlyArray<{ at: string; value: number | null; /** what the record says of this point (a reason, a state) — a table column */ note?: string | null }> }
@@ -254,7 +264,7 @@ export interface TimeSeriesGeometry {
  * an ORDINAL series (a state over time, drawn as steps, its ticks the state words). `row` indexes timeSeriesRows' output.
  */
 export function timeSeriesGeometry(series: ReadonlyArray<SeriesIn>, o: { cadenceMs?: number | null; levels?: ReadonlyArray<string>; includeZero?: boolean; box?: Box } = {}): TimeSeriesGeometry {
-  const box = o.box ?? plotBox();
+  const box = o.box ?? (series.length > 1 ? plotBox(640, 260, { right: 112 }) : plotBox());
   const all = series.flatMap((s) => s.points.map((p) => ({ t: toInstant(p.at), v: p.value })));
   const tx = extentOf(all.map((p) => p.t)); const vy = o.levels !== undefined ? [0, Math.max(0, o.levels.length - 1)] as [number, number] : extentOf(all.map((p) => p.v));
   if (tx === null || vy === null) return { box, xTicks: [], yTicks: [], series: series.map((s) => ({ key: s.key, d: '', points: [], label: null })), gaps: [], empty: true };
@@ -271,6 +281,9 @@ export function timeSeriesGeometry(series: ReadonlyArray<SeriesIn>, o: { cadence
     const last = pts[pts.length - 1];
     return { key: s.key, d: o.levels !== undefined ? stepPathOf(xyRuns) : pathOf(xyRuns), points: pts, label: last === undefined ? null : { x: last.x, y: last.y } };
   });
+  /* direct labels in the right margin, at their series' last value, spread so they never overlap */
+  const spread = spreadLabels(out.filter((s) => s.label !== null).map((s) => ({ key: s.key, y: s.label!.y + 4 })), 14, box.top + 8, box.top + box.innerHeight);
+  for (const s of out) if (s.label !== null) s.label = { x: round2(box.left + box.innerWidth + 6), y: spread.get(s.key) ?? s.label.y };
   return {
     box, gaps, empty: false, series: out,
     xTicks: timeTicks(tx[0], tx[1]).map((t) => ({ x: round2(x(t.at)), label: t.label })),
@@ -488,7 +501,8 @@ export const CALIBRATION_COLUMNS = (unit: string): AlternativeColumn[] => [
 ];
 export function calibrationRows(points: ReadonlyArray<CalibrationPointIn>): AlternativeRow[] {
   return points.map((p) => {
-    const w = p.observed === null ? null : wilson(Math.round(p.observed * p.n), p.n);
+    const w0 = p.observed === null ? null : wilson(Math.round(p.observed * p.n), p.n);
+    const w = w0 === null ? null : ([Number(w0[0].toFixed(4)), Number(w0[1].toFixed(4))] as const);   /* a derived statistic, shown to 4 decimals */
     return { family: p.label, group: p.group, nominal: p.nominal, observed: p.observed, lo: w === null ? null : w[0], hi: w === null ? null : w[1], n: p.n, period: p.period, ...(p.extra ?? {}) };
   });
 }

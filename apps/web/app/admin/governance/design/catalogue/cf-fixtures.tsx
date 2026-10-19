@@ -57,7 +57,8 @@ function Frames() {
 }
 
 function Kinds() {
-  const band = pathPoints('2026-10-18', Array.from({ length: 30 }, (_, i) => ({ step: i + 1, q10: 0.28 - i * 0.001, q50: 0.343 + i * 0.0005, q90: 0.406 + i * 0.002 })));
+  const r4 = (x: number) => Number(x.toFixed(4));
+  const band = pathPoints('2026-10-18', Array.from({ length: 30 }, (_, i) => ({ step: i + 1, q10: r4(0.28 - i * 0.001), q50: r4(0.343 + i * 0.0005), q90: r4(0.406 + i * 0.002) })));
   const twoSeries = [
     { key: 'cp4', label: 'chokepoint 4', points: TRANSITS },
     { key: 'cp7', label: 'chokepoint 7', points: TRANSITS.map((p, i) => ({ at: p.at, value: i === 14 ? null : 30 + (i % 5) })) },
@@ -97,7 +98,7 @@ function Kinds() {
       <Distribution input={{ kind: 'bins', values: [3, 4, 4, 5, 5, 5, 6, 6, 7, 9, 12, 14], bins: { edges: [0, 3, 6, 9, 12, 15] }, marks: [{ key: 'p50', label: 'median 5.5', at: 5.5 }] }}
         spec={spec('distribution', 'Distribution — line-stop days over 12 runs', { basis: 'specimen simulated outcomes', time: 'none', unit: ['line-stop days', 'days'],
           units: [{ measure: 'line-stop days', unit: 'days' }, { measure: 'runs', unit: 'count' }],
-          unc: { kind: 'distribution', statement: 'the empirical distribution of 12 specimen runs; bins declared at 3-day widths' }, legend: one('bins', 'runs per bin'),
+          unc: { kind: 'distribution', statement: 'the empirical distribution of 12 specimen runs; bins declared at 3-day widths' }, legend: [{ key: 'bins', label: 'runs per bin', dash: 'solid', marker: 'square' }, { key: 'm', label: 'the median (labelled line)', dash: 'dashed', marker: 'none' }],
           summary: '12 runs; most stop the line for 3 to 6 days; two exceed 12 days.', columns: DISTRIBUTION_BIN_COLUMNS('days') })} />
       <Distribution input={{ kind: 'percentiles', items: [{ key: 'm1', label: 'seasonal naive', p10: 30, p50: 38, p90: 45 }, { key: 'm2', label: 'Holt-Winters', p10: 33, p50: 37, p90: 41 }, { key: 'e', label: 'ensemble (linear pool)', p10: 31, p50: 37.5, p90: 44, note: 'MODEL OUTPUT' }] }}
         spec={spec('distribution', 'Distribution — ensemble members and the pool', { basis: 'specimen member distributions', time: 'none', unit: ['transits', 'vessels per day'],
@@ -139,7 +140,7 @@ function Kinds() {
         interventions={[{ at: '2026-10-11', label: 'reroute advisory' }]}
         spec={spec('control_chart', 'Control chart — transits against the stream rule', { basis: 'specimen observed transits', time: 'event', unit: ['transits', 'vessels per day'],
           unc: { kind: 'not_quantified', statement: 'counts as published; a rule met is a signal, not a certainty' }, legend: [{ key: 'v', label: 'daily value', dash: 'solid', marker: 'circle' }, { key: 'm', label: 'meets the rule', dash: 'solid', marker: 'square' }],
-          summary: 'Transits hold near 41 until day 21, then fall; the days at or under 30 meet the stream rule after the reroute advisory.', columns: CONTROL_COLUMNS('vessels per day'),
+          summary: 'Transits hold near 41 until day 21, then fall after the reroute advisory; one day (17 October, 30 vessels) meets the stream rule.', columns: CONTROL_COLUMNS('vessels per day'),
           definitions: [{ term: 'Baseline', definition: 'the sample mean of the first 14 days' }, { term: 'Rule', definition: 'transits ≤ 30 vessels per day (the stream rule’s threshold)' }, { term: 'Sample', definition: '28 days, two missing' }] })} />
     </Panel>
   );

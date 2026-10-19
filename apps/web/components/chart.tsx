@@ -51,6 +51,9 @@ function sourceLine(s: ChartSource): string {
   return `${s.label} (${s.read})`;
 }
 const dashOf = (d: DashPattern): string | undefined => DASH_ARRAY[d] ?? undefined;
+/** A drawing label shortened with an ellipsis (the full text is in the table alternative and the point's name). */
+const CMP_WORD: Readonly<Record<ControlLimitIn['comparator'], string>> = { '<': '<', '<=': '≤', '>': '>', '>=': '≥' };
+const clip = (t: string, n: number): string => (Array.from(t).length > n ? `${Array.from(t).slice(0, n - 1).join('')}…` : t);
 
 function XAxis({ box, ticks }: { box: Box; ticks: ReadonlyArray<{ x: number; label: string }> }) {
   const y = box.top + box.innerHeight;
@@ -85,7 +88,7 @@ function Marker({ shape, x, y, r = 4, className = 'eye-cf-marker' }: { shape: Ma
 /** The base drawing: an SVG on the plot box (aria-hidden — the points layer and the table carry the values). */
 function Drawing({ box, children, overlay }: { box: Box; children: ReactNode; overlay?: ReactNode }) {
   return (
-    <div className="eye-cf-plot" dir="ltr">
+    <div className="eye-cf-plot" dir="ltr" style={{ maxInlineSize: `min(100%, ${Math.round(box.width * 1.15)}px)` }}>
       <svg className="eye-cf-svg" viewBox={`0 0 ${box.width} ${box.height}`} aria-hidden="true" focusable="false">{children}</svg>
       {overlay}
     </div>
@@ -256,7 +259,7 @@ export function TimeSeries({ spec, series, cadenceMs, levels, includeZero, expor
               <g key={s.key} className="eye-cf-series-group" style={{ color: tokenVar(id.token) }}>
                 <path className="eye-cf-series" d={s.d} strokeDasharray={dashOf(id.dash)} />
                 {s.points.map((p) => <Marker key={p.row} shape={id.marker} x={p.x} y={p.y} />)}
-                {s.label !== null && g.series.length > 1 ? <text className="eye-cf-direct" x={Math.min(b.left + b.innerWidth - 2, s.label.x + 6)} y={s.label.y - 6} textAnchor="end">{id.label}</text> : null}
+                {s.label !== null && g.series.length > 1 ? <text className="eye-cf-direct" x={s.label.x} y={s.label.y}>{clip(id.label, 15)}</text> : null}
               </g>
             );
           })}
@@ -286,7 +289,12 @@ export function EventTimeline({ spec, events, exportAs, status }: Common & { eve
         <Drawing box={b} overlay={<DataTooltip spec={spec} rows={rows} box={b} points={g.marks.map((m) => ({ x: m.x, y: m.y, row: m.row }))} label={`${spec.title}: events`} />}>
           <XAxis box={b} ticks={g.xTicks} />
           {Array.from({ length: g.lanes }, (_, i) => { const y = b.top + (b.innerHeight / g.lanes) * (i + 0.5); return <line key={i} className="eye-cf-grid" x1={b.left} x2={b.left + b.innerWidth} y1={y} y2={y} />; })}
-          {g.marks.map((m) => <Marker key={m.key} shape={m.corrected ? 'diamond' : 'circle'} x={m.x} y={m.y} r={5} />)}
+          {g.marks.map((m) => (
+            <g key={m.key}>
+              <Marker shape={m.corrected ? 'diamond' : 'circle'} x={m.x} y={m.y} r={5} />
+              <text className="eye-cf-small" x={Math.min(b.left + b.innerWidth - 4, Math.max(b.left + 4, m.x))} y={m.y - 9} textAnchor={m.x > b.left + b.innerWidth * 0.8 ? 'end' : m.x < b.left + b.innerWidth * 0.2 ? 'start' : 'middle'}>{clip(String(rows[m.row]?.['event'] ?? ''), 22)}</text>
+            </g>
+          ))}
         </Drawing>
       )}
     </ChartFrame>
@@ -337,12 +345,12 @@ export function ProbabilityBand({ spec, points, cutoff, includeZero, exportAs, s
  */
 export function HorizonMatrix({ spec, rows: input, exportAs, status }: Common & { rows: readonly HorizonRowIn[] }) {
   const rows = useMemo(() => horizonMatrixRows(input), [input]);
-  const rowH = 34; const labelW = 64; const bandW = 360; const b = plotBox(labelW + bandW + 200, 20 + rows.length * rowH, { left: 0, right: 0, top: 10, bottom: 10 });
+  const rowH = 42; const labelW = 64; const bandW = 360; const b = plotBox(labelW + bandW + 200, 20 + rows.length * rowH, { left: 0, right: 0, top: 10, bottom: 10 });
   const pts: TooltipPoint[] = [];
   const lines = rows.map((r, i) => {
     const s = horizonRowScale({ q10: r['q10'] as number | null, q50: r['q50'] as number | null, q90: r['q90'] as number | null }, bandW);
     const y = b.top + rowH * (i + 0.5);
-    if (s.mid !== null) pts.push({ x: labelW + s.mid, y, row: i });
+    if (s.mid !== null) pts.push({ x: labelW + s.mid, y: y - 5.5, row: i });
     return { r, s, y };
   });
   return (
@@ -355,13 +363,13 @@ export function HorizonMatrix({ spec, rows: input, exportAs, status }: Common & 
             <text className="eye-cf-strong" x={4} y={y + 4}>{String(r['horizon'])}</text>
             {s.mid === null ? <text x={labelW} y={y + 4}>nothing issued at this horizon</text> : (
               <g transform={`translate(${labelW} 0)`}>
-                <line className="eye-cf-axis-line" x1={4} x2={bandW - 4} y1={y + 9} y2={y + 9} />
-                {s.ticks.map((t) => <text key={t.x} className="eye-cf-small" x={t.x} y={y + 16} textAnchor="middle">{t.label}</text>)}
-                {s.lo !== null && s.hi !== null ? <rect className="eye-cf-band" x={s.lo} y={y - 6} width={Math.max(2, s.hi - s.lo)} height={10} style={{ color: tokenVar('color.uncertain') }} /> : null}
-                <Marker shape="circle" x={s.mid} y={y - 1} r={3.5} />
+                <line className="eye-cf-axis-line" x1={4} x2={bandW - 4} y1={y + 5} y2={y + 5} />
+                {s.ticks.map((t) => <text key={t.x} className="eye-cf-small" x={t.x} y={y + 17} textAnchor="middle">{t.label}</text>)}
+                {s.lo !== null && s.hi !== null ? <rect className="eye-cf-band" x={s.lo} y={y - 11} width={Math.max(2, s.hi - s.lo)} height={11} style={{ color: tokenVar('color.uncertain') }} /> : null}
+                <Marker shape="circle" x={s.mid} y={y - 5.5} r={3.5} />
               </g>
             )}
-            <text className="eye-cf-small" x={labelW + bandW + 8} y={y + 4}>{r['method'] === null ? '' : String(r['method']).slice(0, 26)}</text>
+            <text className="eye-cf-small" x={labelW + bandW + 8} y={y + 4}>{r['method'] === null ? '' : clip(String(r['method']), 26)}</text>
           </g>
         ))}
       </Drawing>
@@ -397,7 +405,7 @@ export function Distribution({ spec, input, exportAs, status }: Common & { input
             <YAxis box={b} ticks={g.yTicks} />
             <XAxis box={b} ticks={g.xTicks} />
             {g.bars.map((x) => <rect key={x.row} className="eye-cf-bar" x={x.x} y={x.y} width={x.w} height={Math.max(0, x.h)} />)}
-            {g.marks.map((m) => <g key={m.key} className="eye-cf-cutoff"><line x1={m.x} x2={m.x} y1={b.top} y2={b.top + b.innerHeight} /><text x={m.x + 4} y={b.top + 12}>{m.label}</text></g>)}
+            {g.marks.map((m, i) => <g key={m.key} className="eye-cf-cutoff"><line x1={m.x} x2={m.x} y1={b.top} y2={b.top + b.innerHeight} strokeDasharray="4 3" /><text x={m.x + 4} y={b.top + 12 + (i % 4) * 13}>{m.label}</text></g>)}
           </Drawing>
         )}
       </ChartFrame>
@@ -445,7 +453,7 @@ export function CalibrationPlot({ spec, points, layout, exportAs, status }: Comm
       {g.empty ? null : (
         <Drawing box={b} overlay={<DataTooltip spec={spec} rows={rows} box={b} points={g.points.filter((p) => p.y !== null).map((p) => ({ x: p.x, y: p.y as number, row: p.row }))} label={`${spec.title}: families`} />}>
           <YAxis box={b} ticks={g.yTicks} />
-          {g.layout === 'diagonal' ? <XAxis box={b} ticks={g.xTicks} /> : <XAxis box={b} ticks={g.xTicks.map((t) => ({ ...t, label: t.label.length > 14 ? `${t.label.slice(0, 13)}…` : t.label }))} />}
+          {g.layout === 'diagonal' ? <XAxis box={b} ticks={g.xTicks} /> : <XAxis box={b} ticks={g.xTicks.map((t) => ({ ...t, label: clip(t.label, 14) }))} />}
           {g.diagonal === null ? null : <path className="eye-cf-reference" d={g.diagonal} strokeDasharray="4 4" />}
           {g.points.map((p) => {
             const id = identityOf(spec.legend, p.group, groups.indexOf(p.group));
@@ -478,7 +486,7 @@ function Bridge({ spec, steps, exportAs, status, notes }: Common & { steps: Retu
         {g.bars.map((x) => (
           <g key={x.key}>
             <rect className="eye-cf-step" data-kind={x.kind} x={x.x} y={x.y} width={x.w} height={x.h} />
-            <text className="eye-cf-small" x={x.x + x.w / 2} y={b.top + b.innerHeight + 14} textAnchor="middle">{x.kind === 'residual' ? 'residual' : String(rows[x.row]?.['step'] ?? '').slice(0, 12)}</text>
+            <text className="eye-cf-small" x={x.x + x.w / 2} y={b.top + b.innerHeight + 14} textAnchor="middle">{x.kind === 'residual' ? 'residual' : clip(String(rows[x.row]?.['step'] ?? ''), 12)}</text>
           </g>
         ))}
       </Drawing>
@@ -533,8 +541,8 @@ export function CorrelationMatrix({ spec, variables, cells, exportAs, status }: 
       {...(n < 2 ? { status: status ?? { state: 'empty' as const, statement: 'fewer than two variables — no pair to show' } } : {})}>
       {n < 2 ? null : (
         <Drawing box={b} overlay={<DataTooltip spec={spec} rows={m.rows} box={b} points={pts} label={`${spec.title}: pairs`} />}>
-          {variables.slice(0, -1).map((v, i) => <text key={`r-${v.key}`} className="eye-cf-small" x={lab - 6} y={b.top + cell * i + cell / 2 + 4} textAnchor="end">{v.label.slice(0, 20)}</text>)}
-          {variables.slice(1).map((v, j) => <text key={`c-${v.key}`} className="eye-cf-small" x={lab + cell * j + cell / 2} y={b.top - 8} textAnchor="middle">{v.label.slice(0, 11)}</text>)}
+          {variables.slice(0, -1).map((v, i) => <text key={`r-${v.key}`} className="eye-cf-small" x={lab - 6} y={b.top + cell * i + cell / 2 + 4} textAnchor="end">{clip(v.label, 22)}</text>)}
+          {variables.slice(1).map((v, j) => <text key={`c-${v.key}`} className="eye-cf-small" x={lab + cell * j + cell / 2} y={b.top - 8} textAnchor="middle">{clip(v.label, 11)}</text>)}
           {m.cells.map(({ i, j, cell: c }) => {
             const { x, y } = at(i, j); const cx = x + cell / 2; const cy = y + cell / 2;
             const k = c?.coefficient ?? null; const side = k === null ? 0 : Math.max(4, Math.abs(k) * (cell - 16));
@@ -542,7 +550,7 @@ export function CorrelationMatrix({ spec, variables, cells, exportAs, status }: 
               <g key={`${i}-${j}`}>
                 <rect className={c === null ? 'eye-cf-cell eye-cf-cell--missing' : 'eye-cf-cell'} x={x + 2} y={y + 2} width={cell - 4} height={cell - 4} />
                 {k !== null ? <rect className="eye-cf-cell-mark" x={cx - side / 2} y={cy - side / 2} width={side} height={side} /> : null}
-                <text className="eye-cf-small" x={cx} y={cy + 4} textAnchor="middle">{c === null ? 'missing' : k !== null ? `${k >= 0 ? '+' : '−'}${chartNumber(Math.abs(k))}` : String(c.relation ?? '').slice(0, 11)}</text>
+                <text className="eye-cf-small" x={cx} y={cy + 4} textAnchor="middle">{c === null ? 'missing' : k !== null ? `${k >= 0 ? '+' : '−'}${chartNumber(Math.abs(k))}` : clip(String(c.relation ?? ''), 11)}</text>
               </g>
             );
           })}
@@ -575,7 +583,7 @@ export function Scatter({ spec, points, xLabel, yLabel, line, exportAs, status }
           <YAxis box={b} ticks={g.yTicks} />
           <XAxis box={b} ticks={g.xTicks} />
           <text className="eye-cf-small" x={b.left + b.innerWidth} y={b.height - 4} textAnchor="end">{xLabel}</text>
-          <text className="eye-cf-small" x={b.left} y={b.top - 4}>{yLabel}</text>
+          <text className="eye-cf-small" x={4} y={b.top - 4}>{yLabel}</text>
           {g.line === null ? null : <path className={line?.kind === 'identity' ? 'eye-cf-reference' : 'eye-cf-series'} d={g.line} strokeDasharray={line?.kind === 'identity' ? '4 4' : undefined} />}
           {g.points.map((p) => <Marker key={p.row} shape={identityOf(spec.legend, p.group, groups.indexOf(p.group)).marker} x={p.x} y={p.y} r={4} />)}
         </Drawing>
@@ -627,9 +635,9 @@ export function ControlChart({ spec, points, baseline, limits, interventions, ex
           {geo.baseY === null ? null : <g className="eye-cf-reference"><line x1={geo.b.left} x2={geo.b.left + geo.b.innerWidth} y1={geo.baseY} y2={geo.baseY} /><text x={geo.b.left + 4} y={geo.baseY - 4}>{baseline?.label}</text></g>}
           {geo.limits.map((l) => (
             <g key={l.key} className="eye-cf-limit"><line x1={geo.b.left} x2={geo.b.left + geo.b.innerWidth} y1={l.y} y2={l.y} strokeDasharray="6 4" />
-              <text x={geo.b.left + geo.b.innerWidth - 4} y={l.y - 4} textAnchor="end">{l.kind === 'rule' ? 'rule' : 'limit'} {l.comparator} {chartNumber(l.value)}</text></g>
+              <text x={geo.b.left + geo.b.innerWidth - 4} y={l.y - 4} textAnchor="end">{l.kind === 'rule' ? 'rule' : 'limit'} {CMP_WORD[l.comparator]} {chartNumber(l.value)}</text></g>
           ))}
-          {geo.marks.map((m, i) => <g key={i} className="eye-cf-cutoff"><line x1={m.x} x2={m.x} y1={geo.b.top} y2={geo.b.top + geo.b.innerHeight} strokeDasharray="1.5 3" /><text x={m.x + 3} y={geo.b.top + 10 + (i % 3) * 12}>{m.label.slice(0, 24)}</text></g>)}
+          {geo.marks.map((m, i) => <g key={i} className="eye-cf-cutoff"><line x1={m.x} x2={m.x} y1={geo.b.top} y2={geo.b.top + geo.b.innerHeight} strokeDasharray="1.5 3" /><text x={m.x + 3} y={geo.b.top + 10 + (i % 3) * 12}>{clip(m.label, 24)}</text></g>)}
           <path className="eye-cf-series" d={geo.line} />
           {geo.pts.map((p) => <Marker key={p.row} shape={p.met ? 'square' : 'circle'} x={p.x} y={p.y} r={p.met ? 4.5 : 3} />)}
         </Drawing>

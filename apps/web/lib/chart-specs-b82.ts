@@ -181,7 +181,7 @@ export function benchmarkSpec(measure: string, kind: string, n: number, readAt: 
     time: { basis: 'none', cutoff: { absent: 'a validation sample has no time axis; it was recorded with the validation' }, asOf: readAt },
     units: [{ measure, unit: 'as the measure states' }, { measure: 'values', unit: 'count' }], sources: READ('simulation.fabric.read · /runs/:runId/read', 'the run’s validation'),
     uncertainty: { kind: 'distribution', statement: `the empirical sample (n ${n}); the run's discrepancy band is marked; verdict ${verdict}` },
-    legend: [{ key: 'bins', label: 'values per bin', dash: 'solid', marker: 'square' }, { key: 'marks', label: 'the run mean, the benchmark mean and the band (labelled lines)', dash: 'solid', marker: 'none', directLabel: true }],
+    legend: [{ key: 'bins', label: 'values per bin', dash: 'solid', marker: 'square' }, { key: 'marks', label: 'the run mean, the benchmark mean and the band (labelled lines)', dash: 'dashed', marker: 'none', directLabel: true }],
     alternative: { summary: `${n} value(s) binned; ${rule}.`, columns: DISTRIBUTION_BIN_COLUMNS('as the measure states') },
   };
 }

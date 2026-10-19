@@ -275,3 +275,11 @@ describe('cadence, notes and extra columns', () => {
     expect(calibrationRows([{ key: 'k', label: 'L', group: 'g', nominal: 0.8, observed: 0.5, n: 4, period: null, extra: { pinball: 1.2 } }])[0]!['pinball']).toBe(1.2);
   });
 });
+
+describe('direct labels never overlap', () => {
+  it('labels closer than the gap are spread apart within the bounds', async () => {
+    const { spreadLabels } = await import('./chart-b82');
+    const m = spreadLabels([{ key: 'a', y: 100 }, { key: 'b', y: 104 }, { key: 'c', y: 300 }], 14, 10, 200);
+    expect(m.get('b')! - m.get('a')!).toBeGreaterThanOrEqual(14); expect(m.get('c')).toBeLessThanOrEqual(200);
+  });
+});
