@@ -9,6 +9,7 @@
 import Link from 'next/link';
 import { Timestamp } from './text';
 import { attemptRows, attemptWords, lifecycleFromProfile, replayInstants, type ServerProfile } from '../lib/lifecycle-b50';
+import { type ReactNode } from 'react';
 import { boundaryCoverage, completenessNote, explainPath, fitnessNote, nodeLine, outcomeSummary, type ExplainView, type FitnessView } from '../lib/provenance-b50';
 import { classSummary, classWord, groupByBucket, pathText, summaryLine } from '../lib/impact-b50';
 import { type AffectedProduct } from '../lib/b50-seams';
