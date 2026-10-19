@@ -263,3 +263,15 @@ describe('chartGrammar = assertGrammar + additions only (UX-ADR-015)', () => {
     expect(chartGrammar({ ...SPEC, kind: 'horizon_matrix', uncertainty: { kind: 'band', statement: 'b', level: 0.8 } }).some((p) => p.startsWith('time: a horizon matrix'))).toBe(true);
   });
 });
+
+describe('cadence, notes and extra columns', () => {
+  it('the observed cadence is the median step; under three points none', async () => {
+    const { medianStepMs } = await import('./chart-b82');
+    expect(medianStepMs(['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-10'])).toBe(86_400_000); expect(medianStepMs(['2026-10-01', '2026-10-02'])).toBeNull();
+  });
+  it('a point\'s note and a calibration point\'s extra columns reach the table rows', () => {
+    expect(timeSeriesRows([{ key: 'a', label: 'A', points: [{ at: '2026-10-01', value: 1, note: 'why' }] }])[0]!['note']).toBe('why');
+    expect(TIME_SERIES_COLUMNS('u', 'date', false, 'Reason').map((c) => c.key)).toEqual(['series', 'at', 'value', 'note']);
+    expect(calibrationRows([{ key: 'k', label: 'L', group: 'g', nominal: 0.8, observed: 0.5, n: 4, period: null, extra: { pinball: 1.2 } }])[0]!['pinball']).toBe(1.2);
+  });
+});

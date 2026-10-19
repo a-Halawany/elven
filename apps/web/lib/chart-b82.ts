@@ -159,6 +159,14 @@ export function runsAndGaps(points: ReadonlyArray<TimedValue>, cadenceMs: number
   if (pendingMissing !== null && lastObserved !== null) gaps.push({ from: lastObserved.t, to: pts[pts.length - 1]!.t, reason: 'missing_value' });
   return { runs, gaps };
 }
+/** The OBSERVED cadence of a series: the median step between consecutive distinct times (ms), null under 3 points — a page that has no
+ *  declared cadence states this one as its rule ("the median step"), so a missing interval is still drawn as a gap. */
+export function medianStepMs(times: ReadonlyArray<string>): number | null {
+  const t = [...new Set(times.map((x) => toInstant(x)).filter((x): x is number => x !== null))].sort((a, b) => a - b);
+  if (t.length < 3) return null;
+  const d = t.slice(1).map((x, i) => x - t[i]!).sort((a, b) => a - b);
+  return d[Math.floor((d.length - 1) / 2)]!;
+}
 /** A closed band polygon (the upper edge forward, the lower edge back) per run; a run of one point is a vertical interval. */
 export function bandPath(runs: ReadonlyArray<ReadonlyArray<{ x: number; lo: number; hi: number }>>): string {
   return runs.filter((r) => r.length > 0).map((r) => {
@@ -221,17 +229,18 @@ export const rowText = (row: AlternativeRow, columns: ReadonlyArray<AlternativeC
 
 /* ───────────────────────── TIME SERIES (CMP-060, VIZ-01) ───────────────────────── */
 
-export interface SeriesIn { key: string; label: string; points: ReadonlyArray<{ at: string; value: number | null }> }
-export const TIME_SERIES_COLUMNS = (unit: string, time: 'date' | 'instant' = 'date', levels = false): AlternativeColumn[] => [
+export interface SeriesIn { key: string; label: string; points: ReadonlyArray<{ at: string; value: number | null; /** what the record says of this point (a reason, a state) — a table column */ note?: string | null }> }
+export const TIME_SERIES_COLUMNS = (unit: string, time: 'date' | 'instant' = 'date', levels = false, note: string | null = null): AlternativeColumn[] => [
   { key: 'series', label: 'Series', kind: 'text' }, { key: 'at', label: 'Time', kind: time },
   levels ? { key: 'value', label: 'State', kind: 'state' } : { key: 'value', label: 'Value', kind: 'number', unit },
+  ...(note === null ? [] : [{ key: 'note', label: note, kind: 'text' as const }]),
 ];
 /** The alternative's rows: one per (series, point), in time order; a missing value is a row with "unknown" (never dropped). */
 export function timeSeriesRows(series: ReadonlyArray<SeriesIn>, levels?: ReadonlyArray<string>): AlternativeRow[] {
   const out: AlternativeRow[] = [];
   for (const s of series) {
     const pts = s.points.map((p) => ({ p, t: toInstant(p.at) })).filter((x) => x.t !== null).sort((a, b) => a.t! - b.t!);
-    for (const { p } of pts) out.push({ series: s.label, at: p.at, value: p.value === null ? null : levels !== undefined ? (levels[p.value] ?? null) : p.value });
+    for (const { p } of pts) out.push({ series: s.label, at: p.at, value: p.value === null ? null : levels !== undefined ? (levels[p.value] ?? null) : p.value, ...(p.note === undefined ? {} : { note: p.note }) });
   }
   return out;
 }
@@ -471,7 +480,7 @@ export function wilson(k: number, n: number, confidence = 0.95): [number, number
   const c = (p + z2 / (2 * n)) / (1 + z2 / n); const h = (z * Math.sqrt((p * (1 - p)) / n + z2 / (4 * n * n))) / (1 + z2 / n);
   return [Math.max(0, c - h), Math.min(1, c + h)];
 }
-export interface CalibrationPointIn { key: string; label: string; group: string; nominal: number; observed: number | null; n: number; period: string | null }
+export interface CalibrationPointIn { key: string; label: string; group: string; nominal: number; observed: number | null; n: number; period: string | null; /** further columns the page's table carried (pinball, targets met …) */ extra?: Readonly<Record<string, string | number | null>> }
 export const CALIBRATION_COLUMNS = (unit: string): AlternativeColumn[] => [
   { key: 'family', label: 'Family', kind: 'text' }, { key: 'group', label: 'Method', kind: 'text' }, { key: 'nominal', label: 'Nominal coverage', kind: 'number', unit },
   { key: 'observed', label: 'Observed coverage', kind: 'number', unit }, { key: 'lo', label: 'Interval low (95 %)', kind: 'number', unit }, { key: 'hi', label: 'Interval high (95 %)', kind: 'number', unit },
@@ -480,7 +489,7 @@ export const CALIBRATION_COLUMNS = (unit: string): AlternativeColumn[] => [
 export function calibrationRows(points: ReadonlyArray<CalibrationPointIn>): AlternativeRow[] {
   return points.map((p) => {
     const w = p.observed === null ? null : wilson(Math.round(p.observed * p.n), p.n);
-    return { family: p.label, group: p.group, nominal: p.nominal, observed: p.observed, lo: w === null ? null : w[0], hi: w === null ? null : w[1], n: p.n, period: p.period };
+    return { family: p.label, group: p.group, nominal: p.nominal, observed: p.observed, lo: w === null ? null : w[0], hi: w === null ? null : w[1], n: p.n, period: p.period, ...(p.extra ?? {}) };
   });
 }
 /**
