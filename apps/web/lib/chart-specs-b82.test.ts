@@ -32,7 +32,7 @@ describe('the page specs pass the grammar with their rows', () => {
     expect(chartGrammar(seriesSpec('s', 'u', 2, '2026-10-18T00:00:00Z', READ_AT, 'cadence 1 day', null), timeSeriesRows([{ key: 's', label: 's', points: [{ at: '2026-10-01', value: 1 }] }]))).toEqual([]);
     const cp = [{ key: 'k', label: 'L', group: 'm', nominal: 0.8, observed: 0.7, n: 10, period: null, extra: { pinball: 1.2, t1: 'MET' } }];
     expect(chartGrammar(outcomesSpec(cp, READ_AT), calibrationRows(cp))).toEqual([]);
-    const bp = [{ key: 'k', label: 'L', group: 'learned model', nominal: 0.8, observed: 0.7, n: 10, period: 'w', extra: { skill: 0.1, verdict: 'v' } }, { key: 'n', label: 'L', group: 'seasonal naive', nominal: 0.8, observed: null, n: 10, period: 'w', extra: { skill: null, verdict: 'v' } }];
+    const bp = [{ key: 'k', label: 'L', group: 'learned model', nominal: 0.8, observed: 0.7, n: 10, period: 'w', extra: { skill: 0.1, targets: 'T1 MET' } }, { key: 'n', label: 'L', group: 'seasonal naive', nominal: 0.8, observed: null, n: 10, period: 'w', extra: { skill: null, targets: 'T1 NOT MET' } }];
     expect(chartGrammar(backtestSpec(bp, READ_AT), calibrationRows(bp))).toEqual([]);
     expect(chartGrammar(outcomesSpec([], READ_AT), [])).toEqual([]);
     const items = [{ key: 'a', label: 'A', p10: 1, p50: 2, p90: 3, note: 'member' }];

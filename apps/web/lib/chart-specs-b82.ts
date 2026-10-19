@@ -98,7 +98,7 @@ export function backtestSpec(points: readonly CalibrationPointIn[], readAt: stri
     legend: groupLegend(points),
     alternative: {
       summary: points.length === 0 ? 'No backtest has been run.' : `${points.length / 2} backtest(s), each the learned model beside seasonal naive.`,
-      columns: [...CALIBRATION_COLUMNS('share (0–1)'), { key: 'skill', label: 'Skill vs baseline', kind: 'number', unit: 'share (−1 to 1)' }, { key: 'verdict', label: 'Verdict', kind: 'text' }],
+      columns: [...CALIBRATION_COLUMNS('share (0–1)'), { key: 'skill', label: 'Skill vs baseline', kind: 'number', unit: 'share (−1 to 1)' }, { key: 'targets', label: 'Targets met', kind: 'text' }],
       definitions: [{ term: 'Method', definition: 'the share of held-out outcomes inside the q10–q90 band of each origin’s forecast; Wilson interval at 95 % over the origins' }, { term: 'Period', definition: 'the backtest window and its mode (historical: each origin saw only what was recorded by then; retrospective: one vintage)' }],
     },
   };
@@ -113,7 +113,7 @@ function groupLegend(points: readonly CalibrationPointIn[]): LegendEntry[] {
 /* ── ensembles ── */
 export function ensembleSpec(seriesKey: string, horizon: string, unit: string, items: readonly PercentileItemIn[], knownAt: string, readAt: string, rule: string): ChartSpec {
   return {
-    kind: 'distribution', title: `${seriesKey} at ${horizon} — the members, the ensemble and the judgement`, basis: `member forecasts as issued, the ensemble under ${rule} (MODEL OUTPUT), a named owner’s overlay (JUDGEMENT)`,
+    kind: 'distribution', title: `The run's distributions — ${seriesKey}, horizon ${horizon}: members, ensemble, judgement`, basis: `member forecasts as issued, the ensemble under ${rule} (MODEL OUTPUT), a named owner’s overlay (JUDGEMENT)`,
     time: { basis: 'none', cutoff: cutoffOf(knownAt, readAt, 'the run records no cutoff'), asOf: readAt },
     units: [{ measure: seriesKey, unit: unit || 'as the series states' }], sources: READ('prediction.ensemble.read · /ensembles/:runId/read', 'the ensemble run'),
     uncertainty: { kind: 'distribution', statement: '10th–90th percentile of each distribution as issued; the disagreement is measured by the server and stated below' },
