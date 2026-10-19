@@ -18,6 +18,13 @@ import { graph, type ResolutionRow, type EntityRow } from '../../../lib/graph';
 import { Empty, LiveStatus, Mono, ModeBadge, ScrollBox, cardStyle, DefinitionRow,
   UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+/* B82 ts: a match SCORE at the precision its evidence supports (NUM-09 — never a raw toFixed), the model's confidence as what it is (NUM-02:
+   not calibrated — never a bare number, never authority), and the AI NOTICE on a model-ranked proposal (HX-11, CNT-08: PROPOSED — by the
+   model; not a decision) */
+import { AiNotice, ConfidenceClass } from '../../../components/truth';
+import { preciseNumber } from '../../../lib/numbers-b82';
+const scoreText = (r: ResolutionRow) => preciseNumber(Number(r.score), { measure: 'score', horizon: 'observed', evidence: r.method === 'model_assisted' ? 'uncalibrated_model' : 'derived' }).text;
+/* end B82 ts */
 
 const METHOD_LABEL: Record<string, string> = {
   deterministic_identifier: 'authoritative identifier',
@@ -103,7 +110,7 @@ export default function ResolutionsPage() {
                 </Td>
                 <Td>{q.entity?.canonical_name ?? <Mono>{q.entity_id.slice(0, 18)}…</Mono>}</Td>
                 <Td>{METHOD_LABEL[q.method] ?? q.method}</Td>
-                <Td mono>{Number(q.score).toFixed(2)}</Td>
+                {/* B82 ts */}<Td mono>{scoreText(q)}</Td>{/* end B82 ts */}
                 <Td>{q.mode === null ? '—' : <ModeBadge mode={q.mode} />}</Td>
                 <Td>{fmtInstant(q.proposed_at)}</Td>
               </tr>
@@ -126,7 +133,7 @@ export default function ResolutionsPage() {
             <DefinitionRow term="Rule">
               <Mono>{open.rule_id}@{open.rule_version}</Mono>
             </DefinitionRow>
-            <DefinitionRow term="Score"><Mono>{Number(open.score).toFixed(2)}</Mono></DefinitionRow>
+            {/* B82 ts */}<DefinitionRow term="Score"><Mono>{scoreText(open)}</Mono> <span style={{ color: 'var(--eye-color-ink-muted)' }}>— a match score, not a probability (exact value {String(open.score)})</span></DefinitionRow>{/* end B82 ts */}
             <DefinitionRow term="Proposed by">
               <Mono>{open.proposer_principal_id.slice(0, 8)}…</Mono>{' '}
               <span style={{ color: 'var(--eye-color-ink-muted)' }}>
@@ -144,6 +151,7 @@ export default function ResolutionsPage() {
               <h3 style={{ fontSize: 'var(--eye-type-heading-3)' }}>
                 Model lineage — this ranking is evidence, not a decision
               </h3>
+              {/* B82 ts */}<AiNotice output="proposed" producer={open.model_id === null || open.model_id === undefined ? null : { kind: 'model', name: String(open.model_id), version: open.runtime_version === null || open.runtime_version === undefined ? null : `runtime ${String(open.runtime_version)}` }} />{/* end B82 ts */}
               <dl>
                 <DefinitionRow term="Mode">
                   <ModeBadge mode={open.mode ?? 'replay'} />
@@ -166,7 +174,7 @@ export default function ResolutionsPage() {
                   </Mono>
                 </DefinitionRow>
                 <DefinitionRow term="Model confidence">
-                  <Mono>{open.model_confidence ?? '—'}</Mono>
+                  {/* B82 ts */}<ConfidenceClass confidence={{ score: open.model_confidence === null || open.model_confidence === undefined ? null : Number(open.model_confidence), calibrated: false, source: 'ranking model' }} />{/* end B82 ts */}
                 </DefinitionRow>
               </dl>
             </>

@@ -17,9 +17,17 @@ import { ObjectHeader } from '../../../components/object';
 import { ErrorNote } from '../../../components/ui';
 import { routeId, routeVersion, type ObjectHeaderInput } from '../../../lib/object-b81';
 import { LINK_OUTCOME_WORDS } from '../../../lib/shell-b80';
+/* B82 ts: the DISPLAY truth of each claim (CORRECTED / INDETERMINATE derived by the server — an open contradiction, an unfit mark, a declared
+   absence — never stored), the policy on the state strip, and the extraction's confidence as what it is (NUM-02: an uncalibrated model
+   score — never a bare number, never authority) */
+import { ConfidenceClass, TruthStateLabel, useDisplayTruth } from '../../../components/truth';
+import { refKey, type TruthInput } from '../../../lib/truth-b82';
+import { confidenceView } from '../../../lib/numbers-b82';
+const extractionConfidence = (v: number) => ({ score: v, calibrated: false, source: 'extraction model' });
+/* end B82 ts */
 type ClaimRead = { versions: Array<Record<string, unknown>>; row: Record<string, unknown>; receipt: { policyDecisionId: string; auditSeq: number } };
 /** The claim's header from its FULL canonical row (the get route's) — the list's row carries no owner or classification. */
-function claimHeader(c: ClaimRow, read: ClaimRead | null): ObjectHeaderInput {
+function claimHeader(c: ClaimRow, read: ClaimRead | null, /* B82 ts */ truth?: TruthInput /* end B82 ts */): ObjectHeaderInput {
   const row = read?.row ?? null;
   const str = (k: string) => (row === null || row[k] === undefined || row[k] === null ? null : String(row[k]));
   return {
@@ -28,12 +36,13 @@ function claimHeader(c: ClaimRow, read: ClaimRead | null): ObjectHeaderInput {
     owner: read === null ? 'reading…' : str('accountable_owner'), ownerRole: 'accountable owner', serverState: c.lifecycle_state, truth: c.truth_state,
     synthetic: row === null ? null : row['synthetic_state'] === true, classification: str('classification'),
     time: [{ label: 'Recorded', value: fmtInstant(c.recorded_at) }, { label: 'Event', value: c.event_time === null ? null : fmtInstant(c.event_time) }],
-    trust: `confidence ${c.payload.confidence.toFixed(2)} · ${c.payload.lineage.mode} · review ${c.payload.review?.state ?? 'not_required'}`,
+    trust: `${/* B82 ts */ confidenceView(extractionConfidence(c.payload.confidence)).text /* end B82 ts */} · ${c.payload.lineage.mode} · review ${c.payload.review?.state ?? 'not_required'}`,
     authority: c.payload.review?.decider ? `Reviewed by ${c.payload.review.decider} (${c.payload.review.state}).` : 'Admitted by extraction under intelligence.claim.admit; no approval exists for a claim.',
     relationships: [{ label: 'its contradictions', href: '/intelligence/contradictions' }],
     provenance: [{ label: `evidence ${c.payload.lineage.evidence_object_id.slice(0, 8)}… bytes ${c.payload.lineage.byte_start}–${c.payload.lineage.byte_end}`, href: `/observation/evidence/${c.payload.lineage.evidence_object_id}` },
       { label: `method ${c.payload.lineage.method_key} · prompt ${c.payload.lineage.prompt_version}`, href: null }],
     receipt: read?.receipt ?? null, effective: { support: 'live_only', asOf: null },
+    /* B82 ts */ displayTruth: truth ?? null, policy: { classification: str('classification'), purpose: str('purpose_scope') }, /* end B82 ts */
   };
 }
 /* end B81 ob */
@@ -53,7 +62,7 @@ function ConfidenceBadge({ value, review }: { value: number; review: string }) {
       }}
     >
       <span aria-hidden="true">{queued ? '⚖' : '•'}</span>
-      <span>{value.toFixed(2)}</span>
+      {/* B82 ts */}<ConfidenceClass confidence={extractionConfidence(value)} />{/* end B82 ts */}
       <span>{queued ? '(queued for review)' : ''}</span>
     </span>
   );
@@ -96,6 +105,10 @@ export default function ClaimsPage() {
     })();
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* B82 ts: one audited read for the listed claims and the open version */
+  const truths = useDisplayTruth(scope, [...(claims ?? []), ...(open === null ? [] : [open])].map((c) => ({ type: c.object_type, id: c.object_id, version: Number(c.object_version), stored: c.truth_state })));
+  const truthOf = (c: ClaimRow): TruthInput => truths.get(refKey({ type: c.object_type, id: c.object_id, version: Number(c.object_version) })) ?? { stored: c.truth_state, unread: 'reading the display truth' };
+  /* end B82 ts */
   if (problem !== null) return <LiveStatus assertive>{problem}</LiveStatus>;
   if (claims === null) return <Empty>reading claims…</Empty>;
 
@@ -114,7 +127,7 @@ export default function ClaimsPage() {
             <tr>
               <th scope="col">Kind</th><th scope="col">Subject</th><th scope="col">Predicate</th>
               <th scope="col">Value</th><th scope="col">Confidence</th><th scope="col">Mode</th>
-              <th scope="col">Version</th>
+              <th scope="col">Version</th>{/* B82 ts */}<th scope="col">Truth</th>{/* end B82 ts */}
             </tr>
           </thead>
           <tbody>
@@ -139,6 +152,7 @@ export default function ClaimsPage() {
                 </td>
                 <td data-label="Mode"><ModeBadge mode={c.payload.lineage.mode} /></td>
                 <td data-label="Version"><Mono>v{c.object_version}</Mono></td>
+                {/* B82 ts */}<td data-label="Truth"><TruthStateLabel truth={truthOf(c)} detail="compact" /></td>{/* end B82 ts */}
               </tr>
             ))}
           </tbody>
@@ -147,7 +161,7 @@ export default function ClaimsPage() {
 
       {open === null ? null : (
         <section aria-labelledby="lin-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-24)' }}>
-          {/* B81 ob */}<ObjectHeader level={2} input={claimHeader(open, read)} />{/* end B81 ob */}
+          {/* B81 ob */}<ObjectHeader level={2} input={claimHeader(open, read, /* B82 ts */ truthOf(open) /* end B82 ts */)} />{/* end B81 ob */}
           <h2 id="lin-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>
             Lineage — how this claim was produced
           </h2>
@@ -194,7 +208,7 @@ export default function ClaimsPage() {
                 {' '}<Mono>observation.evidence.retrieve</Mono> decision that permitted reading these bytes
               </span>
             </DefinitionRow>
-            <DefinitionRow term="Truth state"><Mono>{open.truth_state}</Mono></DefinitionRow>
+            {/* B82 ts */}<DefinitionRow term="Truth state"><TruthStateLabel truth={truthOf(open)} /></DefinitionRow>{/* end B82 ts */}
             <DefinitionRow term="Recorded">{fmtInstant(open.recorded_at)}</DefinitionRow>
             <DefinitionRow term="Review">
               {open.payload.review?.state ?? 'not_required'}

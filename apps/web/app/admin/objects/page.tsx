@@ -8,6 +8,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { call } from '../../../lib/api';
 import { ErrorNote, LifecycleBadge, Panel, Receipt, Td, Th, TruthBadge, buttonStyle, inputStyle, tableStyle } from '../../../components/ui';
 import { t, defaultLocale } from '../../../lib/i18n';
+/* B82 ts: the DISPLAY truth beside the stored one (RECOMMENDED / CORRECTED / INDETERMINATE derived by the server, never stored — TS-08: a
+   correction reads CORRECTED linked to its preserved original, the original "superseded by correction vN"); the stored column is kept */
+import { TruthStateLabel, useDisplayTruth } from '../../../components/truth';
+import { refKey } from '../../../lib/truth-b82';
+/* end B82 ts */
 
 interface Tenant { id: string; name: string }
 interface Domain { id: string; name: string }
@@ -69,6 +74,13 @@ export default function ObjectsPage() {
   }, [base]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  /* B82 ts: one audited read for the rows on screen (the current view and the open history) */
+  const truthScope = tenantId !== '' && domainId !== '' ? { tenantId, domainId } : null;
+  const shown = [...objects, ...history].map((o) => ({ type: o.object_type, id: o.object_id, version: Number(o.object_version), stored: o.truth_state }));
+  const truths = useDisplayTruth(truthScope, shown);
+  const displayOf = (o: ObjRow) => truths.get(refKey({ type: o.object_type, id: o.object_id, version: Number(o.object_version) }));
+  /* end B82 ts */
 
   async function createClaim() {
     if (base === null) return;
@@ -146,12 +158,13 @@ export default function ObjectsPage() {
 
           <Panel title="Objects (current view)">
             <table style={tableStyle}>
-              <thead><tr><Th>Type</Th><Th>Truth</Th><Th>Lifecycle</Th><Th>Ver</Th><Th>Recorded</Th><Th>Payload</Th><Th>Digest</Th></tr></thead>
+              <thead><tr><Th>Type</Th><Th>Truth</Th>{/* B82 ts */}<Th>Display truth</Th>{/* end B82 ts */}<Th>Lifecycle</Th><Th>Ver</Th><Th>Recorded</Th><Th>Payload</Th><Th>Digest</Th></tr></thead>
               <tbody>
                 {objects.map((o) => (
                   <tr key={`${o.object_id}@${o.object_version}`} style={{ cursor: 'pointer' }} onClick={() => void openObject(o)}>
                     <Td mono>{o.object_type}</Td>
                     <Td><TruthBadge state={o.truth_state} /></Td>
+                    {/* B82 ts */}<Td>{displayOf(o) === undefined ? 'reading…' : <TruthStateLabel truth={displayOf(o)!} detail="compact" />}</Td>{/* end B82 ts */}
                     <Td><LifecycleBadge state={o.lifecycle_state} /></Td>
                     <Td mono>{String(o.object_version)}</Td>
                     <Td mono>{new Date(o.recorded_at).toISOString().slice(0, 19)}Z</Td>
@@ -166,12 +179,13 @@ export default function ObjectsPage() {
           {selected !== null && (
             <Panel title={`${t('objects.history', locale)} — ${selected.object_id.slice(0, 13)}…`}>
               <table style={tableStyle}>
-                <thead><tr><Th>Ver</Th><Th>Truth</Th><Th>Lifecycle</Th><Th>Recorded</Th><Th>Correction of</Th><Th>Evidence</Th><Th>Payload</Th></tr></thead>
+                <thead><tr><Th>Ver</Th><Th>Truth</Th>{/* B82 ts */}<Th>Display truth</Th>{/* end B82 ts */}<Th>Lifecycle</Th><Th>Recorded</Th><Th>Correction of</Th><Th>Evidence</Th><Th>Payload</Th></tr></thead>
                 <tbody>
                   {history.map((h) => (
                     <tr key={String(h.object_version)}>
                       <Td mono>{String(h.object_version)}</Td>
                       <Td><TruthBadge state={h.truth_state} /></Td>
+                      {/* B82 ts */}<Td>{displayOf(h) === undefined ? 'reading…' : <TruthStateLabel truth={displayOf(h)!} detail="full" />}</Td>{/* end B82 ts */}
                       <Td><LifecycleBadge state={h.lifecycle_state} /></Td>
                       <Td mono>{new Date(h.recorded_at).toISOString().slice(0, 19)}Z</Td>
                       <Td mono>{h.correction_of ?? '—'}</Td>

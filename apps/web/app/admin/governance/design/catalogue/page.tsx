@@ -16,11 +16,15 @@ import { CldCatalogue } from './cld-fixtures';
 /* B81 re */
 import { RE_RENDERED, ReCatalogue } from './re-fixtures';
 /* end B81 re */
+/* B82 ts */
+import { TS_RENDERED, TsCatalogue } from './ts-fixtures';
+/* end B82 ts */
 
 /** The library exports each folded part renders here (a part adds its names with its section). */
 const RENDERED = new Set<string>([
   /* B80 cld */ ...LIBRARY.data.exports, ...LIBRARY.layers.exports, /* end B80 cld */
   /* B81 re */ ...RE_RENDERED, /* end B81 re */
+  /* B82 ts */ ...TS_RENDERED, /* end B82 ts */
 ]);
 
 export default function CataloguePage() {
@@ -46,6 +50,9 @@ export default function CataloguePage() {
       {/* B81 re */}
       <ReCatalogue />
       {/* end B81 re */}
+      {/* B82 ts */}
+      <TsCatalogue />
+      {/* end B82 ts */}
     </>
   );
 }

@@ -27,6 +27,12 @@ import { ErrorNote } from '../../../../components/ui';
 import { Empty, fmtInstant } from '../../../../components/observation';
 /* B81 act (§DG: the degraded dependencies on a corridor view) */ import { DegradedDependencies } from '../../../home/operations-room/degraded-b81';
 /* B81 integration (UX-11-005) */ import { RecoveryPanel } from '../../../../components/recovery'; import { recoveryOfRefusedLink } from '../../../../lib/degraded-b81'; /* end B81 integration */
+/* B82 ts: the state strip — the warning's DISPLAY truth (its canonical WRN record), the freshness (the raise, the domain's source health —
+   HX-15), the policy; the confidence as what it is (NUM-02: not calibrated — never a bare number, never authority) */
+import { useDisplayTruth, useSourceHealth } from '../../../../components/truth';
+import { refKey } from '../../../../lib/truth-b82';
+import { confidenceView } from '../../../../lib/numbers-b82';
+/* end B82 ts */
 
 /** B81 integration: ONE h1 per rendering (lib/layout-b81's REG-03 ratchet) — every branch (not opened, loading, the object) titles
  *  the page through this one element. */
@@ -65,6 +71,11 @@ export default function WarningObjectPage() {
   }, [scope, id]);
 
   const points = useMemo(() => (life === null ? [] : warningVersionPoints(life.events)), [life]);
+  /* B82 ts */
+  const health = useSourceHealth(id === null ? null : scope, 'prediction');
+  const truths = useDisplayTruth(w === null ? null : scope, w === null ? [] : [{ type: 'WRN', id: w.warning_id, version: 1, stored: 'unknown' }]);
+  const [readAt] = useState(() => new Date().toISOString());
+  /* end B82 ts */
   useEffect(() => {
     if (points.length === 0) return;
     setFrom((p) => p || String(points[0]!.at ?? ''));
@@ -89,13 +100,17 @@ export default function WarningObjectPage() {
 
   const rec = w as unknown as Record<string, unknown>;
   const openAt = (at: string | null) => (at === null ? null : encodeDeepLink({ kind: 'warning', id, version: null, asOf: at, from: null }));
+  /* B82 ts: the display truth only when the server answered it (an unread one leaves the field unresolved, said) */
+  const wAnswer = truths.get(refKey({ type: 'WRN', id: w.warning_id, version: 1 }));
+  const wTruth = wAnswer === undefined || 'unread' in wAnswer ? null : wAnswer;
+  /* end B82 ts */
   const input: ObjectHeaderInput = {
     type: 'WRN', id: w.warning_id, title: w.title, version: null, versionCount: life === null ? null : points.length,
-    owner: w.routed_to, ownerRole: 'routed owner', serverState: w.state, truth: null,
+    owner: w.routed_to, ownerRole: 'routed owner', serverState: w.state, truth: /* B82 ts */ wTruth?.stored ?? null /* end B82 ts */,
     synthetic: w.controls === null || w.controls === undefined ? null : w.controls.synthetic_state, classification: w.controls?.classification ?? null,
     time: [{ label: 'Raised as of', value: fmtInstant(w.raised_as_of ?? w.raised_at) }, { label: 'Window closes', value: fmtInstant(w.response_window_closes_at) },
       { label: 'Recorded', value: fmtInstant(w.raised_at) }],
-    trust: `confidence ${Number(w.confidence).toFixed(2)} · origin ${originWords(rec['origin_kind'])}${life === null ? '' : ` · ${life.coverage_gaps.count} coverage gap(s) on the sources it rests on`}`,
+    trust: `${/* B82 ts */ confidenceView({ score: Number(w.confidence), calibrated: false, source: 'raising rule' }).text /* end B82 ts */} · origin ${originWords(rec['origin_kind'])}${life === null ? '' : ` · ${life.coverage_gaps.count} coverage gap(s) on the sources it rests on`}`,
     authority: `A warning carries no approval: each recorded instant below names who acted.${w.acknowledged_by === null ? ' Not acknowledged.' : ` Acknowledged by ${w.acknowledged_by}.`}`,
     relationships: [
       ...(w.forecast_id === null ? [] : [{ label: 'the forecast it was raised from', href: `/prediction/forecasts/${w.forecast_id}` }]),
@@ -104,6 +119,11 @@ export default function WarningObjectPage() {
     provenance: [{ label: `${w.evidence.length} evidence reference(s) cited at the raise`, href: null }, { label: `origin: ${originWords(rec['origin_kind'])}`, href: null }],
     receipt, effective: { support: 'honoured', asOf: null },
     eligible: { review: { can: isForecastOwner, reason: isForecastOwner ? null : 'you hold no forecast_owner binding in this domain — the acknowledgement and the closure are refused from anyone else' } },
+    /* B82 ts */
+    displayTruth: wTruth,
+    freshness: { cutoff: w.raised_as_of ?? w.raised_at, asOf: readAt, live: true, sources: health.sources, sourcesNote: health.read ? 'no source signal is declared for this domain' : (health.problem ?? 'reading the source health') },
+    policy: { classification: w.controls?.classification ?? null, purpose: 'prediction (the warning\'s read purpose)' },
+    /* end B82 ts */
   };
 
   const pointAt = (at: string) => points.find((p) => p.at === at) ?? null;
