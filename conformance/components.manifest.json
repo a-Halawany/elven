@@ -1770,7 +1770,8 @@
           "ImpactB50Controller",
           "ProjectionsController",
           "ProvenanceController",
-          "TimelineController"
+          "TimelineController",
+          "TrustController"
         ],
         "module": "GraphModule",
         "ports": [

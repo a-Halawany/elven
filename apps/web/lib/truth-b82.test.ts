@@ -102,7 +102,6 @@ const WEB = join(__dirname, '..');
 const walkPages = (dir: string): string[] => readdirSync(dir).flatMap((n) => { const p = join(dir, n); return statSync(p).isDirectory() ? walkPages(p) : n === 'page.tsx' ? [p] : []; });
 /** Pages rendering agent-authored content without <AiNotice at B82 §TS (2026-10-19) — each names its carrier; the list may only shrink. */
 const AI_NOTICE_PENDING: Readonly<Record<string, string>> = {
-  'app/decisions/explanations/page.tsx': 'B82 §PX (decisions/explanations — ExplanationLayers)',
   'app/decisions/briefings/page.tsx': 'B82 §EV (decisions/briefings)',
   'app/graph/strategy/page.tsx': 'B82 §GM (graph/strategy)',
   'app/graph/strategy/planning/page.tsx': 'B82 §GM (graph/strategy, the planning view)',

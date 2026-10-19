@@ -64,7 +64,7 @@ export const WORKSPACE_REGISTRY: readonly WorkspaceEntry[] = [
     objects: ['entities', 'candidates', 'relationships', 'cases'], continuity: 'Keep unresolved candidates separate', routes: ['/graph/entities', '/graph/resolutions'], queues: [Q.resolutions] },
   { id: 'WS-06', title: 'Knowledge Graph Explorer', purpose: 'Temporal connected exploration and governed curation', audience: ['domain_analyst', 'ontology_steward', 'resolution_manager'],
     objects: ['nodes', 'edges', 'paths', 'subgraphs', 'revisions'], continuity: 'Serve last verified projection with watermark',
-    routes: ['/graph', '/graph/explore', '/graph/revisions', '/graph/ontology', '/graph/impact', '/graph/subscriptions'], queues: [Q.resolutions] },
+    routes: ['/graph', '/graph/explore', '/graph/revisions', '/graph/ontology', '/graph/impact', '/graph/subscriptions', /* B82 §GM */ '/graph/geo'], queues: [Q.resolutions] },
   { id: 'WS-07', title: 'Enterprise Memory', purpose: 'Institutional records, strategic context, lessons, and retrieval', audience: ['knowledge_owner', 'record_authority', 'retention_steward'],
     objects: ['memory items', 'decisions', 'artifacts', 'lessons'], continuity: 'Preserve permission and historical versions', routes: ['/graph/memory', '/graph/retention'], queues: [Q.attention] },
   { id: 'WS-08', title: 'Weak Signals and Warnings', purpose: 'Signal review, indicator management, warning response, escalation', audience: ['forecast_owner', 'strategy_owner', 'executive'],
@@ -92,7 +92,7 @@ export const WORKSPACE_REGISTRY: readonly WorkspaceEntry[] = [
     objects: ['agents', 'packages', 'runs', 'tasks', 'traces'], continuity: 'Pause unsafe runs and preserve full trace', routes: [], queues: [Q.attention] },
   { id: 'WS-18', title: 'Trust and Governance', purpose: 'Provenance, model, agent, data, policy, audit, exceptions', audience: ['auditor', 'data_steward', 'conformance_steward', 'product_authority'],
     objects: ['artifacts', 'policies', 'evaluations', 'audit cases'], continuity: 'Constrain use when evidence is indeterminate',
-    routes: ['/admin/governance', '/admin/audit', '/graph/data/products', '/graph/data/catalog', '/graph/data/metrics', '/graph/data/events', '/graph/data/analytics'], queues: [Q.attention] },
+    routes: [/* B82 §PX */ '/graph/trust', '/admin/governance', '/admin/audit', '/graph/data/products', '/graph/data/catalog', '/graph/data/metrics', '/graph/data/events', '/graph/data/analytics'], queues: [Q.attention] },
   { id: 'WS-19', title: 'Platform and Customer Administration', purpose: 'Identity, tenants, domains, integrations, service, recovery', audience: ['platform_admin', 'tenant_admin', 'commercial_authority'],
     objects: ['users', 'roles', 'policies', 'connectors', 'health'], continuity: 'Fail closed on ambiguous tenant or authority',
     routes: ['/admin', '/admin/tenants', '/admin/principals', '/admin/objects', '/admin/commercial'], queues: [Q.service] },
@@ -159,6 +159,10 @@ const GRAPH_NAV: NavItem[] = [
   { href: '/graph/strategy/alignment', label: 'Alignment', glyph: '⋈' },
   /* B36 (0094 §P) planning */ { href: '/graph/strategy/planning', label: 'Planning', glyph: '▤' }, /* end B36 planning */
   /* B90 metrics */ { href: '/graph/data/metrics', label: 'Metrics', glyph: '∑' }, /* end B90 metrics */
+  /* B82 (0121) — the geographic view (§GM) and the trust workspace (§PX, WS-18) under the Graph workspace; the navigation names unchanged */
+  { href: '/graph/geo', label: 'Geography', glyph: '⌖' },
+  { href: '/graph/trust', label: 'Trust', glyph: '✓' },
+  /* end B82 */
   /* B92 (0113 §0) product analytics — the pages are the parts' (§MD the catalog, §UX the experience workspace, §OR the operating review) */
   { href: '/graph/data/analytics', label: 'Product analytics', glyph: '∿' },
   { href: '/graph/data/analytics/experience', label: 'Experience quality', glyph: '◐' },

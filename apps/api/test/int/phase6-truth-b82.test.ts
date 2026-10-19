@@ -131,6 +131,9 @@ async function recommendation(pkg: string, v: number, authorKind: 'human' | 'age
   return id;
 }
 const codes = (t: Truth) => t.reasons.map((r) => r.code);
+/* B82 integration: §PX's computed strength adds weak_provenance to a fixture with no recorded lineage — the reasons UNDER TEST, without it */
+const own = (t: Parameters<typeof codes>[0]) => codes(t).filter((c) => c !== 'weak_provenance');
+const reason = (t: { reasons: Array<{ code: string; detail?: string; ref?: string }> }, code: string) => t.reasons.find((x) => x.code === code);
 
 beforeAll(async () => {
   h = await Phase4Harness.boot();
@@ -216,7 +219,7 @@ describe('TS3 · CORRECTED — linked to the preserved original (TS-08)', () => 
     const [a, b] = await truthSql([v1, v2]);
     expect(b).toMatchObject({ stored: 'extracted', display: 'corrected', correction_of: `CLM:${id}@1`, corrected_by: null, lifecycle: 'corrected' });
     expect(b!.basis).toMatch(/correction of CLM:.*@1 \(linked; the original preserved\)/);
-    expect(codes(b!)).toEqual(['correction_of']);
+    expect(own(b!)).toEqual(['correction_of']);
     expect(a).toMatchObject({ stored: 'extracted', display: 'extracted', correction_of: null, corrected_by: `CLM:${id}@2` });
     expect(a!.constrained_use).toMatch(/^superseded by correction v2 — the preserved original/);
     evidence('TS3 corrected', { original: a, correction: b });
@@ -242,8 +245,8 @@ describe('TS4 · INDETERMINATE — a required state that cannot be resolved (TS-
     await fitnessMark(r, 'unfit');
     const t = await one1(r);
     expect(t).toMatchObject({ stored: 'inferred', display: 'indeterminate' });
-    expect(codes(t)).toEqual(['unfit']);
-    expect(t.reasons[0]!.detail).toMatch(/^marked UNFIT \(incomplete_lineage\)/);
+    expect(own(t)).toEqual(['unfit']);
+    expect(reason(t, 'unfit')!.detail).toMatch(/^marked UNFIT \(incomplete_lineage\)/);
     await new Promise((res) => setTimeout(res, 5));
     await fitnessMark(r, 'fit');
     expect((await one1(r)).display).toBe('inferred');
@@ -271,8 +274,8 @@ describe('TS4 · INDETERMINATE — a required state that cannot be resolved (TS-
     expect(a!.reasons[0]!.detail).toMatch(/^the object was withdrawn at v2 .*: the run rested on a superseded twin version/);
     expect(b).toMatchObject({ stored: 'withdrawn', display: 'withdrawn' });
     expect(b!.constrained_use).toMatch(/^withdrawn: the run rested on/);
-    expect(cl!.display).toBe('indeterminate'); expect(cl!.reasons[0]).toMatchObject({ code: 'withdrawn_input', ref: `EVD:${evd.id}@1` });
-    expect(cc!.display).toBe('indeterminate'); expect(cc!.reasons[0]!.detail).toMatch(/\(its current version\) is WITHDRAWN/);
+    expect(cl!.display).toBe('indeterminate'); expect(reason(cl!, 'withdrawn_input')).toMatchObject({ code: 'withdrawn_input', ref: `EVD:${evd.id}@1` });
+    expect(cc!.display).toBe('indeterminate'); expect(cc!.reasons.find((x) => /\(its current version\) is WITHDRAWN/.test(x.detail ?? ''))).toBeTruthy();
     evidence('TS4 withdrawn', { v1: a, v2: b, citing: cl });
   });
   it('DECIDED with no recorded human behind it reads INDETERMINATE — an agent never decides; a person\'s decision reads DECIDED', async () => {
@@ -284,11 +287,14 @@ describe('TS4 · INDETERMINATE — a required state that cannot be resolved (TS-
     expect(a!.reasons[0]!.detail).toMatch(/an agent never decides/);
     expect(p).toMatchObject({ stored: 'decided', display: 'decided', agent_authored: false, basis: 'as stored' });
   });
-  it('§0\'s provenance stub answers `unknown` — it adds no reason (weak_provenance only for weak or broken, §PX)', async () => {
+  /* B82 integration: §PX replaced §0's stub — the strength is COMPUTED; a planted claim with no recorded lineage reads weak or broken and
+     the display truth carries weak_provenance as a REASON only (it never changes the displayed state by itself) */
+  it('§PX\'s computed strength: a claim with no recorded lineage is weak or broken — weak_provenance is a reason, never a state', async () => {
     const r = await plant();
     const s = await one(sql`select graph.provenance_strength(${T()}::uuid, ${D()}::uuid, 'CLM', ${r.id}::uuid, 1) ->> 'strength' as s`);
-    expect(s['s']).toBe('unknown');
-    expect(codes(await one1(r))).not.toContain('weak_provenance');
+    expect(['weak', 'broken']).toContain(s['s']);
+    const t = await one1(r);
+    expect(codes(t)).toContain('weak_provenance');
   });
   it('precedence: a stored WITHDRAWN version stays WITHDRAWN even with an open contradiction (the reason kept for the record)', async () => {
     const a = await plant({ truth: 'withdrawn', lifecycle: 'withdrawn' }); const b = await plant();

@@ -42,30 +42,31 @@ describe('§0.1 · the stub is declared and granted as documented', () => {
     const n = await one(sql`select count(*)::int n from pg_proc p join pg_namespace s on s.oid = p.pronamespace where s.nspname = 'graph' and p.proname = 'provenance_strength'`);
     expect(n['n']).toBe(1);
   });
-  it('the reads §TS, §EV, §GM and §PX add are not declared by the prelude (each part declares its own; §PX replaces the stub)', async () => {
+  /* B82 integration: after the fold every part's read is declared (§TS, §EV, §GM, §PX), and §PX has replaced the stub in place */
+  it('after the fold, every read the parts add is declared — §PX replaced the stub with the same signature', async () => {
     for (const [k, v] of Object.entries(B82_READS)) {
       const r = await one(sql`select to_regprocedure(${v.fn}) is not null as present`);
-      expect(r['present'], k).toBe(v.stub);
+      expect(r['present'], k).toBe(true);
     }
   });
 });
 
-describe('§0.1 · the stub is inert', () => {
-  it('any subject of the right shape answers unknown / not_computed under the stub\'s rule version — an unknown id the same (it never looks)', async () => {
+describe('§0.1 · the stub, replaced by §PX (B82 integration: the strength is computed — b82-px-strength-1)', () => {
+  it('an unknown object is refused in the class form (404), under any type — the stub\'s "never looks" answer is gone', async () => {
     const id = uuidv7();
     for (const [type, v] of [['EVD', 1], ['CLM', 3], ['DPK', 2]] as const) {
-      const s = await strength(type, id, v);
-      expect(s).toMatchObject({ ref: `${type}:${id}@${v}`, strength: 'unknown', rule_version: PROVENANCE_STRENGTH_STUB_VERSION });
-      expect(s.reasons).toEqual([{ code: 'not_computed', detail: expect.stringMatching(/not computed yet/) }]);
-      expect(Number.isFinite(Date.parse(s.as_of))).toBe(true);
-      expect(PROVENANCE_STRENGTHS).toContain(s.strength);
+      const r = await refusal(sql`select graph.provenance_strength(${T()}::uuid, ${D()}::uuid, ${type}, ${id}::uuid, ${v}::int)`.execute(h.su));
+      expect(r.message).toMatch(/^provenance rejected \(unknown_object\)/);
+      expect(r.status).toBe(404);
     }
+    expect(PROVENANCE_STRENGTHS).toEqual(expect.arrayContaining(['strong', 'partial', 'weak', 'broken']));
+    expect(PROVENANCE_STRENGTH_STUB_VERSION).toBe('b82-px-strength-0');
   });
-  it('it writes nothing (a read-only transaction answers it)', async () => {
+  it('it writes nothing (a read-only transaction answers it — here with its refusal)', async () => {
     const id = uuidv7();
-    const s = await h.su.transaction().setAccessMode('read only').execute(async (tx) =>
-      (await sql<{ s: ProvenanceStrengthRow }>`select graph.provenance_strength(${T()}::uuid, ${D()}::uuid, 'FCT', ${id}::uuid, 1) as s`.execute(tx)).rows[0]!.s);
-    expect(s.strength).toBe('unknown');
+    const r = await refusal(h.su.transaction().setAccessMode('read only').execute(async (tx) =>
+      sql`select graph.provenance_strength(${T()}::uuid, ${D()}::uuid, 'FCT', ${id}::uuid, 1) as s`.execute(tx)));
+    expect(r.message).toMatch(/^provenance rejected \(unknown_object\)/);
   });
   it('a malformed subject is refused in the class form (422)', async () => {
     for (const [type, v] of [['evd', 1], ['EVDX', 1], ['EVD', 0]] as const) {

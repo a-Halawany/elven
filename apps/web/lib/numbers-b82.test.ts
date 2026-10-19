@@ -123,7 +123,6 @@ const TOFIXED_BASELINE: Readonly<Record<string, { count: number; carrier: string
   'app/admin/commercial/ledger/page.tsx': { count: 1, carrier: 'the stage that next builds the page; B111 sweeps the remainder' },
   'app/admin/governance/design/themes/themes-view.tsx': { count: 1, carrier: 'the stage that next builds the page; B111 sweeps the remainder' },
   'app/admin/governance/design/tokens/page.tsx': { count: 2, carrier: 'the stage that next builds the page; B111 sweeps the remainder' },
-  'app/decisions/attention/evaluation-panel.tsx': { count: 1, carrier: 'B82 §SC (decisions/attention)' },
   'app/graph/entities/page.tsx': { count: 1, carrier: 'B83 (F-P7-E-13, the entity workspace)' },
   'app/graph/explore/page.tsx': { count: 1, carrier: 'B82 §GM (graph/explore)' },
   'app/intelligence/methods/page.tsx': { count: 2, carrier: 'B83 (F-P7-E-13)' },
