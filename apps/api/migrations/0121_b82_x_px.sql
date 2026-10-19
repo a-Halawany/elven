@@ -130,7 +130,8 @@ BEGIN
         v_reasons := v_reasons || jsonb_build_object('code', 'unfit', 'node_id', n ->> 'node_id',
           'detail', format('%s is marked UNFIT (%s) at %s', n ->> 'ref', array_to_string(y.reasons, ', '), graph.pv_iso(y.marked_at)));
       END IF;
-      CONTINUE WHEN (n ->> 'ref') = v_root;   -- the product itself: its own correction or withdrawal is its display truth, not its provenance
+      -- the product itself, and its own earlier versions (a correction's original): their correction or withdrawal is its display truth, not its provenance
+      CONTINUE WHEN (n ->> 'ref') = v_root OR (graph.pv_ref(v_root) ->> 'id') = c.object_id::text;
       IF c.lifecycle_state IN ('withdrawn', 'deleted') OR c.truth_state = 'withdrawn' THEN
         v_level := greatest(v_level, 1);
         v_reasons := v_reasons || jsonb_build_object('code', 'withdrawn_input', 'node_id', n ->> 'node_id', 'detail', format('the input %s is WITHDRAWN', n ->> 'ref'));
@@ -856,7 +857,7 @@ BEGIN
                   left(coalesce(c.payload ->> 'title', c.payload ->> 'statement', c.payload ->> 'subject', c.payload ->> 'label', c.object_type || ' ' || c.object_id::text), 160) AS title
              FROM objects.canonical_objects c WHERE c.tenant_id = p_tenant AND c.domain_id = p_domain AND c.object_type = ANY (v_types)
             ORDER BY c.object_id, c.object_version DESC) z ORDER BY z.recorded_at DESC, z.object_id LIMIT v_limit LOOP
-    s := graph.px_strength_of(p_tenant, p_domain, graph.explain(p_tenant, p_domain, o.object_type, o.object_id, o.object_version));
+    s := graph.px_strength_of(p_tenant, p_domain, graph.explain(p_tenant, p_domain, o.object_type, o.object_id, o.object_version::int));
     v_products := v_products || jsonb_build_object('ref', o.object_type || ':' || o.object_id || '@' || o.object_version, 'type', o.object_type, 'id', o.object_id, 'version', o.object_version,
       'title', o.title, 'lifecycle', o.lifecycle_state, 'truth_state', o.truth_state, 'owner', o.accountable_owner, 'recorded_at', graph.pv_iso(o.recorded_at),
       'strength', s ->> 'strength', 'reasons', s -> 'reasons',
