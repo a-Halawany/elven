@@ -434,6 +434,8 @@ export function TraceView({ trace, renderRef }: { trace: TraceView; renderRef?: 
         </>
       )}
       {trace.reasons.length === 0 ? null : <ul aria-label="Why the trace is incomplete">{trace.reasons.map((r) => <li key={r.reason}>{reasonText(r)}</li>)}</ul>}
+      {/* B50 integration (D20): the sources' own stated limitations — not why the trace is incomplete */}
+      {(trace.limitations ?? []).length === 0 ? null : <ul aria-label="Limitations the sources state">{(trace.limitations ?? []).map((l) => <li key={l.limitation}>{reasonText({ reason: l.limitation, count: l.count })}</li>)}</ul>}
       <details>
         <summary>{trace.steps.length} production and contest step{trace.steps.length === 1 ? '' : 's'} (methods, runs, model calls, reviews, approvals, policy decisions)</summary>
         <ul>{trace.steps.map((s) => <li key={s.nodeId}><strong>[{s.outcome}]</strong> {s.label} — of {s.of.length} object(s)</li>)}</ul>

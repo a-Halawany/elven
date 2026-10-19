@@ -294,10 +294,12 @@ describe('TL4 · the trace — lineage closure, citation and digest resolution, 
     OK = await plant({ title: 'Throughput at Port Said steady (SYNTHETIC)', recordedAt: ago(3), observationTime: ago(3), truth: 'extracted', sourceIds: [E2.id], evidenceRefs: [`EVD:${E2.id}@${E2.version}`] });
     await lineage(OK, E2);
     const x = await trace(ivanova, 'CLM', OK.id, 1);
-    // the upload path states its evidence's and observation's source clock UNKNOWN (a document's clock is not the platform's): said, its own reason
-    expect(x.reasons, JSON.stringify(x.reasons)).toEqual([{ reason: 'clock_unknown', count: 2 }]);
+    // the upload path states its evidence's and observation's source clock UNKNOWN (a document's clock is not the platform's): STATED as the
+    // trace's limitation (B50 integration, DESIGN D20) — not a reason it is incomplete; the lineage itself is closed
+    expect(x.reasons, JSON.stringify(x.reasons)).toEqual([]);
+    expect((x as unknown as { limitations: unknown }).limitations).toEqual([{ limitation: 'clock_unknown', count: 2 }]);
     expect(x.nodes.filter((n) => n.clockFlags.includes('unknown')).map((n) => n.ref.slice(0, 3)).sort()).toEqual(['EVD', 'OBS']);
-    expect(x.incomplete).toBe(true);
+    expect(x.incomplete).toBe(false);
     expect(x.gaps).toEqual([]);
     expect(x.subject).toMatchObject({ type: 'CLM', id: OK.id, version: 1, versions: 1, latest: 1, owner: `principal:${mueller.principalId}`, classification: 'internal', header_only: false });
     const stages = x.nodes.map((n) => n.stage);

@@ -444,7 +444,7 @@ LANGUAGE plpgsql STABLE SET search_path = graph, objects, observation, decision,
 DECLARE
   x jsonb; v_nd jsonb; o objects.canonical_objects; v_rank int; v_nodes jsonb := '[]'::jsonb; v_steps jsonb := '[]'::jsonb; v_ref jsonb; v_stage text; v_q jsonb;
   v_clk jsonb; v_later jsonb; v_withheld jsonb := jsonb_build_object('classification', 0, 'audience', 0, 'not_visible', 0); v_label text; v_versions jsonb := '[]'::jsonb;
-  v_sources uuid[]; v_missing jsonb; v_cont jsonb := '[]'::jsonb; s record; v_dg jsonb; v_snap jsonb := '[]'::jsonb; v_reasons jsonb := '[]'::jsonb;
+  v_sources uuid[]; v_missing jsonb; v_cont jsonb := '[]'::jsonb; s record; v_dg jsonb; v_snap jsonb := '[]'::jsonb; v_reasons jsonb := '[]'::jsonb; v_limits jsonb := '[]'::jsonb;
   v_unresolved jsonb; v_routed jsonb; v_clock_n int := 0; v_corr int := 0; v_now timestamptz := clock_timestamp(); v_obj_ids text[]; v_subject jsonb;
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'the trace of a product');
@@ -561,10 +561,11 @@ BEGIN
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_nodes) n WHERE n -> 'clock_flags' ?| ARRAY['observation_after_record', 'degraded']) THEN
     v_reasons := v_reasons || jsonb_build_object('reason', 'clock_divergence', 'count', (SELECT count(*) FROM jsonb_array_elements(v_nodes) n WHERE n -> 'clock_flags' ?| ARRAY['observation_after_record', 'degraded']));
   END IF;
-  -- an UNKNOWN source clock is the source's own stated limitation (an uploaded document's clock is unknown): its own reason, so a reader
-  -- tells it from a divergence an owner can reconcile — and still incomplete (the map: source_clock_quality degraded / unknown)
+  -- an UNKNOWN source clock is the source's own stated limitation (an uploaded document's clock is unknown). B50 integration (DESIGN D20):
+  -- it is STATED as a limitation of the trace, never a reason it is incomplete — nothing is missing that an owner could reconcile (a
+  -- degraded clock or an observation after its record time stays clock_divergence, which is).
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_nodes) n WHERE n -> 'clock_flags' ? 'unknown') THEN
-    v_reasons := v_reasons || jsonb_build_object('reason', 'clock_unknown', 'count', (SELECT count(*) FROM jsonb_array_elements(v_nodes) n WHERE n -> 'clock_flags' ? 'unknown'));
+    v_limits := v_limits || jsonb_build_object('limitation', 'clock_unknown', 'count', (SELECT count(*) FROM jsonb_array_elements(v_nodes) n WHERE n -> 'clock_flags' ? 'unknown'));
   END IF;
   IF jsonb_array_length(v_missing) > 0 THEN v_reasons := v_reasons || jsonb_build_object('reason', 'missing_interval', 'count', jsonb_array_length(v_missing)); END IF;
   IF jsonb_array_length(v_cont) > 0 THEN v_reasons := v_reasons || jsonb_build_object('reason', 'continuity_degraded', 'count', jsonb_array_length(v_cont)); END IF;
@@ -582,7 +583,7 @@ BEGIN
     'disclosure', jsonb_build_object('withheld', jsonb_build_object('count', (v_withheld ->> 'classification')::int + (v_withheld ->> 'audience')::int + (v_withheld ->> 'not_visible')::int,
                                        'reason', CASE WHEN (v_withheld ->> 'classification')::int > 0 THEN 'classification' WHEN (v_withheld ->> 'audience')::int > 0 THEN 'audience' ELSE 'policy' END),
                                      'withheld_by_reason', v_withheld, 'clock_flags', v_clock_n, 'corrections_later', v_corr, 'truncated', (x ->> 'truncated')::boolean, 'examined', x -> 'examined'),
-    'reasons', v_reasons, 'incomplete', jsonb_array_length(v_reasons) > 0, 'reconciliation', v_routed, 'carried', x -> 'carried',
+    'reasons', v_reasons, 'limitations', v_limits, 'incomplete', jsonb_array_length(v_reasons) > 0, 'reconciliation', v_routed, 'carried', x -> 'carried',
     'claim', 'the explanation projected source → evidence → claims → product: every unresolved edge kept, every filter counted, every clock divergence flagged; reading it records and changes nothing');
 END $$;
 

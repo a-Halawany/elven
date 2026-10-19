@@ -148,7 +148,7 @@ describe('the trace', () => {
     expect(reasonText({ reason: 'continuity_degraded', count: 1 })).toBe('a source the trace rests on is degraded — 1');
     // every reason the SQL raises has its words (the port's reasons read from the migration)
     const sqlText = readFileSync(join(ROOT, 'apps/api/migrations/0120_b50_x_tl.sql'), 'utf8');
-    const raised = [...new Set([...sqlText.matchAll(/jsonb_build_object\('reason', '([a-z_]+)'/g)].map((m) => m[1]!))].sort();
+    const raised = [...new Set([...sqlText.matchAll(/jsonb_build_object\('(?:reason|limitation)', '([a-z_]+)'/g)  /* B50 integration (D20): a stated limitation is worded too */].map((m) => m[1]!))].sort();
     expect(raised).toEqual(Object.keys(REASON_WORDS).sort());
   });
   it('the continuity onto B81\'s DegradedState: the contracts in force and the undeclared, flattened; normal → nothing to show', () => {

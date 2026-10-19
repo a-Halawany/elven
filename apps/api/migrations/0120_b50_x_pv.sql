@@ -1638,3 +1638,70 @@ LANGUAGE sql STABLE SET search_path = graph, pg_catalog, pg_temp AS $$
       OR EXISTS (SELECT 1 FROM graph.knowledge_challenges k WHERE k.subject_id = p_id AND (p_version IS NULL OR k.subject_version = p_version) AND k.tenant_id = p_tenant AND k.domain_id = p_domain AND k.state IN ('open', 'under_review'));
 $$;
 REVOKE ALL ON FUNCTION graph._open_challenge(uuid, uuid, text, uuid, int) FROM PUBLIC;
+
+-- ═══ B50 integration (§PV × §CL) ═══
+-- graph._pv_raise_overdue: an ESCALATED (overdue) knowledge challenge routed to the subject's owner as an attention item of §CL's class
+-- `knowledge_challenge_overdue` (the 0107 idiom §CL's _cl_raise follows: evaluated under the domain's ACTIVE policy, routed, its event
+-- recorded); one item per escalation — a repeated call answers the item it made.
+CREATE OR REPLACE FUNCTION graph._pv_raise_overdue(k graph.knowledge_challenges, p_actor uuid, p_correlation uuid) RETURNS jsonb
+LANGUAGE plpgsql SET search_path = graph, executive, identity, pg_catalog, pg_temp AS $$
+DECLARE pol executive.attention_policies%ROWTYPE; v_eval jsonb; v_route jsonb; v_state text; v_owner uuid; v_item uuid := gen_random_uuid();
+        v_cause uuid := md5('b50pv:' || k.challenge_id::text || ':' || k.escalations::text)::uuid; x executive.attention_items%ROWTYPE;
+BEGIN
+  SELECT * INTO x FROM executive.attention_items i WHERE i.tenant_id = k.tenant_id AND i.domain_id = k.domain_id AND i.signal_class = 'knowledge_challenge_overdue' AND i.subject_id = k.challenge_id AND i.cause_event_id = v_cause;
+  IF FOUND THEN RETURN jsonb_build_object('item_id', x.item_id, 'repeated', true, 'state', x.state, 'owner', x.owner_principal_id); END IF;
+  v_owner := CASE WHEN decision.is_active_human(k.subject_owner, k.tenant_id) THEN k.subject_owner END;
+  SELECT * INTO pol FROM executive.attention_policies a WHERE a.tenant_id = k.tenant_id AND a.domain_id = k.domain_id AND a.state = 'active';
+  v_eval := executive.evaluate_attention(CASE WHEN pol.policy_id IS NULL THEN NULL ELSE pol.rules END, 'knowledge_challenge_overdue',
+                                         jsonb_build_object('consequence', 'C2', 'confidence', 1, 'hours_to_window', 0)) || jsonb_build_object('policy_version', pol.version);
+  v_route := executive.attention_route(pol.rules, 'knowledge_challenge_overdue', v_eval ->> 'outcome', v_owner, k.tenant_id, k.domain_id);
+  v_state := v_route ->> 'state';
+  INSERT INTO executive.attention_items (item_id, scope, tenant_id, domain_id, signal_class, subject_kind, subject_id, cause_event_id, cause_event_type, title, outcome, state,
+                                         owner_principal_id, route_roles, policy_id, policy_version, evaluation, details, due_at, escalations, correlation_id)
+  VALUES (v_item, 'DOMAIN', k.tenant_id, k.domain_id, 'knowledge_challenge_overdue', 'knowledge_challenge', k.challenge_id, v_cause, 'KnowledgeChallengeOverdue',
+          left(format('Challenge of %s %s is overdue (escalation %s; next review by %s)', k.subject_type, left(k.subject_id::text, 8), k.escalations, graph.pv_iso(k.review_by)), 512),
+          v_eval ->> 'outcome', v_state, v_owner, ARRAY(SELECT jsonb_array_elements_text(v_route -> 'route_roles')), pol.policy_id, pol.version, v_eval,
+          jsonb_build_object('challenge_id', k.challenge_id, 'subject', k.subject_type || ':' || k.subject_id || '@' || k.subject_version, 'escalations', k.escalations,
+                             'review_by', graph.pv_iso(k.review_by), 'link', '/graph/challenges'),
+          (v_route ->> 'due_at')::timestamptz, coalesce((v_route ->> 'escalations')::int, 0), coalesce(p_correlation, gen_random_uuid()));
+  PERFORM executive.attention_event(v_item, k.tenant_id, k.domain_id,
+            CASE v_state WHEN 'open' THEN 'item.routed' WHEN 'escalated' THEN 'item.escalated' WHEN 'unrouted' THEN 'item.unrouted' ELSE 'item.deprioritized' END, p_actor,
+            jsonb_build_object('outcome', v_eval ->> 'outcome', 'reasons', v_eval -> 'reasons', 'policy_version', pol.version, 'owner', v_owner, 'route_roles', v_route -> 'route_roles',
+                               'due_at', v_route -> 'due_at', 'cause_event_id', v_cause, 'cause_event_type', 'KnowledgeChallengeOverdue', 'unrouted', coalesce((v_route ->> 'unrouted')::boolean, false)),
+            coalesce(p_correlation, gen_random_uuid()));
+  RETURN jsonb_build_object('item_id', v_item, 'repeated', false, 'state', v_state, 'owner', v_owner, 'outcome', v_eval ->> 'outcome');
+END $$;
+REVOKE ALL ON FUNCTION graph._pv_raise_overdue(graph.knowledge_challenges, uuid, uuid) FROM PUBLIC;
+
+-- graph.escalate_knowledge_challenge re-declared WHOLE: the same port, the overdue challenge now routed (above).
+CREATE OR REPLACE FUNCTION graph.escalate_knowledge_challenge(p_challenge_id uuid, p_tenant uuid, p_domain uuid, p_actor uuid, p_correlation uuid) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = graph, observation, governance, pg_catalog, pg_temp AS $$
+DECLARE v_actor uuid; k graph.knowledge_challenges; v_now timestamptz := clock_timestamp(); v_was timestamptz;
+BEGIN
+  PERFORM observation.assert_authority(ARRAY['graph.provenance.challenge.escalate']);
+  PERFORM observation.assert_scope(p_tenant, p_domain);
+  v_actor := graph.pv_challenge_actor(p_actor);
+  k := graph.pv_challenge_lock(p_challenge_id, p_tenant, p_domain);
+  IF NOT (v_actor = k.opened_by OR v_actor IS NOT DISTINCT FROM k.subject_owner OR v_actor IS NOT DISTINCT FROM k.reviewer
+          OR governance.holds_role(v_actor, p_tenant, p_domain, ARRAY['domain_admin', 'knowledge_owner'])) THEN
+    RAISE EXCEPTION 'knowledge challenge rejected (actor): an overdue challenge is escalated by a party to it or a domain administrator' USING ERRCODE = '42501';
+  END IF;
+  IF k.state NOT IN ('open', 'under_review') THEN
+    RAISE EXCEPTION 'knowledge challenge rejected (state): challenge % is %; only a live challenge is escalated', p_challenge_id, k.state USING ERRCODE = '22023';
+  END IF;
+  IF v_now <= k.review_by THEN
+    RAISE EXCEPTION 'knowledge challenge rejected (state): challenge % is not overdue; its review is due by % (the database clock reads %)', p_challenge_id, graph.pv_iso(k.review_by), graph.pv_iso(v_now) USING ERRCODE = '22023';
+  END IF;
+  IF k.escalations >= 5 THEN
+    RAISE EXCEPTION 'knowledge challenge rejected (state): challenge % was escalated five times; the domain administrator decides it', p_challenge_id USING ERRCODE = '22023';
+  END IF;
+  v_was := k.review_by;
+  UPDATE graph.knowledge_challenges SET escalations = escalations + 1, escalated_at = v_now, review_by = v_now + interval '2 days' WHERE challenge_id = p_challenge_id RETURNING * INTO k;
+  PERFORM graph.pv_challenge_event(k, 'challenge.escalated', v_actor, jsonb_build_object('was_due', graph.pv_iso(v_was), 'escalations', k.escalations, 'escalate_to_roles', jsonb_build_array('domain_admin'),
+    'next_due', graph.pv_iso(k.review_by)), p_correlation);
+  -- B50 integration (§PV × §CL): the overdue challenge is ROUTED into the attention queue under §CL's class knowledge_challenge_overdue
+  RETURN graph.pv_challenge_answer(k, false) || jsonb_build_object('escalated_to_roles', jsonb_build_array('domain_admin'), 'was_due', graph.pv_iso(v_was),
+    'attention', graph._pv_raise_overdue(k, v_actor, p_correlation));
+END $$;
+REVOKE ALL ON FUNCTION graph.escalate_knowledge_challenge(uuid, uuid, uuid, uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION graph.escalate_knowledge_challenge(uuid, uuid, uuid, uuid, uuid) TO eye_commit;

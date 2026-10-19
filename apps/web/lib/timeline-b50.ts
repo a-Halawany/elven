@@ -48,6 +48,8 @@ export interface TraceView {
   nodes: TraceNodeView[]; steps: Array<ExplainNode & { of: string[] }>; edges: Row[]; unresolvedEdges: Row[]; gaps: Row[];
   decisionSnapshots: Row[]; sources: string[]; missingIntervals: Row[]; continuity: Row & { state: string; dependencies: Row[] };
   disclosure: Row; reasons: Array<{ reason: string; count: number; detail?: unknown }>; incomplete: boolean; reconciliation: Row[]; claim: string;
+  /** B50 integration (D20): limitations the sources state of themselves (an unknown source clock) — said, never a reason the trace is incomplete */
+  limitations?: Array<{ limitation: string; count: number }>;
 }
 
 /* ── THE ASK AND THE DEEP LINK ── */
