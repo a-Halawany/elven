@@ -41,6 +41,7 @@ import { ObservationExceptionFilter } from '../observation/observation.filter.js
 /* B50 pv */ import { ProvenanceController } from './provenance/provenance.controller.js'; import { ProvenanceService } from './provenance/provenance.service.js'; /* end B50 pv */
 /* B50 ci */ import { ImpactTriggersService } from './impact/impact-triggers.service.js'; import { ImpactB50Controller } from './impact/impact-b50.controller.js'; /* end B50 ci */
 /* B50 cl */ import { ClosureB50Controller } from './closure/closure.controller.js'; import { ClosureService } from './closure/closure.service.js'; /* end B50 cl */
+/* B50 tl */ import { TimelineController } from './timeline/timeline.controller.js'; /* end B50 tl */
 
 /*
  * CP-6 B1 (0060): the propagation consumer lives here — it is the graph's walk, run by the
@@ -51,7 +52,7 @@ import { ObservationExceptionFilter } from '../observation/observation.filter.js
 @Module({
   imports: [PipelineModule, IdentityModule, ObservationModule, IntelligenceModule],
   // CP-6 B20 (0080): the projection partitions' two governed acts (withdraw, rebuild) on the same base path as the graph routes.
-  controllers: [GraphController, ProjectionsController, /* B50 pv: provenance, explain, unfit, contest (0120_b50_x_pv) */ ProvenanceController /* end B50 pv */, /* B50 ci: the impact triggers and the classed products (0120 §CI) */ ImpactB50Controller /* end B50 ci */, /* B50 cl: correction-propagation closure (0120 §CL) */ ClosureB50Controller /* end B50 cl */],
+  controllers: [GraphController, ProjectionsController, /* B50 pv: provenance, explain, unfit, contest (0120_b50_x_pv) */ ProvenanceController /* end B50 pv */, /* B50 ci: the impact triggers and the classed products (0120 §CI) */ ImpactB50Controller /* end B50 ci */, /* B50 cl: correction-propagation closure (0120 §CL) */ ClosureB50Controller /* end B50 cl */, /* B50 tl: the timeline, the as-of explorer, the trace (0120 §TL) */ TimelineController /* end B50 tl */],
   providers: [
     GraphOrchestrator,
     ResolverService,
