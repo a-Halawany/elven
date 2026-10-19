@@ -111,7 +111,7 @@ export const HEADER_PROFILES: Readonly<Record<string, HeaderProfileDef>> = Objec
   ASU: P('CP-GRA-01', 'graph.strategy', ALL_USES(['provenance_ref', 'method_ref'])),
   BRF: P('CP-EXE-01', 'executive.briefing.compose', { publication: ['provenance_ref', 'method_ref'] }),
   CAP: P('CP-GRA-01', 'graph.strategy'),
-  CLM: P('CP-INT-01', 'intelligence.extraction / intelligence.review', ALL_USES(['confidence', 'provenance_ref', 'method_ref']), ['confidence']),
+  CLM: P('CP-INT-01', 'intelligence.extraction / intelligence.review', ALL_USES(['confidence', 'method_ref']), ['confidence']),
   CMT: P('CP-DEC-01', 'decision.commitment'),
   CPF: P('CP-DOM-CI', 'domain.competitor'),
   DAS: P('CP-DOM-PKG', 'domain.assessment'),
@@ -120,7 +120,8 @@ export const HEADER_PROFILES: Readonly<Record<string, HeaderProfileDef>> = Objec
   DPK: P('CP-DEC-01', 'decision.package', { publication: ['provenance_ref', 'method_ref'] }),
   DPR: P('CP-DAT-01', 'products.release'),
   ENT: P('CP-INT-01', 'intelligence.extraction'),
-  EVD: P('CP-OBS-01', 'observation.acquisition / observation.quarantine.release', ALL_USES(['provenance_ref', 'content_ref'])),
+  // EVD: the evidence pair (manifest, bytes, digest) is each use's own check (derive_option, the export closure); its header adds no field
+  EVD: P('CP-OBS-01', 'observation.acquisition / observation.quarantine.release'),
   EVT: P('CP-INT-01', 'intelligence.extraction'),
   FCT: P('CP-PRD-01', 'prediction.forecast', ALL_USES(['uncertainty', 'method_ref', 'valid_from', 'valid_to']), ['uncertainty'],
          { confidence: { state: 'not_applicable', reason: 'a quantile forecast states its uncertainty (q10 / q50 / q90), not a confidence' } }),
@@ -138,7 +139,7 @@ export const HEADER_PROFILES: Readonly<Record<string, HeaderProfileDef>> = Objec
   RSC: P('CP-GRA-01', 'graph.strategy'),
   RSK: P('CP-GRA-01', 'graph.strategy'),
   SCN: P('CP-PRD-01', 'prediction.scenario'),
-  SIM: P('CP-SIM-01', 'simulation.run', ALL_USES(['method_ref', 'provenance_ref'])),
+  SIM: P('CP-SIM-01', 'simulation.run', ALL_USES(['method_ref'])),
   SRC: P('CP-OBS-01', 'observation.source.register'),
   STK: P('CP-GRA-01', 'graph.strategy'),
   TWN: P('CP-TWN-01', 'twin.version'),
@@ -179,6 +180,21 @@ export function defaultAbsence(field: 'confidence' | 'uncertainty' | 'quality_st
     return { state: 'not_applicable', reason: `a recorded ${truth === 'decided' ? 'decision' : 'declaration'} (${t}) carries no epistemic ${field}` };
   }
   return { state: 'not_assessed', reason: `${by} does not assess ${field} for ${t}` };
+}
+
+/**
+ * The KNOWN LIMITATIONS of a version (V00-T-076's trust envelope), read from its own header: synthetic content, a clock that is not
+ * trusted, a time coarser than exact or none, a truth state no person stands behind. Carried on a stated quality absence (and recorded
+ * for every version in the side ledger's basis by the admission).
+ */
+export function knownLimitations(h: Pick<CanonicalHeader, 'synthetic_state' | 'source_clock_quality' | 'time_precision' | 'event_time' | 'truth_state'>): string[] {
+  const l: string[] = [];
+  if (h.synthetic_state) l.push('synthetic content — not a real-world record');
+  if (h.source_clock_quality !== 'trusted') l.push(`the source clock is ${h.source_clock_quality}`);
+  if (h.time_precision !== 'exact') l.push(`its time is stated ${h.time_precision === 'unknown' ? 'as unknown' : `to ${h.time_precision.replace(/_/g, ' ')} precision`}`);
+  if (h.event_time === null) l.push('no event time is stated');
+  if (h.truth_state === 'inferred' || h.truth_state === 'extracted') l.push(`${h.truth_state}, not reviewed by a person`);
+  return l;
 }
 
 /** Freshness at write: the age of the version's own event (or observation) time at its record time — or why there is none. */
@@ -273,7 +289,7 @@ export function buildHeader(spec: HeaderSpec, opts: BuildOptions = {}): Canonica
     const given = opts.absent?.[f];
     const a = given !== undefined ? checkAbsence(f, given)
       : (f !== 'quality_state' ? profile?.absence?.[f] : undefined) ?? defaultAbsence(f, h);
-    h[f] = { state: a.state, reason: a.reason };
+    h[f] = f === 'quality_state' ? { state: a.state, reason: a.reason, limitations: knownLimitations(h) } : { state: a.state, reason: a.reason };
   }
   if (h.freshness_state === null) {
     const given = opts.absent?.freshness_state;

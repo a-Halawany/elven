@@ -304,6 +304,9 @@ fi
 # ------------------------------------------------- per-database facts (JSON)
 # The audit head per partition is the ledger's own claim of what the chain ends
 # in; restore verifies the restored ledger reaches exactly these heads.
+# B50 §HD (ES-25-003): the per-tenant / per-domain facts (scripts/ops/lib/scope-facts.sql) — every scope's canonical objects, audit
+# events, blob manifests and audit heads, so a restore is verified scope by scope, not only per database.
+SCOPE_FACTS_SQL="$(cat "$REPO/scripts/ops/lib/scope-facts.sql")"
 db_facts() { # db_facts <db>  -> one JSON object
   local db="$1"
   psq "$db" "select json_build_object(
@@ -323,6 +326,7 @@ db_facts() { # db_facts <db>  -> one JSON object
     'blob_manifests_live',     (select count(*) from observation.blob_manifests m
                                 where not exists (select 1 from observation.blob_tombstones t where t.manifest_id = m.manifest_id)),
     'blob_tombstones',         (select count(*) from observation.blob_tombstones),
+    'scopes',                  $SCOPE_FACTS_SQL,
     'size_bytes',              pg_database_size('$db'),
     'server_version',          current_setting('server_version')
   )::text"
@@ -383,7 +387,7 @@ FACTS_BEFORE="{}"
 for db in $DATABASES; do
   f="$(db_facts "$db")"
   FACTS_BEFORE="$(jq -c --arg db "$db" --argjson f "$f" '. + {($db): $f}' <<<"$FACTS_BEFORE")"
-  say "  $db: migrations=$(jq -r '.schema_migrations_count' <<<"$f") last=$(jq -r '.last_migration' <<<"$f") canonical_objects=$(jq -r '.canonical_objects' <<<"$f") audit_events=$(jq -r '.audit_events' <<<"$f") partitions=$(jq -r '.audit_partitions' <<<"$f") manifests=$(jq -c '.blob_manifests' <<<"$f") tombstones=$(jq -r '.blob_tombstones' <<<"$f")"
+  say "  $db: migrations=$(jq -r '.schema_migrations_count' <<<"$f") last=$(jq -r '.last_migration' <<<"$f") canonical_objects=$(jq -r '.canonical_objects' <<<"$f") audit_events=$(jq -r '.audit_events' <<<"$f") partitions=$(jq -r '.audit_partitions' <<<"$f") manifests=$(jq -c '.blob_manifests' <<<"$f") tombstones=$(jq -r '.blob_tombstones' <<<"$f") scopes=$(jq -r '.scopes | length' <<<"$f")"
 done
 
 # ------------------------------------------------------------------- dumps
