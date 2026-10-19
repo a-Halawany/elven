@@ -23,6 +23,7 @@ import {
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, GovernedButton, fmtInstant, textareaStyle } from '../../../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../../../components/ui';
 import { ResultDrilldown } from '../_catalog/result-drilldown';
+import { computationNowLine, recordedComputationLine, registeredAfterDecision, versionsPair } from '../../../../../lib/analytics-md-b92';
 import { OPERATING_REVIEW, useJourney } from '../../../../../lib/telemetry-b92';   // B92 integration: §UX's journey (durations and outcomes only, under consent)   // B92 integration: the one drill-down (§MD's), shared with the catalog
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
@@ -242,6 +243,12 @@ function OperatingReview() {
   );
 }
 
+/** B82-F mt: the computation the definition's key names NOW beside the definition version (and said when it was registered after the decision). */
+function ComputedBy({ m }: { m: MetricBlock }) {
+  const after = registeredAfterDecision(m.computation_now, m.definition?.decided_at);
+  return <>{computationNowLine(m.computation_now, m.definition?.computation_key ?? m.result?.computation_key ?? null)}{after !== null ? <> — <strong>{after}</strong></> : null}</>;
+}
+
 function MetricCard({ m, drill, setDrill, scope }: { m: MetricBlock; drill: string | null; setDrill: (v: string | null) => void; scope: { tenantId: string; domainId: string } }) {
   const d = m.definition; const r = m.result;
   const mark = stateMark(r === null ? null : r.state, r === null ? 'not_computed' : undefined);
@@ -256,6 +263,7 @@ function MetricCard({ m, drill, setDrill, scope }: { m: MetricBlock; drill: stri
           {d.numerator !== null ? <DefinitionRow term="Numerator / denominator">{d.numerator} ÷ {d.denominator}</DefinitionRow> : null}
           <DefinitionRow term="Window and clock">{d.window_spec.kind.replace(/_/g, ' ')} · clock {d.window_spec.clock ?? 'record'}</DefinitionRow>
           <DefinitionRow term="Floor and k">floor {d.floor_n} · k ≥ {d.k_min} · {thresholdLine(d.threshold, kind, unit, d.direction)}</DefinitionRow>
+          <DefinitionRow term="Computed by"><ComputedBy m={m} /></DefinitionRow>
           <DefinitionRow term="Owner">{d.owner_name ?? d.owner_principal_id} · definition v{d.version} ({d.state}){m.definition_current_version !== null && m.definition_current_version !== d.version ? ` — the current approved version is v${m.definition_current_version}` : ''} · <Link href={`/graph/data/analytics?metric=${encodeURIComponent(m.metric_key)}`}>in the catalog</Link></DefinitionRow>
         </>
       ) : <Empty>No definition is readable.</Empty>}
@@ -265,6 +273,7 @@ function MetricCard({ m, drill, setDrill, scope }: { m: MetricBlock; drill: stri
         <>
           <DefinitionRow term="Sample and interval">{sampleLine(r.n, d?.floor_n, d?.k_min)} · {intervalLine(r.kind, r.unit, r.uncertainty)}</DefinitionRow>
           {r.kind === 'rate' && r.numerator !== null ? <DefinitionRow term="Counts">{String(r.numerator)} of {String(r.denominator)}</DefinitionRow> : null}
+          <DefinitionRow term="Versions">{versionsPair(r.definition_version, r)} — {recordedComputationLine(r, m.computation_now)}</DefinitionRow>
           <DefinitionRow term="Window">{r.period_key} {windowLine(r.window_from, r.window_to)} · clock {r.clock} · scope {r.scope_key ?? 'the whole domain'} · as of {fmtInstant(r.as_of)}{m.citation?.pinned ? ' · PINNED' : ''}</DefinitionRow>
           {r.threshold_eval !== null ? <DefinitionRow term="Threshold">{r.threshold_eval.breach === true ? `BREACHED — opens a review: ${r.threshold_eval.action}` : r.threshold_eval.breach === false ? 'within' : 'not evaluated'}</DefinitionRow> : null}
           <GovernedButton label={drill === r.result_id ? 'Hide the records' : 'Drill down: definition → result → records'} pendingLabel="Reading" variant="quiet"
@@ -278,13 +287,14 @@ function MetricCard({ m, drill, setDrill, scope }: { m: MetricBlock; drill: stri
           <thead><tr>{m.series.periods.map((p) => <Th key={p.period}>{p.period}</Th>)}</tr></thead>
           <tbody><tr>{m.series.periods.map((p) => {
             const pm = stateMark(p.state, p.status);
-            return <Td key={p.period}><MarkText m={pm} /><div>{periodCell(p)}</div>{p.status === 'computed' && p.state !== 'determinate' && p.reasons[0] ? <div style={muted}>{p.reasons[0]}</div> : null}</Td>;
+            return <Td key={p.period}><MarkText m={pm} /><div>{periodCell(p)}</div>{p.status === 'computed' ? <div style={muted}>{versionsPair(p.definition_version, p)}</div> : null}{p.status === 'computed' && p.state !== 'determinate' && p.reasons[0] ? <div style={muted}>{p.reasons[0]}</div> : null}</Td>;
           })}</tr></tbody>
         </table>
       </ScrollBox>
       {m.series.history.origin !== null ? <p style={muted}>The deployment&apos;s first record of this population: {dayOf(m.series.history.origin)} ({m.series.history.source}).</p>
         : <p style={muted}>The history origin is not established{m.series.history.why ? `: ${m.series.history.why}` : ''}.</p>}
       {!m.series.comparable ? <p><strong>Not comparable:</strong> {m.series.comparability_note}</p> : null}
+      {m.series.computation_note ? <p><strong>Computation versions:</strong> {m.series.computation_note}.</p> : null}
     </section>
   );
 }

@@ -11,7 +11,9 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import type { Scope } from '../../../../../lib/observation';
-import { catalogApi, dayOf, intervalLine, resultMark, roleCounts, thresholdLine, valueLine, windowLine, type ResultRead } from '../../../../../lib/analytics-md-b92';
+import {
+  catalogApi, dayOf, intervalLine, recordedComputationLine, resultMark, roleCounts, thresholdLine, valueLine, versionsPair, windowLine, type ResultRead,
+} from '../../../../../lib/analytics-md-b92';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, GovernedButton, fmtInstant } from '../../../../../components/observation';
 import { tableStyle, Th, Td } from '../../../../../components/ui';
 
@@ -54,7 +56,7 @@ export function ResultDrilldown({ scope, resultId, canReplay = false, onReplayed
 
       <h4>The definition</h4>
       <dl>
-        <DefinitionRow term="Metric">{r.metric_key} v{r.definition_version} <Mono title={r.definition_digest}>{r.definition_digest.slice(0, 12)}…</Mono>{d['state'] !== 'approved' ? <> — the definition is now <strong>{String(d['state']).toUpperCase()}</strong></> : null}</DefinitionRow>
+        <DefinitionRow term="Metric">{r.metric_key} — {versionsPair(r.definition_version, r)} <Mono title={r.definition_digest}>{r.definition_digest.slice(0, 12)}…</Mono>{d['state'] !== 'approved' ? <> — the definition is now <strong>{String(d['state']).toUpperCase()}</strong></> : null}</DefinitionRow>
         <DefinitionRow term="Meaning">{String(d['meaning'] ?? '—')}</DefinitionRow>
         <DefinitionRow term="Population">{j(d['population'])}</DefinitionRow>
         {r.kind === 'rate' ? <DefinitionRow term="Numerator / denominator">{String(d['numerator'] ?? '—')} / {String(d['denominator'] ?? '—')}</DefinitionRow> : null}
@@ -75,7 +77,7 @@ export function ResultDrilldown({ scope, resultId, canReplay = false, onReplayed
         {dist !== null ? <DefinitionRow term="Distribution">p50 {String(dist['p50'])} · p90 {String(dist['p90'])} · min {String(dist['min'])} · max {String(dist['max'])} · n {String(dist['n'])}</DefinitionRow> : null}
         <DefinitionRow term="Cohort">{Object.keys(r.cohort ?? {}).length === 0 ? 'the whole population' : j(r.cohort)}</DefinitionRow>
         <DefinitionRow term="As of">{fmtInstant(r.as_of)} (computed {fmtInstant(r.computed_at)} by a {r.computed_by_kind})</DefinitionRow>
-        <DefinitionRow term="Computation">{r.computation_key === null ? 'none (unsupported)' : <>{r.computation_key} v{r.computation_version} <Mono title={String(r.computation_digest)}>{String(r.computation_digest).slice(0, 12)}…</Mono></>}</DefinitionRow>
+        <DefinitionRow term="Computation">{recordedComputationLine(r, r.computation_now)}</DefinitionRow>
         <DefinitionRow term="Source revision"><Mono title={r.source_revision}>{r.source_revision}</Mono> over {r.records_count} record(s)</DefinitionRow>
         {Object.keys(r.quality ?? {}).length > 0 ? <DefinitionRow term="Quality">{j(r.quality)}</DefinitionRow> : null}
         {Array.isArray((r.evaluation ?? {})['checks']) && ((r.evaluation as Row)['checks'] as unknown[]).length > 0 ? <DefinitionRow term="Standing evaluation">{j((r.evaluation as Row)['checks'])}</DefinitionRow> : null}
