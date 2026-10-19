@@ -1763,6 +1763,7 @@
       },
       "public_contract": {
         "controllers": [
+          "ClosureB50Controller",
           "GraphController",
           "ImpactB50Controller",
           "ProjectionsController",
