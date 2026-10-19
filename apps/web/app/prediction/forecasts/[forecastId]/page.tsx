@@ -63,7 +63,7 @@ export default function ForecastObjectPage() {
       /* B82 cf */
       setReadAt(new Date().toISOString()); setSeries(null); setSeriesErr(null);
       const fc = r.data.forecast;
-      const sp = await prediction.seriesPoints(scope, fc.series_key, fc.known_at, String(fc.origin_at).slice(0, 10));
+      const sp = await prediction.seriesPoints(scope, fc.series_key, fc.known_at, String(fc.origin_at).slice(0, 10), 400, /* B82 (rehearsal P-2): only the tail's evidence */ true);
       if (!sp.ok || sp.data === undefined) { setSeriesErr(sp.error ?? { code: 'EYE-SER', message: 'the series points were not read; reload the page to read them again', correlationId: '—' }); return; }
       setSeries({ points: sp.data.points, unit: sp.data.unit, attribution: sp.data.attribution, note: sp.data.note, complete: sp.data.complete, total: sp.data.total });
       /* end B82 cf */
@@ -114,7 +114,7 @@ export default function ForecastObjectPage() {
         const pts = forecastBand(f);
         const obs = series === null ? [] : series.points.map((p) => ({ at: p.date, value: Number.isFinite(p.value) ? p.value : null }));
         const step = medianStepMs(obs.map((p) => p.at));
-        const cadence = step === null ? 'no cadence can be read from fewer than three points — only a missing value is drawn as a gap' : `the cadence is the median step between points (${Math.round(step / 86_400_000)} day(s)); a wider step is drawn as a gap${series !== null && !series.complete ? ` — the read is INCOMPLETE (${series.total} point(s) in all)` : ''}`;
+        const cadence = step === null ? 'no cadence can be read from fewer than three points — only a missing value is drawn as a gap' : `the cadence is the median step between points (${Math.round(step / 86_400_000)} day(s)); a wider step is drawn as a gap${series !== null && !series.complete ? ` — the read is INCOMPLETE (${series.total} point(s) read — the latest days only)` : ''}`;
         const unit = series?.unit ?? f.unit ?? 'as the series states';
         return (
           <>

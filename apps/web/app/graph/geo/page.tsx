@@ -77,7 +77,7 @@ export default function GeographyPage() {
       for (const c of cps) {
         const k = transitSeriesOf(c.chokepointKey!);
         if (!known.has(k)) { windows.push(transitWindow(c.chokepointKey!, [])); continue; }
-        const r = await prediction.seriesPoints(scope, k, undefined, undefined, 400);
+        const r = await prediction.seriesPoints(scope, k, undefined, undefined, 400, /* B82 (rehearsal P-2): only the tail's evidence */ true);
         if (r.ok && r.data !== undefined) unit = unit ?? r.data.unit;
         windows.push(transitWindow(c.chokepointKey!, r.ok && r.data !== undefined ? r.data.points : []));
       }

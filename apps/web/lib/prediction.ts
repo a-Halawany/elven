@@ -243,12 +243,12 @@ async function p<T>(
 export const prediction = {
   overview: (s: Scope) => p<{ overview: Overview; receipt: Receipt }>(s, '/overview', 'prediction.read', 'FCT'),
   listSeries: (s: Scope) => p<{ series: SeriesRow[]; parsers: string[]; receipt: Receipt }>(s, '/series/list', 'prediction.read', 'SER'),
-  seriesPoints: (s: Scope, seriesKey: string, knownAt?: string, observedThrough?: string, limit = 400) =>
+  seriesPoints: (s: Scope, seriesKey: string, knownAt?: string, observedThrough?: string, limit = 400, /* B82: read only the last `limit` days */ tail = false) =>
     p<{ seriesKey: string; knownAt: string; observedThrough: string | null; unit: string; attribution: string | null;
         total: number; points: SeriesPoint[]; evidence: number; freshestRecordedAt: string | null; note: string | null;
         complete: boolean; unreadable: Array<{ evidence_object_id: string; evidence_version: number; reason: string }>; controls: Controls }>(
       s, `/series/${encodeURIComponent(seriesKey)}/points`, 'prediction.read', 'SER',
-      { ...(knownAt ? { knownAt } : {}), ...(observedThrough ? { observedThrough } : {}), limit }),
+      { ...(knownAt ? { knownAt } : {}), ...(observedThrough ? { observedThrough } : {}), limit, ...(tail ? { tail: true } : {}) }),
   listForecasts: (s: Scope, knownAt?: string) =>
     p<{ forecasts: ForecastRow[]; knownAt: string | null; receipt: Receipt }>(
       s, '/forecasts/list', 'prediction.read', 'FCT', { limit: 200, ...(knownAt ? { knownAt } : {}) }),
