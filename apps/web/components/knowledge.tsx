@@ -12,6 +12,7 @@ import { type ReactNode } from 'react';
 import { boundaryCoverage, completenessNote, explainPath, fitnessNote, nodeLine, outcomeSummary, type ExplainView, type FitnessView } from '../lib/provenance-b50';
 import { classSummary, classWord, groupByBucket, pathText, summaryLine } from '../lib/impact-b50';
 import { Td, Th, tableStyle } from './ui';
+/* B50 cl */ import { closureSummary, consumerStateWord, deadlineWords, freezeMarker, type ClosureConsumer } from '../lib/closure-b50'; import type { ClosureRecord, FreezeState } from '../lib/b50-seams'; /* end B50 cl */
 
 /* B50 hd */
 /* §HD (F-P3-01; ES-05-001, ES-26-001/-004) — the TIME VALUE text role and the DECLARED ABSENCE text role: what a header carries, in the
@@ -249,3 +250,87 @@ export function AffectedProductList({ products, caption, ownerName }: {
   );
 }
 /* end B50 ci */
+
+/* B50 cl */
+/* §CL (F-P3-05's closure; V03-T-297, V03-T-301, DP-24-002, DP-24-005, HX-18) — the FREEZE MARKER, the per-consumer ACKNOWLEDGEMENT LIST and the
+   CLOSURE RECORD view (lib/closure-b50.ts decides every word). A frozen product stays visible: the marker names the case and links to it; a
+   state is a glyph AND a word (never colour alone, so forced-colors and 200% zoom keep it); logical properties only; the acts are the page's,
+   behind its Command Review — these components only render what the server recorded. */
+
+/** §CL FreezeMarker — "FROZEN by correction case …" with the case link, or nothing when not frozen (an unfrozen product carries no marker). */
+export function FreezeMarker({ state }: { state: FreezeState }) {
+  const m = freezeMarker(state);
+  if (!m.frozen) return null;
+  return (
+    <span className="eye-closure-freeze" data-frozen="true" role="note">
+      <span aria-hidden="true">❄</span> {m.href === null ? m.text : <Link href={m.href}>{m.text}</Link>}
+    </span>
+  );
+}
+
+/**
+ * §CL AcknowledgementList — every consumer of a correction case (affected products and subscription consumers): its class, owner, state,
+ * deadline, the latest act (who, when, the note, the re-run record, the exception's reason, expiry and owner) and its freeze. `acts`
+ * renders the page's own controls for a row (each behind its Command Review); nothing here is optimistic.
+ */
+export function AcknowledgementList({ caseId, consumers, contractVersion, caption, ownerName, acts }: {
+  caseId: string; consumers: readonly ClosureConsumer[]; contractVersion: number | null;
+  /** the table's caption (names the case) */ caption: string;
+  /** a principal id in words, when the page knows the person; otherwise the id is shown */ ownerName?: (id: string) => string;
+  acts?: (c: ClosureConsumer) => ReactNode;
+}) {
+  const who = (id: string | null) => (id === null ? 'no owner recorded' : (ownerName?.(id) ?? `${id.slice(0, 8)}…`));
+  const open = consumers.filter((c) => !c.closing).length;
+  return (
+    <section aria-label={caption} className="eye-closure-consumers">
+      <p role="status">{consumers.length} consumer(s); {open} still open{open === 0 ? '' : ' — each is acknowledged, recomputed or under a bounded exception before the case closes'}.</p>
+      <table className="eye-table" style={tableStyle}>
+        <caption>{caption}</caption>
+        <thead><tr><Th>Consumer</Th><Th>Class</Th><Th>Owner</Th><Th>State</Th><Th>Deadline</Th><Th>Latest act</Th>{acts === undefined ? null : <Th>Acts</Th>}</tr></thead>
+        <tbody>
+          {consumers.map((c) => {
+            const w = consumerStateWord(String(c.state));
+            const e = c.ack?.exception ?? null;
+            return (
+              <tr key={c.consumer_ref} data-state={String(c.state)}>
+                <Td><span title={c.consumer_ref}>{c.title ?? c.consumer_ref}</span>{c.frozen ? <> <FreezeMarker state={{ frozen: true, caseId }} /></> : null}</Td>
+                <Td>{c.consumer_kind === 'subscription' ? `subscription${c.failure_class === null ? '' : ` (${c.failure_class.replace(/_/g, ' ')})`}` : String(c.class ?? '—').replace(/_/g, ' ')}</Td>
+                <Td mono>{who(c.owner)}</Td>
+                <Td><span className="eye-closure-state" data-known={w.known ? 'true' : 'false'}><span aria-hidden="true">{w.glyph}</span> {w.label}</span><span className="eye-visually-hidden">: {w.next}</span></Td>
+                <Td>{deadlineWords(c, contractVersion)}</Td>
+                <Td>{c.ack === null ? 'none recorded' : (
+                  <>{c.ack.state.replace(/_/g, ' ')} by <span className="eye-mono-wrap">{who(c.ack.by)}</span> at <Timestamp value={c.ack.at} />
+                    {c.ack.note === null ? null : <> — {c.ack.note}</>}{c.ack.recompute_ref === null ? null : <> — re-run {c.ack.recompute_ref}</>}
+                    {e === null ? null : <> — exception: {e.reason}; expires <Timestamp value={e.expires_at} />; owned by <span className="eye-mono-wrap">{who(e.owner)}</span></>}</>
+                )}</Td>
+                {acts === undefined ? null : <Td>{acts(c)}</Td>}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+/** §CL ClosureRecordView — the propagation-closure record the server wrote: the summary, the failed deliveries, the residual exposure, every acknowledgement and the audit digest. */
+export function ClosureRecordView({ record }: { record: ClosureRecord }) {
+  return (
+    <section aria-label="The closure record" className="eye-closure-record">
+      <p role="status">Closed at <Timestamp value={record.closedAt} /> by <span className="eye-mono-wrap">{record.closedBy.slice(0, 8)}…</span>: {closureSummary(record)}</p>
+      <dl>
+        <dt>Failed deliveries</dt>
+        <dd>{record.failedDeliveries.length === 0 ? 'none' : <ul>{record.failedDeliveries.map((f, i) => <li key={`${f.ref}:${i}`}>{f.ref}: {f.failureClass}</li>)}</ul>}</dd>
+        <dt>Residual exposure</dt>
+        <dd>{record.residualExposure.length === 0 ? 'none — every material consumer was acknowledged or recomputed' : (
+          <ul>{record.residualExposure.map((x) => <li key={x.ref}>{x.ref} ({x.class.replace(/_/g, ' ')}){x.exception === null || x.exception === undefined ? null : <>: {x.exception.reason} — expires <Timestamp value={x.exception.expiresAt} /></>}</li>)}</ul>
+        )}</dd>
+        <dt>Acknowledgements</dt>
+        <dd><ol>{record.acknowledgements.map((a) => <li key={a.ackId ?? a.consumer.ref}>{a.consumer.ref}: {a.state.replace(/_/g, ' ')}{a.at === null ? null : <> at <Timestamp value={a.at} /></>}</li>)}</ol></dd>
+        <dt>Audit digest</dt>
+        <dd><code className="eye-mono-wrap">{record.auditDigest}</code> (sha256 over the record; the projections {record.projectionsReconciled ? 'reconciled' : 'did not reconcile'} at the close)</dd>
+      </dl>
+    </section>
+  );
+}
+/* end B50 cl */

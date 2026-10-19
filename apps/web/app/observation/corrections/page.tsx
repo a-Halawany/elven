@@ -12,6 +12,7 @@
  * the record rather than living only in the interface that displayed it.
  */
 import { useCallback, useEffect, useState } from 'react';
+/* B50 cl */ import Link from 'next/link'; /* end B50 cl */
 import { useShell } from '../layout';
 import { observation, type SourceSummary } from '../../../lib/observation';
 import {
@@ -197,6 +198,9 @@ function CorrectionCase({ c, canApply, onApplied, onError }: {
         <span style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>{state}</span>
       </h3>
       <p style={{ margin: 0 }}>{String(c['reason'])}</p>
+      {/* B50 cl: an applied case is not a closed one — its propagation closure is on the case page (graph.correction_closures) */}
+      {state === 'applied' ? <p style={{ margin: 0 }}><Link href={`/observation/corrections/${caseId}`}>open the propagation closure of case {caseId.slice(0, 8)}…</Link> (applied is not closed: the case closes when every material consumer is owned)</p> : null}
+      {/* end B50 cl */}
       <p style={{ color: 'var(--eye-color-ink-muted)', fontSize: 'var(--eye-type-body-sm)', marginBlock: 'var(--eye-space-4)' }}>
         received <Mono>{fmtInstant(c['received_at'])}</Mono> via {String(c['channel'])}
         {c['publisher_ref'] != null && <> · publisher ref <Mono>{String(c['publisher_ref'])}</Mono></>}

@@ -1196,6 +1196,10 @@ BEGIN
     'readiness', jsonb_build_object('ready', v_ready -> 'ready', 'reasons', v_ready -> 'reasons', 'projections_checked', coalesce(p_check, false), 'projections', v_ready -> 'projections'),
     'scope', v_ready -> 'scope',
     'notice', v_notice,
+    -- the state the page's Command Review binds: a changed consumer, freeze or closure is a new state (the review is void, never updated)
+    'state_digest', encode(sha256(convert_to(jsonb_build_object('consumers', (SELECT coalesce(jsonb_agg(jsonb_build_object('ref', y ->> 'consumer_ref', 'state', y ->> 'state', 'frozen', y -> 'frozen')
+                                                                      ORDER BY y ->> 'consumer_kind', y ->> 'consumer_ref'), '[]'::jsonb) FROM jsonb_array_elements(v_cons) y),
+                                                                'closure', c.state, 'contract', k.version)::text, 'UTF8')), 'hex'),
     'as_of', v_now);
 END $$;
 REVOKE ALL ON FUNCTION graph.correction_closure_read(uuid, uuid, uuid, boolean) FROM PUBLIC;
