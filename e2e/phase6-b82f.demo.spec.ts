@@ -100,7 +100,7 @@ test.describe('CP-6 B82-F — the act\'s walk: rights terms for their declarers,
       await page.waitForURL((u) => u.pathname === '/observation/corrections/obligations' && u.searchParams.get('case') === CASE);
       await oneH1(page);                                                                                                    // one h1 while it reads
       await expect(page.getByRole('heading', { name: 'Your correction obligations', level: 1 })).toBeVisible();
-      const mine = page.getByRole('region', { name: /B82-F — the decision room's briefing for the supervisory board \(SYNTHETIC\)|^PUB:/ }).first();
+      const mine = page.getByRole('region').filter({ hasText: required('EYE_B82F_OPERATOR_CONSUMER') }).first();
       await expect(mine).toBeVisible();
       await expect(mine).toContainText(required('EYE_B82F_OPERATOR_CONSUMER'));
       await expect(mine).toContainText('✓ acknowledged');

@@ -19,8 +19,12 @@
  *   F-3  RIGHTS TERMS FOR THEIR DECLARERS (§RT): F. Aydın reads the domain's rights-terms register — metadata only; she is refused the evidence
  *        bytes (segment, download) and the evidence detail; the other domain's register is refused; A. Hoffmann (outside the declare rule) is
  *        refused the new read and keeps the per-source read.
- *   F-4  CORRECTION CLOSURE FOR THE AFFECTED PRODUCT'S OWNER (§CC): ONE new small SYNTHETIC case — a SYNTHETIC booking uploaded by A. Hoffmann;
- *        C. Brenner composes the next briefing in her decision room (it rests on the upload); the chief of staff drafts its board publication;
+ *   F-4  CORRECTION CLOSURE FOR THE AFFECTED PRODUCT'S OWNER (§CC). ATTEMPT 1 (the first live run, SYN-BKG-7212) is recognised as history —
+ *        its briefing was composed over an interval longer than the compose port's 500 evidence/claim versions, so nothing of C. Brenner's
+ *        rested on the upload — and closed by M. Dvořák when READY. THE OWNER FLOW is a second small SYNTHETIC case (SYN-BKG-7213): when the
+ *        room's last edition is too far back, C. Brenner first composes a governed CATCH-UP edition (said); A. Hoffmann uploads the booking;
+ *        C. Brenner composes the edition that rests on it (the dependency and the preview are CHECKED before anything is applied); the chief
+ *        of staff drafts its board publication;
  *        the publisher's restatement received (A. Hoffmann) and applied (M. Dvořák); the walker walks it. graph.read is UNCHANGED: the chief
  *        of staff (no graph.read role) is REFUSED the case read; C. Brenner is ADMITTED to it by her strategy_owner binding (said — the
  *        brief's premise that she lacks graph.read does not hold on the demonstration). C. Brenner reads HER obligations, is refused another
@@ -328,57 +332,111 @@ const ADV_SRC = await q1(`select source_id::text id, contract_version::int v fro
 
 /* ── F-4 CORRECTION CLOSURE FOR THE AFFECTED PRODUCT'S OWNER ────────────────────────────────── */
 await renewAll();
-console.log('\nF-4 CORRECTION CLOSURE FOR THE AFFECTED PRODUCT\'S OWNER (§CC) — one small SYNTHETIC case: a booking uploaded, C. Brenner\'s briefing on it, its board publication drafted; the restatement applied and walked; graph.read unchanged (the chief of staff refused the case read); each owner reads THEIR obligations and acknowledges theirs; the case READY, closed after the walk');
+console.log('\nF-4 CORRECTION CLOSURE FOR THE AFFECTED PRODUCT\'S OWNER (§CC) — attempt 1 recognised and closed; the owner flow on a second small SYNTHETIC case: a catch-up edition if the room\'s last is too far back, a booking uploaded, C. Brenner\'s briefing on it (checked), its board publication drafted; the restatement applied and walked; graph.read unchanged (the chief of staff refused the case read); each owner reads THEIR obligations and acknowledges theirs; the case READY, closed after the walk');
 const REC_SRC = await q1(`select source_id::text id, contract_version::int v from observation.source_contracts_current where tenant_id = $1 and domain_id = $2 and source_key = 'nordwerk-inbound-records' and lifecycle_state = 'active' limit 1`, [T, D]);
 const ROOM = await q1(`select room_id::text id, title from executive.rooms_current where tenant_id = $1 and domain_id = $2 and owner_principal_id = $3 and title = 'Mitigate the corridor closure — the decision room (SYNTHETIC)'`, [T, D, brenner.principalId]);
-const PUB_REF = 'B82-F act — NORDWERK inbound-records restatement of SYN-BKG-7212 (SYNTHETIC)';
-const PUB_TITLE = 'B82-F — the decision room\'s briefing for the supervisory board (SYNTHETIC)';
-const UP_FILE = 'inbound-records-nordbearing-eta-b82f-2026-11.csv';
-const UP_TEXT = ['synthetic,record_id,record_kind,consignee,shipper,material,quantity,unit,eta_stated,via,contract_ref',
-  'true,SYN-BKG-7212,booking,Nordbearing AB,Shenzhen precision bearing maker (SYNTHETIC),bearing blank,12000,pcs,mid November 2026,malacca|cape-of-good-hope,SYN-PO-2026-1104 (B82-F act)'].join('\n') + '\n';
 const UP_TIME = { kind: 'bounded', earliest: '2026-11-10T00:00:00+01:00', latest: '2026-11-21T00:00:00+01:00', precision: 'part_of_month', zone: 'Europe/Berlin', source: 'publisher text' };
+const bookingText = (rec, qty) => ['synthetic,record_id,record_kind,consignee,shipper,material,quantity,unit,eta_stated,via,contract_ref',
+  `true,${rec},booking,Nordbearing AB,Shenzhen precision bearing maker (SYNTHETIC),bearing blank,${qty},pcs,mid November 2026,malacca|cape-of-good-hope,SYN-PO-2026-1104 (B82-F act)`].join('\n') + '\n';
+/** ATTEMPT 1 — the first live run's case (2026-10-19): kept as history, recognised and closed when READY. */
+const A1 = { rec: 'SYN-BKG-7212', file: 'inbound-records-nordbearing-eta-b82f-2026-11.csv', text: bookingText('SYN-BKG-7212', 12000),
+  ref: 'B82-F act — NORDWERK inbound-records restatement of SYN-BKG-7212 (SYNTHETIC)' };
+/** THE OWNER-FLOW CASE — a second small SYNTHETIC case whose upload a FRESH briefing of C. Brenner's rests on. */
+const A2 = { rec: 'SYN-BKG-7213', file: 'inbound-records-nordbearing-eta-b82f-2026-11-r2.csv', text: bookingText('SYN-BKG-7213', 8000),
+  ref: 'B82-F act — NORDWERK inbound-records restatement of SYN-BKG-7213 (SYNTHETIC)' };
+const PUB_TITLE = 'B82-F — the decision room\'s briefing on SYN-BKG-7213 for the supervisory board (SYNTHETIC)';
+/** THE COMPOSE PORT'S CAP (executive/briefings/briefing.service.ts, "what changed"): the EVD/CLM versions recorded in the interval
+ *  (prior.known_at, known_at], OLDEST FIRST, LIMIT 500 — only those become sources, and only sources become dependencies (0065's
+ *  executive.briefing_dependencies trigger). An upload rests in a briefing only if it is among the first 500 of its interval. */
+const WHAT_CHANGED_CAP = 500;
+const inInterval = async (since, until) => (await q1(`select count(*)::int n from objects.canonical_objects where tenant_id = $1 and domain_id = $2 and object_type in ('EVD', 'CLM')
+   and ($3::timestamptz is null or recorded_at > $3) and recorded_at <= coalesce($4::timestamptz, clock_timestamp())`, [T, D, since, until])).n;
 const contract = await q1(`select version::int v, synthetic, windows from graph.closure_contracts where tenant_id = $1 and domain_id = $2 order by version desc limit 1`, [T, D]);
-(contract && contract.synthetic === false ? ok : bad)(`the closure contract in force: v${contract?.version ?? contract?.v} ${contract?.synthetic ? 'SYNTHETIC — a short window (this act re-declares nothing)' : 'ORDINARY'} (stale ${Math.round((contract?.windows?.stale ?? 0) / 86400)} d, human review ${Math.round((contract?.windows?.human_review ?? 0) / 86400)} d, recompute ${Math.round((contract?.windows?.recompute ?? 0) / 86400)} d) — the windows stay ordinary: nothing stalls or freezes in this scene`);
-const caseRow = async () => q1(`select case_id::text id, state, propagation_state, received_at, closed_at applied_at from observation.correction_current where tenant_id = $1 and domain_id = $2 and publisher_ref = $3 order by received_at desc limit 1`, [T, D, PUB_REF]);
-let CASE = await caseRow();
-const evdOfText = async () => q1(`select e.object_id::text id, e.object_version::int v, e.recorded_at from objects.canonical_objects e where e.tenant_id = $1 and e.domain_id = $2 and e.object_type = 'EVD'
-   and e.payload ->> 'content_digest' = $3 and e.provenance_ref like 'SRC:' || $4 || '@%' order by e.object_version limit 1`, [T, D, sha256(UP_TEXT), REC_SRC?.id]);
-let UP = REC_SRC ? await evdOfText() : null;
-const mineQ = async () => (UP && ROOM ? q1(`select b.briefing_id::text id, b.known_at, b.content_digest from executive.briefings b where b.room_id = $1 and b.composed_by = $2 and b.known_at > $3
+(contract && contract.synthetic === false ? ok : bad)(`the closure contract in force: v${contract?.v} ${contract?.synthetic ? 'SYNTHETIC — a short window (this act re-declares nothing)' : 'ORDINARY'} (stale ${Math.round((contract?.windows?.stale ?? 0) / 86400)} d, human review ${Math.round((contract?.windows?.human_review ?? 0) / 86400)} d, recompute ${Math.round((contract?.windows?.recompute ?? 0) / 86400)} d) — the windows stay ordinary: nothing stalls or freezes in this scene`);
+const caseOf = async (ref) => q1(`select case_id::text id, state, propagation_state, received_at, closed_at applied_at from observation.correction_current where tenant_id = $1 and domain_id = $2 and publisher_ref = $3 order by received_at desc limit 1`, [T, D, ref]);
+const evdOf = async (text) => (REC_SRC ? q1(`select e.object_id::text id, e.object_version::int v, e.recorded_at from objects.canonical_objects e where e.tenant_id = $1 and e.domain_id = $2 and e.object_type = 'EVD'
+   and e.payload ->> 'content_digest' = $3 and e.provenance_ref like 'SRC:' || $4 || '@%' order by e.object_version limit 1`, [T, D, sha256(text), REC_SRC.id]) : null);
+const restingOn = async (up) => (up && ROOM ? q1(`select b.briefing_id::text id, b.known_at, b.content_digest from executive.briefings b where b.room_id = $1 and b.composed_by = $2 and b.known_at > $3
    and exists (select 1 from graph.dependencies g where g.dependent_object_id = b.briefing_id and g.depends_on_kind = 'evidence' and g.depends_on_id = $4::uuid and g.state = 'active')
-   order by b.known_at desc limit 1`, [ROOM.id, brenner.principalId, UP.recorded_at, UP.id]) : null);
-let BRF = null; let PUBR = null;
+   order by b.known_at desc limit 1`, [ROOM.id, brenner.principalId, up.recorded_at, up.id]) : null);
+const priorBefore = async (t) => q1(`select briefing_id::text id, known_at, composed_via, composed_by::text composed_by from executive.briefings where room_id = $1 and known_at < $2 order by known_at desc limit 1`, [ROOM.id, t]);
+const closureOf = async (s, caseId, check = false) => { const r = await gr(s, `closure/cases/${caseId}`, 'graph.read', check ? { check: true } : {}, 'COR', caseId); return r.ok ? r.body.closure : null; };
 if (REC_SRC === null || ROOM === null) bad(`the scene's inputs: nordwerk-inbound-records ${!!REC_SRC}, C. Brenner's decision room ${!!ROOM}`);
-else if (CASE) note(`the restatement case ${short(CASE.id)} stands — an earlier run (${CASE.state}, propagation ${CASE.propagation_state}); the upload ${short(UP?.id)}`);
-else {
-  // 1. THE UPLOAD — A. Hoffmann, through the existing upload route (a SYNTHETIC booking, its document time stated as written)
-  if (UP) note(`"${UP_FILE}" stands as evidence ${short(UP.id)}@${UP.v} — an earlier run`);
+if (ROOM) ENV_OUT.EYE_B82F_ROOM = ROOM.id;
+
+// ── ATTEMPT 1 (an earlier run), recognised: why it reached nothing of hers; closed when READY ─────────────────────────────────
+{
+  const C1 = await caseOf(A1.ref);
+  const U1 = await evdOf(A1.text);
+  if (C1 === null) note(`no ATTEMPT 1 here (no case "${A1.ref}") — the owner flow below is the only case of this act`);
   else {
+    ENV_OUT.EYE_B82F_ATTEMPT1_CASE = C1.id;
+    const p1 = U1 && ROOM ? await priorBefore(U1.recorded_at) : null;
+    const pos = U1 ? await inInterval(p1?.known_at ?? null, U1.recorded_at) : null;
+    const b1 = U1 && ROOM ? await q1(`select briefing_id::text id, known_at from executive.briefings where room_id = $1 and composed_by = $2 and known_at > $3 order by known_at limit 1`, [ROOM.id, brenner.principalId, U1.recorded_at]) : null;
+    const rests1 = b1 && U1 ? (await q1(`select count(*)::int n from graph.dependencies where dependent_object_id = $1 and depends_on_kind = 'evidence' and depends_on_id = $2::uuid and state = 'active'`, [b1.id, U1.id])).n > 0 : false;
+    const cl1 = await closureOf(mueller, C1.id);
+    const mat1 = (cl1?.consumers ?? []).filter((c) => c.material);
+    note(`ATTEMPT 1 — an earlier run, kept as history: "${A1.file}" ${short(U1?.id)} uploaded ${iso(U1?.recorded_at)}, the case ${short(C1.id)} ${C1.state} (closure ${String(cl1?.closure?.state ?? '—').toUpperCase()}). C. Brenner's briefing ${short(b1?.id)} composed after it ${rests1 ? 'RESTS on the upload' : 'does NOT rest on it'}: the room's last edition before the upload was ${short(p1?.id)} (${iso(p1?.known_at)}), and the upload was evidence/claim version #${pos} of that interval — the compose port lists only the first ${WHAT_CHANGED_CAP}, oldest first, so it fell outside; the walk reached ${mat1.length} material consumer(s), ${mat1.filter((c) => c.consumer_kind === 'subscription').length} of them subscription deliveries (${[...new Set(mat1.map((c) => c.state))].join(', ') || '—'}) and NOTHING of hers. The owner flow is staged on a second case below.`);
+    if (cl1 && cl1.closure?.state !== 'closed') {
+      // MY CALL: CLOSE IT. Every consumer it reached closed through its own delivery ledger; leaving it open serves no owner and keeps an
+      // open case censored in MET-010 for no reason. The close is the correction authority's, through the existing port, with a statement.
+      const chk = await closureOf(mueller, C1.id, true);
+      const open1 = (chk?.consumers ?? []).filter((c) => c.material && !c.closing);
+      if (chk?.readiness?.ready && open1.length === 0) {
+        const c = await gr(dvorak, `closure/cases/${C1.id}/close`, 'graph.closure.close', { statement: 'Attempt 1 of the B82-F demonstration: the restatement of SYN-BKG-7212 reached only subscription deliveries, all delivered — no owner\'s product rested on the upload (the briefing composed for it listed the first 500 evidence and claim versions of a longer interval). Closed so it does not stand open; the owner flow is the SYN-BKG-7213 case (SYNTHETIC)' }, 'COR', C1.id);
+        if (!c.ok) fail('M. Dvořák closes the attempt-1 case', c);
+        else ok(`M. Dvořák CLOSED the attempt-1 case ${short(C1.id)} — READY, ${c.body.closure.reached_consumers?.length ?? c.body.closure.reached_consumers} consumer(s) (subscription deliveries, delivered), with his statement: nothing of an owner's rested on it; leaving it open would serve no one and keep it censored in MET-010 — ${rcpt(c)}`);
+      } else bad(`the attempt-1 case ${short(C1.id)} is not READY to close (${open1.length} consumer(s) open; ${(chk?.readiness?.reasons ?? []).join('; ') || 'no readiness read'}) — left open`);
+    } else if (cl1) note(`the attempt-1 case ${short(C1.id)} stands CLOSED — an earlier run`);
+  }
+}
+
+// ── THE OWNER-FLOW CASE (SYN-BKG-7213) ─────────────────────────────────────────────────────────────────────────────────
+let CASE = await caseOf(A2.ref);
+let UP = await evdOf(A2.text);
+let BRF = null; let PUBR = null; let READY_TO_APPLY = false;
+if (REC_SRC && ROOM) {
+  if (CASE) note(`the SYN-BKG-7213 restatement case ${short(CASE.id)} stands — an earlier run (${CASE.state}, propagation ${CASE.propagation_state}); the upload ${short(UP?.id)}`);
+  else if (UP) note(`"${A2.file}" stands as evidence ${short(UP.id)}@${UP.v} — an earlier run`);
+  else {
+    // 1. THE CATCH-UP, IF THE ROOM'S LAST EDITION IS TOO FAR BACK: an upload made now must be within the compose port's first 500 of the interval
+    const latest = await q1(`select briefing_id::text id, known_at, composed_via from executive.briefings where room_id = $1 order by known_at desc limit 1`, [ROOM.id]);
+    const since = await inInterval(latest?.known_at ?? null, null);
+    if (since + 1 > WHAT_CHANGED_CAP - 20) {
+      const r = await DM(brenner, `${BASE}/briefings/compose`, 'briefing.compose', { roomId: ROOM.id, knownAt: new Date().toISOString(), priorBriefingId: latest?.id ?? null }, 'BRF', null, 'briefing', 'C2');
+      if (!r.ok) fail('C. Brenner composes the catch-up edition of her decision room', r);
+      else ok(`THE CATCH-UP, stated as such: the room's last edition ${short(latest?.id)} (${latest?.composed_via}, ${iso(latest?.known_at)}) is ${since} evidence/claim versions back — beyond the compose port's ${WHAT_CHANGED_CAP} (oldest first), so an upload now would fall outside its interval; C. Brenner COMPOSED a governed CATCH-UP edition ${short(r.body.briefing?.briefing_id ?? r.body.briefing?.briefingId)} first (it lists the first ${WHAT_CHANGED_CAP} of that interval, said; its known_at is now) — ${rcpt(r)}`);
+    } else note(`no catch-up needed: the room's last edition ${short(latest?.id)} (${latest?.composed_via}, ${iso(latest?.known_at)}) is ${since} evidence/claim version(s) back — within the compose port's first ${WHAT_CHANGED_CAP}`);
+    // 2. THE UPLOAD — A. Hoffmann, through the existing upload route (a SYNTHETIC booking, its document time stated as written)
     const r = await DM(hoffmann, `${O}/upload`, 'observation.run.trigger', { sourceId: REC_SRC.id, contractVersion: REC_SRC.v,
-      files: [{ filename: UP_FILE, mediaType: 'text/csv', base64: Buffer.from(UP_TEXT, 'utf8').toString('base64'), documentTime: UP_TIME }] }, 'RUN', null, 'observation', 'C1');
-    if (!r.ok) fail('A. Hoffmann uploads the SYNTHETIC booking', r);
+      files: [{ filename: A2.file, mediaType: 'text/csv', base64: Buffer.from(A2.text, 'utf8').toString('base64'), documentTime: UP_TIME }] }, 'RUN', null, 'observation', 'C1');
+    if (!r.ok) fail('A. Hoffmann uploads the SYNTHETIC booking SYN-BKG-7213', r);
     else {
-      for (let i = 0; i < 30 && UP === null; i += 1) { await sleep(1000); UP = await evdOfText(); }
-      (UP ? ok : bad)(`A. Hoffmann (domain analyst) UPLOADED "${UP_FILE}" (SYNTHETIC, ${Buffer.byteLength(UP_TEXT)} bytes) to nordwerk-inbound-records, its document time "mid November 2026" stated: run ${r.body.run?.state}, ${r.body.run?.admitted} admitted → evidence ${short(UP?.id)}@${UP?.v}`);
+      for (let i = 0; i < 30 && UP === null; i += 1) { await sleep(1000); UP = await evdOf(A2.text); }
+      (UP ? ok : bad)(`A. Hoffmann (domain analyst) UPLOADED "${A2.file}" (SYNTHETIC, ${Buffer.byteLength(A2.text)} bytes) to nordwerk-inbound-records, its document time "mid November 2026" stated: run ${r.body.run?.state}, ${r.body.run?.admitted} admitted → evidence ${short(UP?.id)}@${UP?.v}`);
     }
   }
 }
 if (UP) ENV_OUT.EYE_B82F_UPLOAD_EVD = UP.id;
-if (ROOM) ENV_OUT.EYE_B82F_ROOM = ROOM.id;
-// 2. C. BRENNER'S NEXT BRIEFING in her decision room — it rests on the upload (what changed since the room's last briefing BEFORE the upload)
+// 3. C. BRENNER'S BRIEFING THAT RESTS ON THE UPLOAD — and the act CHECKS the dependency before anything is applied
 if (UP && ROOM) {
-  BRF = await mineQ();
-  if (BRF) note(`C. Brenner's briefing ${short(BRF.id)} on the upload stands — an earlier run (${iso(BRF.known_at)})`);
+  BRF = await restingOn(UP);
+  if (BRF) note(`C. Brenner's briefing ${short(BRF.id)} resting on the upload stands — an earlier run (${iso(BRF.known_at)})`);
   else if (CASE === null) {
-    const prior = await q1(`select briefing_id::text id, known_at from executive.briefings where room_id = $1 and known_at < $2 order by known_at desc limit 1`, [ROOM.id, UP.recorded_at]);
-    const r = await DM(brenner, `${BASE}/briefings/compose`, 'briefing.compose', { roomId: ROOM.id, knownAt: new Date().toISOString(), priorBriefingId: prior?.id ?? null }, 'BRF', null, 'briefing', 'C2');
-    if (!r.ok) fail('C. Brenner composes the next briefing in her decision room', r);
-    BRF = await mineQ();
-    (BRF ? ok : bad)(`C. Brenner (decision owner, the room's owner) COMPOSED the next briefing in "${ROOM.title}" ${short(BRF?.id ?? r.body?.briefing?.briefing_id)} since ${short(prior?.id)} (${iso(prior?.known_at)}): the upload is an item of "what changed" and the briefing RESTS ON it (graph.dependencies) — SHE owns this product${r.ok ? ` — ${rcpt(r)}` : ''}`);
+    const prior = await priorBefore(UP.recorded_at);
+    const pos = await inInterval(prior?.known_at ?? null, UP.recorded_at);
+    if (pos > WHAT_CHANGED_CAP) bad(`the upload is evidence/claim version #${pos} after the room's last edition ${short(prior?.id)} (${iso(prior?.known_at)}) — beyond the compose port's first ${WHAT_CHANGED_CAP}: no briefing composed on that prior can rest on it; nothing is applied`);
+    else {
+      const r = await DM(brenner, `${BASE}/briefings/compose`, 'briefing.compose', { roomId: ROOM.id, knownAt: new Date().toISOString(), priorBriefingId: prior?.id ?? null }, 'BRF', null, 'briefing', 'C2');
+      if (!r.ok) fail('C. Brenner composes the briefing on the upload', r);
+      BRF = await restingOn(UP);
+      (BRF ? ok : bad)(`C. Brenner (decision owner, the room's owner) COMPOSED the next edition of "${ROOM.title}" ${short(BRF?.id ?? r.body?.briefing?.briefing_id)} since ${short(prior?.id)} (${iso(prior?.known_at)}): the upload is version #${pos} of its interval (within the first ${WHAT_CHANGED_CAP}) — an item of "what changed", and the briefing RESTS ON it (graph.dependencies, checked) — SHE owns this product${r.ok ? ` — ${rcpt(r)}` : ''}`);
+    }
   }
 }
 if (BRF) ENV_OUT.EYE_B82F_BRIEFING = BRF.id;
-// 3. ITS BOARD PUBLICATION drafted by the chief of staff (drafting is not delivery; never approved here)
+// 4. ITS BOARD PUBLICATION drafted by the chief of staff (drafting is not delivery; never approved here)
 PUBR = await q1(`select publication_id::text id, state, current_version::int v from executive.publications where tenant_id = $1 and domain_id = $2 and title = $3 limit 1`, [T, D, PUB_TITLE]);
 if (PUBR) note(`the chief of staff's draft "${PUB_TITLE}" ${short(PUBR.id)} stands — an earlier run (${PUBR.state})`);
 else if (BRF && CASE === null) {
@@ -390,26 +448,32 @@ else if (BRF && CASE === null) {
   PUBR = await q1(`select publication_id::text id, state, current_version::int v from executive.publications where tenant_id = $1 and domain_id = $2 and title = $3 limit 1`, [T, D, PUB_TITLE]);
 }
 if (PUBR) ENV_OUT.EYE_B82F_PUBLICATION = PUBR.id;
-// 4. THE READ-ONLY PREVIEW, then THE RESTATEMENT received by A. Hoffmann and applied by M. Dvořák — nobody calls /impact/propagate
+// 5. THE READ-ONLY PREVIEW must reach her briefing BEFORE anything is applied; then THE RESTATEMENT received and applied
 if (UP && CASE === null) {
-  const p = await gr(hoffmann, 'impact/preview', 'graph.read', { triggerObjectId: UP.id, triggerKind: 'evidence_correction' }, 'INV', UP.id);
-  if (!p.ok) fail('the read-only preview of the upload', p);
+  if (BRF === null) bad('C. Brenner\'s briefing does not rest on the upload — the restatement is NOT received or applied (a case that reaches nothing of hers demonstrates nothing; attempt 1 is that case)');
   else {
-    const i = p.body.impact; const nz = Object.entries(i).filter(([, v]) => Array.isArray(v) && v.length > 0).map(([k, v]) => `${k} ${v.length}`);
-    const hasBrf = (i.briefings ?? []).some((x) => (x.strategy_object_id ?? x.briefing_id) === BRF?.id);
-    const hasPub = (i.publications ?? []).some((x) => x.strategy_object_id === PUBR?.id);
-    (hasBrf ? ok : bad)(`THE READ-ONLY PREVIEW (nothing written): a restatement of the upload would reach ${nz.join(', ') || 'nothing'} — C. Brenner's briefing ${hasBrf ? 'among them' : 'NOT among them'}, the board publication ${hasPub ? 'among them' : 'not among them'}: a SMALL case`);
+    const p = await gr(hoffmann, 'impact/preview', 'graph.read', { triggerObjectId: UP.id, triggerKind: 'evidence_correction' }, 'INV', UP.id);
+    if (!p.ok) fail('the read-only preview of the upload', p);
+    else {
+      const i = p.body.impact; const nz = Object.entries(i).filter(([, v]) => Array.isArray(v) && v.length > 0).map(([k, v]) => `${k} ${v.length}`);
+      const hasBrf = (i.briefings ?? []).some((x) => (x.strategy_object_id ?? x.briefing_id) === BRF.id);
+      const hasPub = (i.publications ?? []).some((x) => x.strategy_object_id === PUBR?.id);
+      READY_TO_APPLY = hasBrf;
+      (hasBrf ? ok : bad)(`THE READ-ONLY PREVIEW, checked BEFORE the apply (nothing written): a restatement of the upload would reach ${nz.join(', ') || 'nothing'} — C. Brenner's briefing ${hasBrf ? 'among them' : 'NOT among them (nothing is applied)'}, the board publication ${hasPub ? 'among them' : 'not among them'}: a SMALL case`);
+    }
   }
-  const r = await DM(hoffmann, `${O}/corrections/submit`, 'observation.correction.receive', { sourceId: REC_SRC.id, kind: 'correction', channel: 'operator re-upload',
-    publisherRef: PUB_REF, reason: 'The shipper restated SYN-BKG-7212: 12,000 bearing blanks, not 12,500 — the booking line re-issued (SYNTHETIC restatement for the B82-F demonstration)', affectedEvdIds: [UP.id] }, 'COR', null, 'observation');
-  if (!r.ok) fail('A. Hoffmann receives the restatement', r);
-  else {
-    ok(`A. Hoffmann (domain analyst) RECEIVED the shipper's restatement of SYN-BKG-7212: case ${short(r.body.correction.caseId)} ${r.body.correction.state} — ${rcpt(r)}`);
-    const a = await DM(dvorak, `${O}/corrections/${r.body.correction.caseId}/apply`, 'observation.correction.apply', { decision: 'apply', affectedEvdIds: [UP.id], reason: 'restatement verified against the shipper\'s re-issued booking line (SYNTHETIC)' }, 'COR', r.body.correction.caseId, 'observation');
-    if (!a.ok) fail('M. Dvořák applies the restatement', a);
-    else ok(`M. Dvořák (collection manager — the correction authority) APPLIED it: ${(a.body.correction.superseded ?? []).map((x) => `${short(x.object_id)} v${x.from} → v${x.to}`).join(', ')} — nobody calls /impact/propagate — ${rcpt(a)}`);
+  if (READY_TO_APPLY) {
+    const r = await DM(hoffmann, `${O}/corrections/submit`, 'observation.correction.receive', { sourceId: REC_SRC.id, kind: 'correction', channel: 'operator re-upload',
+      publisherRef: A2.ref, reason: 'The shipper restated SYN-BKG-7213: 8,000 bearing blanks, not 8,400 — the booking line re-issued (SYNTHETIC restatement for the B82-F demonstration)', affectedEvdIds: [UP.id] }, 'COR', null, 'observation');
+    if (!r.ok) fail('A. Hoffmann receives the restatement', r);
+    else {
+      ok(`A. Hoffmann (domain analyst) RECEIVED the shipper's restatement of SYN-BKG-7213: case ${short(r.body.correction.caseId)} ${r.body.correction.state} — ${rcpt(r)}`);
+      const a = await DM(dvorak, `${O}/corrections/${r.body.correction.caseId}/apply`, 'observation.correction.apply', { decision: 'apply', affectedEvdIds: [UP.id], reason: 'restatement verified against the shipper\'s re-issued booking line (SYNTHETIC)' }, 'COR', r.body.correction.caseId, 'observation');
+      if (!a.ok) fail('M. Dvořák applies the restatement', a);
+      else ok(`M. Dvořák (collection manager — the correction authority) APPLIED it: ${(a.body.correction.superseded ?? []).map((x) => `${short(x.object_id)} v${x.from} → v${x.to}`).join(', ')} — nobody calls /impact/propagate — ${rcpt(a)}`);
+    }
+    CASE = await caseOf(A2.ref);
   }
-  CASE = await caseRow();
 }
 const closureRead = async (s, check = false) => { const r = await gr(s, `closure/cases/${CASE.id}`, 'graph.read', check ? { check: true } : {}, 'COR', CASE.id); return r.ok ? r.body.closure : null; };
 const obligations = (s, caseId) => gr(s, 'closure/obligations', 'graph.closure.obligation.read', caseId ? { caseId } : {}, 'COR', caseId ?? null);
@@ -596,7 +660,7 @@ console.log('\nF-6 THE STATE, the env lines for the walk, THE LIMITS');
   ENV_OUT.EYE_B82F_KNOWLEDGE_OWNER = 'k.mueller'; ENV_OUT.EYE_B82F_PRODUCT_ANALYST = 'j.sato';
   console.log('  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):');
   for (const [k, v] of Object.entries(ENV_OUT)) if (v !== undefined && v !== null) console.log(`  ${k}=${v}`);
-  note('LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — 0122 (§RT, §CC) and the TypeScript corrections (§TR, §MT) with their harnesses phase6-b82f-{rt,cc,tr,mt}, the web unit models, the walk. (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: the act target refusing two children before any contact; MET-010 definition v2 proposed by J. Satō, her own decision refused, approved by M. Okonkwo at the digest — definition v2 · computation v2 shown together, v1 superseded, the old result definition v1 · computation v2, NOT recomputed; F. Aydın reading the rights-terms register (metadata only) and refused evidence bytes, detail and the other domain\'s register, A. Hoffmann refused the new read and keeping hers; ONE small SYNTHETIC correction case (a booking uploaded, C. Brenner\'s briefing on it, its board publication drafted, the restatement applied and walked) in which the chief of staff (no graph.read role) was refused the case read and C. Brenner was ADMITTED to it by her strategy_owner binding (graph.read unchanged — said), C. Brenner read and acknowledged HER obligation and was refused another owner\'s consumer and another case, N. Eriksen read an empty list, J. Satō was refused the read, the chief of staff found and acknowledged his own through his obligation read, the case READY under the ORDINARY contract and closed by M. Dvořák only in the run with EYE_B82F_CLOSE=1 (after the walk); the trust overview read; L. Brandt refused the cited bytes and A. Hoffmann opening them. (3) REAL ACCEPTANCE — never claimed. NOT STAGED (harness-proven): the expired-read 503 (phase6-b82f-tr), an obligation\'s escalation instants after a stall (phase6-b82f-cc c), a bounded exception by an owner on the obligation page (the walk shows the form; the act acknowledges).');
+  note('LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — 0122 (§RT, §CC) and the TypeScript corrections (§TR, §MT) with their harnesses phase6-b82f-{rt,cc,tr,mt}, the web unit models, the walk. (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: the act target refusing two children before any contact; MET-010 definition v2 proposed by J. Satō, her own decision refused, approved by M. Okonkwo at the digest — definition v2 · computation v2 shown together, v1 superseded, the old result definition v1 · computation v2, NOT recomputed; F. Aydın reading the rights-terms register (metadata only) and refused evidence bytes, detail and the other domain\'s register, A. Hoffmann refused the new read and keeping hers; attempt 1 (SYN-BKG-7212 — its briefing\'s interval exceeded the compose port\'s 500 evidence/claim versions, so nothing of hers rested on the upload) recognised and closed by M. Dvořák, and ONE small SYNTHETIC owner-flow case (a catch-up edition when needed, a booking uploaded, C. Brenner\'s briefing on it — the dependency and the preview checked before the apply —, its board publication drafted, the restatement applied and walked) in which the chief of staff (no graph.read role) was refused the case read and C. Brenner was ADMITTED to it by her strategy_owner binding (graph.read unchanged — said), C. Brenner read and acknowledged HER obligation and was refused another owner\'s consumer and another case, N. Eriksen read an empty list, J. Satō was refused the read, the chief of staff found and acknowledged his own through his obligation read, the case READY under the ORDINARY contract and closed by M. Dvořák only in the run with EYE_B82F_CLOSE=1 (after the walk); the trust overview read; L. Brandt refused the cited bytes and A. Hoffmann opening them. (3) REAL ACCEPTANCE — never claimed. NOT STAGED (harness-proven): the expired-read 503 (phase6-b82f-tr), an obligation\'s escalation instants after a stall (phase6-b82f-cc c), a bounded exception by an owner on the obligation page (the walk shows the form; the act acknowledges).');
 }
 
 await su.end();
