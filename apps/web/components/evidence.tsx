@@ -244,6 +244,7 @@ export function EvidenceDisclosure({ model, defaultOpen }: { model: ReturnType<t
           <div className="eye-ev-dl-row"><dt>Cutoff</dt><dd>{model.cutoff}</dd></div>
           <div className="eye-ev-dl-row"><dt>Omissions</dt><dd><ul className="eye-ev-lines">{model.omissions.map((o) => <li key={o}>{o}</li>)}</ul></dd></div>
           <div className="eye-ev-dl-row"><dt>Scope</dt><dd>{model.policyScope}</dd></div>
+          <div className="eye-ev-dl-row"><dt>Resolution</dt><dd>{model.digest}</dd></div>
         </dl>
       </Disclosure>
     </div>

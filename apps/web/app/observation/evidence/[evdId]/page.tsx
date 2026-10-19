@@ -414,7 +414,7 @@ function B82Evidence({ scope, evd, payload, source, resolved, lastRead, setLastR
       <h2 id="b82-ev" style={{ marginBlockStart: 0, fontSize: 'var(--eye-type-heading-3)' }}>The cited bytes, their verification and their rights</h2>
       {resolved.state === 'loading' && <p className="eye-ev-note">Resolving this version…</p>}
       {resolved.state === 'refused' && <ErrorNote error={resolved.error} />}
-      {r !== null && <EvidenceDisclosure model={evidenceDisclosure([r])} />}
+      {r !== null && <EvidenceDisclosure model={evidenceDisclosure([r], { digest: resolved.state === 'ready' ? resolved.digests[0] ?? null : null })} />}
       {leaf !== null && <EvidenceCard leaf={leaf} />}
       {leaf !== null && <EvidenceViewer leaf={leaf} scope={scope} onRead={setLastRead} label="This version’s bytes" contextBytes={0} />}
       {fragment !== null && parentId !== null && (

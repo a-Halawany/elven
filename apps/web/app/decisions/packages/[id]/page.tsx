@@ -174,7 +174,7 @@ function PackageObjectView() {
       <section aria-labelledby="package-citations" className="eye-object-versions">
         <h2 id="package-citations" style={{ fontSize: 'var(--eye-type-heading-2)' }}>Citations of v{shown.version}</h2>
         {evRes.state === 'refused' && <><p className="eye-ev-note">The citations were not resolved on this read:</p><ErrorNote error={evRes.error} /></>}
-        {evRes.state === 'ready' && <EvidenceDisclosure model={evidenceDisclosure([...evRes.byKey.values()])} />}
+        {evRes.state === 'ready' && <EvidenceDisclosure model={evidenceDisclosure([...evRes.byKey.values()], { digest: evRes.digests[0] ?? null })} />}
         {shown.options.length === 0 ? <p>This version records no option, so it cites nothing.</p> : (
           <ul className="eye-ev-lines">
             {shown.options.map((o) => (

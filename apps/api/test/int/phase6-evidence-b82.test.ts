@@ -66,7 +66,7 @@ let h: Phase4Harness; let vault: VaultService; let pdp: PdpService;
 let cites: CitationsController; let ev: EvidenceB82Controller;
 let aydin: AuthenticatedPrincipal; let manager2: AuthenticatedPrincipal; let ivanova: AuthenticatedPrincipal; let brandt: AuthenticatedPrincipal;
 let executive: AuthenticatedPrincipal; let approver: AuthenticatedPrincipal; let collector: AuthenticatedPrincipal; let tenantAuditor: AuthenticatedPrincipal;
-let E1: Evd; let E2: Evd; let E3: Evd; let E4: Evd; let R1: Evd; let rightsSource = '';
+let E1: Evd; let E2: Evd; let E3: Evd; let E4: Evd; let E5: Evd; let R1: Evd; let rightsSource = '';
 const T = () => h.fx.tenantId; const D = () => h.fx.domainId;
 const one = async (q: { execute: (db: never) => Promise<{ rows: unknown[] }> }) => ((await q.execute(h.su as never)).rows[0] ?? {}) as Row;
 
@@ -162,7 +162,7 @@ beforeAll(async () => {
   approver = await h.humanWithSession(['decision_approver'], 'b82-approver');
   collector = await h.principalWith(['collection_agent'], 'b82-collector');
   tenantAuditor = await h.humanWithSession(['auditor'], 'b82-auditor', 'TENANT');
-  [E1, E2, E3, E4] = (await upload(['b82-ev-e1', 'b82-ev-e2', 'b82-ev-e3', 'b82-ev-e4'])) as [Evd, Evd, Evd, Evd];
+  [E1, E2, E3, E4, E5] = (await upload(['b82-ev-e1', 'b82-ev-e2', 'b82-ev-e3', 'b82-ev-e4', 'b82-ev-e5'])) as [Evd, Evd, Evd, Evd, Evd];
   [R1] = (await upload(['b82-ev-r1'], 'rights')) as [Evd];
   rightsSource = await h.uploadSource('internal', 'rights');
 }, 600_000);
@@ -253,6 +253,32 @@ describe('EV2 · THE CITATION RESOLUTION — each citation to its exact evidence
     expect(o!.outcome).toBe('unverifiable');
     expect(o!.leaves[0]).toMatchObject({ outcome: 'unverifiable', reasons: expect.arrayContaining(['span_out_of_range']), detail: expect.stringMatching(/the cited span 5–999999 does not lie within/) });
     expect(b).toMatchObject({ outcome: 'unverifiable', leaves: [{ evidence: null, outcome: 'unverifiable', reasons: ['no_evidence'], detail: expect.stringMatching(/reaches no evidence bytes within 4 steps/) }] });
+  });
+  it('REL-08 · every citing kind resolves to its exact evidence through the recorded lineage (the header\'s evidence_refs) — entity, forecast, assumption, run, twin, scenario, warning', async () => {
+    const base = await plantClaim(E3, { lineage: false });
+    const kinds: Array<[string, string]> = [['entity', 'ENT'], ['forecast', 'FCT'], ['assumption', 'ASU'], ['run', 'SIM'], ['twin', 'TWN'], ['scenario', 'SCN'], ['warning', 'WRN']];
+    const made: Array<{ kind: string; type: string; id: string }> = [];
+    for (const [kind, type] of kinds) {
+      const id = uuidv7();
+      await sql`insert into objects.canonical_objects select (jsonb_populate_record(null::objects.canonical_objects, to_jsonb(o) || jsonb_build_object('object_id', ${id}::text, 'object_type', ${type}::text, 'schema_ref', ${`${type}@v1`}::text))).*
+        from objects.canonical_objects o where o.object_id = ${base.id}::uuid`.execute(h.su);
+      made.push({ kind, type, id });
+    }
+    const rs = await resolve(brandt, made.map((m) => ({ kind: m.kind, id: m.id, version: 1, digest: null })));
+    rs.forEach((r, i) => {
+      const m = made[i]!;
+      expect(r, m.kind).toMatchObject({ outcome: 'resolved', own: { digest_binds: 'none', object: { type: m.type } } });
+      expect(r.leaves.map((l) => l.path), m.kind).toEqual([[`${m.type}:${m.id}@1`, `EVD:${E3.id}@${E3.version}`]]);
+      expect(r.leaves[0], m.kind).toMatchObject({ span_basis: 'whole_object', outcome: 'resolved', evidence: { id: E3.id, byte_start: 0 } });
+    });
+  });
+  it('a TRANSFORMATION is stated on its leaf: a fragment version names its parent\'s span and its framing method; the route answers the digest of what it resolved', async () => {
+    await sql`insert into objects.canonical_objects select (jsonb_populate_record(null::objects.canonical_objects, to_jsonb(o) || jsonb_build_object('object_version', 2, 'recorded_at', clock_timestamp(),
+        'payload', o.payload || jsonb_build_object('fragment', jsonb_build_object('byte_start', 4, 'byte_end', 40, 'method_ref', 'json-array-framing@1.2.0'), 'parent_evd_id', ${E1.id}::text)))).*
+      from objects.canonical_objects o where o.object_id = ${E5.id}::uuid and o.object_version = ${E5.version}`.execute(h.su);
+    const raw = await cites.resolve(h.req(brandt, 'graph.provenance.read', 'CIT', null, 'graph'), T(), D(), { payload: { refs: [{ kind: 'evidence', id: E5.id, version: 2, digest: null }] } }) as unknown as { resolutions: Resolution[]; digest: string };
+    expect(raw.digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(raw.resolutions[0]!.leaves[0]!.evidence).toMatchObject({ id: E5.id, version: 2, fragment: { byte_start: 4, byte_end: 40, method_ref: 'json-array-framing@1.2.0', parent_evd_id: E1.id } });
   });
   it('a corrected version reads CORRECTED with what corrected it; the correction itself resolves and names what it corrects; a withdrawn version reads WITHDRAWN', async () => {
     const v2 = await laterVersion(E2, 'corrected', `${E2.id}@${E2.version}`);

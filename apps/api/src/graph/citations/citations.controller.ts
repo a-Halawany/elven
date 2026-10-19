@@ -13,7 +13,7 @@
  * Every answer is the port's (or the verifier's) with the receipt. Nothing here infers an outcome. CONSTRUCTION only.
  */
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
-import { errorBody } from '@eye/contracts';
+import { contentDigest, errorBody } from '@eye/contracts';
 import { requireCorrelation } from '../../shared/correlation.js';
 import { PipelineService } from '../../pipeline/pipeline.service.js';
 import type { EyeRequest } from '../../pipeline/http.js';
@@ -73,7 +73,8 @@ export class CitationsController {
       { scope: 'DOMAIN', tenantId, domainId, action: 'graph.provenance.read', objectType, objectId: first?.id ?? null },
       CitationCapability.read,
       async (cap) => cap.resolve({ tenantId, domainId, refs: a.refs, depth: a.depth }));
-    return { resolutions: out.result, receipt: receipt(out) };
+    // UX-26-002: the digest of exactly what this read answered (the citations, their leaves and outcomes) — a later read that differs is a different answer
+    return { resolutions: out.result, digest: contentDigest(out.result as unknown), receipt: receipt(out) };
   }
 
   @Post('/citations/signatures')

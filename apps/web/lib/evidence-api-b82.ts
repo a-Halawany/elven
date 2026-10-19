@@ -28,7 +28,7 @@ const obsBase = (s: Scope) => `/v1/tenants/${s.tenantId}/domains/${s.domainId}/o
 
 export const evidenceApi = {
   resolve: (s: Scope, refs: CitationRef[], depth?: number) =>
-    call<{ resolutions: Row[]; receipt: Receipt }>(`${graphBase(s)}/citations/resolve`, env(s, 'graph.provenance.read', 'CIT', null, 'graph', true), { refs, ...(depth === undefined ? {} : { depth }) }),
+    call<{ resolutions: Row[]; digest: string; receipt: Receipt }>(`${graphBase(s)}/citations/resolve`, env(s, 'graph.provenance.read', 'CIT', null, 'graph', true), { refs, ...(depth === undefined ? {} : { depth }) }),
   signatures: (s: Scope, subjectKind: string, subjectId: string, subjectVersion: number) =>
     call<{ signatures: Row[]; verifier: { keyOnFile: string | null; checkedAt: string; rule: string }; receipt: Receipt }>(`${graphBase(s)}/citations/signatures`,
       env(s, 'graph.provenance.read', 'SIG', subjectId, 'graph', true), { subjectKind, subjectId, subjectVersion }),
@@ -45,7 +45,7 @@ export const evidenceApi = {
 export type ResolutionState =
   | { state: 'idle' }
   | { state: 'loading' }
-  | { state: 'ready'; byKey: ReadonlyMap<string, ResolutionView>; receipt: Receipt | null }
+  | { state: 'ready'; byKey: ReadonlyMap<string, ResolutionView>; receipt: Receipt | null; /** the digests of the reads (one per batch of 50) */ digests: string[] }
   | { state: 'refused'; error: NonNullable<ApiResult<unknown>['error']> };
 
 /** Resolve every citation a page shows (in batches of 50 — the route's bound); a refusal is kept in the server's words, never retried silently. */
@@ -59,15 +59,15 @@ export function useCitationResolutions(scope: Scope | null, refs: readonly Citat
     const unique = new Map(refs.map((r) => [citationKey(r), r]));
     const all = [...unique.values()];
     void (async () => {
-      const byKey = new Map<string, ResolutionView>(); let receipt: Receipt | null = null;
+      const byKey = new Map<string, ResolutionView>(); let receipt: Receipt | null = null; const digests: string[] = [];
       for (let i = 0; i < all.length; i += 50) {
         const r = await evidenceApi.resolve(scope, all.slice(i, i + 50));
         if (!live) return;
         if (!r.ok || r.data === undefined) { setSt({ state: 'refused', error: r.error ?? { code: 'EYE-INT-001', message: 'the resolution was not answered', correlationId: '', retry: 'no' } }); return; }
-        receipt = r.data.receipt;
+        receipt = r.data.receipt; if (typeof r.data.digest === 'string') digests.push(r.data.digest);
         for (const row of r.data.resolutions) { const v = toResolution(row); byKey.set(citationKey(v.ref), v); }
       }
-      if (live) setSt({ state: 'ready', byKey, receipt });
+      if (live) setSt({ state: 'ready', byKey, receipt, digests });
     })();
     return () => { live = false; };
     // the key carries the refs' identity; the scope's ids carry the scope's

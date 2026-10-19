@@ -161,12 +161,14 @@ describe('DISCLOSURE (HX-01) and THE CARD (CMP-025)', () => {
     expect(d.omissions).toEqual(['1 citation(s) were cut at their lineage depth — not every evidence leaf is listed', '1 lineage path(s) reach no evidence bytes', '2 item(s) withheld under policy from this reader']);
     expect(evidenceDisclosure([ok]).decisionReady).toBe(true);
     expect(evidenceDisclosure([ok]).omissions).toEqual(['none recorded by this read']);
+    expect(evidenceDisclosure([ok], { digest: 'c'.repeat(64) }).digest).toBe(`this read's resolution digest ${'c'.repeat(16)}…`);
     expect(evidenceDisclosure([]).decisionReady).toBe(false);   // nothing cited is not decision-ready by default
   });
   it('the card: source, truth, authority, rights ("no expiry declared"), digest, custody, freshness, tier — each stated, never blank', () => {
     const c = evidenceCard(toResolution(resolutionRow()).leaves[0]!, new Date('2026-10-18T10:00:00Z'));
     expect(c.title).toBe('Evidence 01a084f5… v2');
-    expect(c.lines.map((l) => l.term)).toEqual(['Source', 'Truth', 'Authority', 'Rights', 'Digest', 'Custody', 'Freshness', 'Tier']);
+    expect(c.lines.map((l) => l.term)).toEqual(['Source', 'Truth', 'Authority', 'Rights', 'Digest', 'Custody', 'Freshness', 'Tier', 'Transformation']);
+    expect(c.lines.find((l) => l.term === 'Transformation')!.value).toBe(`a fragment of evidence 01a084f5… bytes 471–854, framed by json-array-framing@1.2.0`);
     expect(c.lines.find((l) => l.term === 'Rights')!.value).toBe('no rights terms declared — no expiry declared');
     expect(c.lines.find((l) => l.term === 'Truth')!.value).toBe('observed · SYNTHETIC');
     expect(c.lines.find((l) => l.term === 'Freshness')!.value).toMatch(/^recorded 2 h ago/);

@@ -327,8 +327,8 @@ export function verificationSummary(facets: readonly VerificationFacet[]): { out
 }
 
 /* ───────────────────────── disclosure (HX-01) ───────────────────────── */
-export function evidenceDisclosure(resolutions: readonly ResolutionView[], scope: { withheld?: number | null; cutoff?: string | null; policyFiltered?: boolean | null } = {}): {
-  sources: string; citations: string; versions: string[]; cutoff: string; omissions: string[]; policyScope: string; decisionReady: boolean; reasons: string[];
+export function evidenceDisclosure(resolutions: readonly ResolutionView[], scope: { withheld?: number | null; cutoff?: string | null; policyFiltered?: boolean | null; digest?: string | null } = {}): {
+  sources: string; citations: string; versions: string[]; cutoff: string; omissions: string[]; policyScope: string; decisionReady: boolean; reasons: string[]; digest: string;
 } {
   const leaves = resolutions.flatMap((r) => r.leaves);
   const sources = new Set(leaves.map((l) => l.sourceId).filter((x): x is string => x !== null));
@@ -348,6 +348,7 @@ export function evidenceDisclosure(resolutions: readonly ResolutionView[], scope
     policyScope: scope.policyFiltered === true || (scope.withheld ?? 0) > 0 ? 'policy-filtered: this reader sees part of the scope' : scope.policyFiltered === false ? 'not policy-filtered for this reader' : 'the policy filter is not stated by this read',
     decisionReady: resolutions.length > 0 && notReady.length === 0 && (scope.withheld ?? 0) === 0,
     reasons: notReady.map((r) => `${citationLabel(r.ref)}: ${OUTCOME_WORDS[r.outcome].word.toLowerCase()}`),
+    digest: scope.digest == null ? 'no resolution digest on this read' : `this read's resolution digest ${scope.digest.slice(0, 16)}…`,
   };
 }
 
@@ -367,6 +368,7 @@ export function evidenceCard(leaf: ResolvedLeaf, now: Date): { title: string; li
       { term: 'Custody', value: leaf.custody === null ? 'not recorded' : `${leaf.custody.events} event(s) · ${leaf.custodyState === 'integrity_failed' ? 'INTEGRITY FAILED after the last verified custody' : leaf.custodyState === 'not_established' ? 'not established' : 'intact'}` },
       { term: 'Freshness', value: age === null ? 'record time not stated' : `recorded ${age} h ago (${leaf.recordedAt})` },
       { term: 'Tier', value: leaf.tier === null ? 'no manifest' : leaf.tier },
+      { term: 'Transformation', value: leaf.fragment === null ? 'none recorded — the bytes as admitted' : `a fragment of evidence ${leaf.fragment.parentId === null ? '(parent not named)' : `${leaf.fragment.parentId.slice(0, 8)}…`} bytes ${leaf.fragment.byteStart}–${leaf.fragment.byteEnd}, framed by ${leaf.fragment.methodRef ?? 'an unnamed method'}` },
     ],
   };
 }

@@ -343,7 +343,7 @@ export default function BriefingsPage() {
                   {briefing.narrative_cites.map((id) => { const x = evOf(id); return <li key={id}>{x === null ? `${id} — not a recorded object` : <CitationLink citation={x.c} scope={scope} resolution={x.r} />}</li>; })}
                 </ul>
               )}
-              {evRes.state === 'ready' && evRes.byKey.size > 0 && <EvidenceDisclosure model={evidenceDisclosure([...evRes.byKey.values()], { withheld: briefing.items_withheld ?? 0, cutoff: briefing.watermark.known_at })} />}
+              {evRes.state === 'ready' && evRes.byKey.size > 0 && <EvidenceDisclosure model={evidenceDisclosure([...evRes.byKey.values()], { withheld: briefing.items_withheld ?? 0, cutoff: briefing.watermark.known_at, digest: evRes.digests[0] ?? null })} />}
               {evRes.state === 'refused' && <><p className="eye-ev-note">The briefing's citations were not resolved on this read:</p><ErrorNote error={evRes.error} /></>}
               {/* end B82 ev */}
             </section>
