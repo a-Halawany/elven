@@ -24,6 +24,7 @@ import { Select } from '../../../../../components/forms';
 import { ErrorNote } from '../../../../../components/ui';
 import { Empty, fmtInstant } from '../../../../../components/observation';
 /* B81 integration (UX-11-005) */ import { RecoveryPanel } from '../../../../../components/recovery'; import { recoveryOfRefusedLink } from '../../../../../lib/degraded-b81'; /* end B81 integration */
+/* B82 ev: each element's citations a CitationLink, resolved when opened (CMP-026, UX-ADR-006) */ import { CitationLink } from '../../../../../components/evidence'; /* end B82 ev */
 
 /** B81 integration: ONE h1 per rendering (lib/layout-b81's REG-03 ratchet) — every branch (not opened, loading, the object) titles
  *  the page through this one element. */
@@ -125,7 +126,7 @@ export default function TwinVersionPage() {
                 <td data-label="Value">{typeof e.value === 'string' ? e.value : JSON.stringify(e.value)}{e.unit === null ? '' : ` ${e.unit}`}</td>
                 <td data-label="Valid">{e.valid_from ?? '—'} … {e.valid_to ?? '—'}</td>
                 <td data-label="Health">{e.health}</td>
-                <td data-label="Citations">{e.citations.length}</td>
+                <td data-label="Citations">{/* B82 ev */}{e.citations.length === 0 ? 'cites nothing' : e.citations.map((c) => <div key={`${c.kind}:${c.id}@${c.version}`}><CitationLink citation={c} scope={scope} resolution="on_open" /></div>)}{/* end B82 ev */}</td>
               </tr>
             ))}</tbody>
           </table>

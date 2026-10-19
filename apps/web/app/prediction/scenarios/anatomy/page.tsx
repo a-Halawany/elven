@@ -25,6 +25,7 @@ import {
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant, textareaStyle } from '../../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../../components/ui';
 /* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../../components/forms';
+/* B82 ev: a record's citations each a CitationLink, resolved when opened (CMP-026, UX-ADR-006; citations only — §SC owns the rest of this page) */ import { CitationLink } from '../../../../components/evidence'; import { parseCitations } from '../../../../lib/evidence-b82'; /* end B82 ev */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const muted = { color: 'var(--eye-color-ink-muted)' } as const;
@@ -280,6 +281,9 @@ function Records({ data, scope, canWrite, onDone, onProblem }: { data: Anatomy; 
             <div style={small}>by {r.author_name ?? `${r.author_principal_id.slice(0, 8)}…`} · {fmtInstant(r.recorded_at)} · version {r.version}
               {r.branch_id === null ? ' · the whole scenario' : ` · ${data.branches.find((b) => b.branch_id === r.branch_id)?.name ?? 'a branch'}`}
               {r.cites.length > 0 ? ` · cites ${r.cites.map((c) => `${c.kind} ${c.id.slice(0, 8)}…`).join(', ')}` : ''}</div>
+            {/* B82 ev */}{r.cites.length > 0 && (() => { const p = parseCitations(r.cites); return (
+              <div style={small}>{p.refs.map((c) => <span key={`${c.kind}:${c.id}@${c.version}`}><CitationLink citation={c} scope={scope} resolution="on_open" /> </span>)}
+                {p.rejected > 0 ? `${p.rejected} of these cite(s) name no exact version (kind and id only), so they cannot be resolved to exact evidence` : ''}</div>); })()}{/* end B82 ev */}
           </DefinitionRow>))}</dl>
       )}
       {canWrite ? (

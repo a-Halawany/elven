@@ -13,7 +13,7 @@
  * decision and audit event are durable before a byte moves, and the digest is
  * re-verified on the way out.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useShell } from '../../layout';
@@ -23,7 +23,15 @@ import {
   UnknownNote, badgeRowStyle, cardStyle, fmtBytes, fmtInstant,
 } from '../../../../components/observation';
 import { ErrorNote, Receipt } from '../../../../components/ui';
+/* B82 ev */ import type { ResolutionState, Scope } from '../../../../lib/evidence-api-b82'; /* end B82 ev */
 /* B81 ob */ import { ObjectHeader } from '../../../../components/object'; /* end B81 ob */
+/* B82 ev */
+import { CustodyTimeline, EvidenceCard, EvidenceDisclosure, EvidenceViewer, RightsNotice, VerificationPanel, type ViewerRead } from '../../../../components/evidence';
+import { evidenceApi, useCitationResolutions } from '../../../../lib/evidence-api-b82';
+import { bytesVerification, evidenceDisclosure, type ContractRights, type CustodyRow, type VerificationFacet } from '../../../../lib/evidence-b82';
+import type { CitationRef } from '../../../../lib/b82-seams';
+import { RightsTermsForm } from './rights-form';
+/* end B82 ev */
 
 const AUTHENTICITY_LABEL: Record<string, string> = {
   transport_endpoint: 'Transport endpoint',
@@ -50,6 +58,17 @@ export default function EvidenceDetailPage() {
   const [receipt, setReceipt] = useState<{ policyDecisionId: string; auditSeq: number } | null>(null);
   /** B21.2: `preview` is null and `degraded` set when the tier's root could not be reached — the record served, the bytes not (EYE-DEG-001). */
   const [download, setDownload] = useState<{ byteLength: number; contentDigest: string; integrity: string; tier: string; availability: string; preview: string | null; degraded: { root: string; label: string } | null } | null>(null);
+
+  /* B82 ev — this evidence's own citation resolved (graph.provenance.read), the last governed read of its bytes (the verification's bytes facet) */
+  const [lastRead, setLastRead] = useState<ViewerRead | null>(null);
+  const ownRef = useMemo<CitationRef[]>(() => {
+    const e = d?.['evidence'] as Record<string, unknown> | undefined;
+    const v = Number(e?.['object_version']);
+    return e === undefined || !Number.isInteger(v) ? [] : [{ kind: 'evidence', id: String(e['object_id'] ?? evdId), version: v, digest: typeof e['content_digest'] === 'string' ? e['content_digest'] as string : null }];
+  }, [d, evdId]);
+  const [rev, setRev] = useState(0);
+  const resolved = useCitationResolutions(scope, ownRef, rev);
+  /* end B82 ev */
 
   const load = useCallback(async (at: string | null) => {
     const r = await observation.getEvidence(scope, evdId, at);
@@ -180,6 +199,11 @@ export default function EvidenceDetailPage() {
         </UnknownNote>
       </section>
 
+      {/* B82 ev — THE CITED SPAN, ITS VERIFICATION, ITS RIGHTS (CMP-025/028/031/032, UX-26-001/003/005): the resolution of this version (short of
+          the bytes), the bytes read only when a person asks (the EXISTING evidence-read authority — D9), a fragment shown highlighted in its parent */}
+      <B82Evidence scope={scope} evd={evd} payload={payload} source={source} resolved={resolved} lastRead={lastRead} setLastRead={setLastRead} onChanged={() => setRev((n) => n + 1)} />
+      {/* end B82 ev */}
+
       {/* ── chain of custody ───────────────────────────────────────── */}
       <section aria-labelledby="custody" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
         <h2 id="custody" style={{ marginBlockStart: 0, fontSize: 'var(--eye-type-heading-3)' }}>Chain of custody</h2>
@@ -242,26 +266,11 @@ export default function EvidenceDetailPage() {
           )}
         </dl>
 
-        <ScrollBox label="Custody events">
-          <table className="eye-table">
-            <caption>Every custody event on this object, in order.</caption>
-            <thead>
-              <tr><th scope="col">Event</th><th scope="col">Actor</th><th scope="col">Digest verified</th><th scope="col">When</th></tr>
-            </thead>
-            <tbody>
-              {custody.map((c) => (
-                <tr key={String(c['event_id'])}>
-                  <td data-label="Event">{String(c['event']).replace('custody.', '')}</td>
-                  <td data-label="Actor"><Mono>{String(c['actor'])}</Mono></td>
-                  <td data-label="Digest verified">
-                    {c['digest_verified'] === true ? '✓ yes' : c['digest_verified'] === false ? '✕ NO' : '— not applicable'}
-                  </td>
-                  <td data-label="When"><Mono>{fmtInstant(c['occurred_at'])}</Mono></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </ScrollBox>
+        {/* B82 ev: the custody events as the library's timeline and its table (CMP-030; §CF's EventTimeline at the fold) */}
+        <CustodyTimeline caption="Custody events" rows={custody.map((c): CustodyRow => ({ eventId: String(c['event_id']), event: String(c['event']), actor: c['actor'] == null ? null : String(c['actor']),
+          occurredAt: c['occurred_at'] == null ? null : new Date(String(c['occurred_at'])).toISOString(), digestVerified: c['digest_verified'] === true ? true : c['digest_verified'] === false ? false : null,
+          details: (c['details'] ?? null) as Record<string, unknown> | null }))} />
+        {/* end B82 ev */}
       </section>
 
       {/* ── original bytes ─────────────────────────────────────────── */}
@@ -282,7 +291,7 @@ export default function EvidenceDetailPage() {
             const text = dl.base64 === null ? null : (typeof atob === 'function' ? atob(dl.base64) : '');
             setDownload({
               byteLength: dl.byteLength, contentDigest: dl.contentDigest, integrity: dl.integrity, tier: dl.tier, availability: dl.availability,
-              preview: text === null ? null : text.slice(0, 600), degraded: dl.degraded ?? null,
+              preview: text === null ? null : '', degraded: dl.degraded ?? null,
             });
           }}
         />
@@ -296,25 +305,9 @@ export default function EvidenceDetailPage() {
               {fmtBytes(download.byteLength)} retrieved · integrity {download.integrity} · digest{' '}
               <Mono>{download.contentDigest.slice(0, 16)}…</Mono>
             </LiveStatus>
-            {download.preview !== null && (
-              <ScrollBox label="Retrieved bytes">
-                <pre
-                  style={{
-                    background: 'var(--eye-color-surface-secondary)',
-                    border: '1px solid var(--eye-color-border-default)',
-                    borderRadius: 'var(--eye-radius-md)',
-                    padding: 'var(--eye-space-8)',
-                    fontFamily: 'var(--eye-font-mono)',
-                    fontSize: 'var(--eye-type-mono-sm)',
-                    margin: 0,
-                    maxBlockSize: '18rem',
-                    overflow: 'auto',
-                  }}
-                >
-                  {download.preview}
-                </pre>
-              </ScrollBox>
-            )}
+            {/* B82 ev: the 600-character preview is replaced by the viewer above (the cited span, highlighted, through the governed segment read) */}
+            <p className="eye-ev-note">The download is an attachment; the bytes are shown in place only by the viewer above, through the governed segment read.</p>
+            {/* end B82 ev */}
           </div>
         )}
         {download !== null && download.availability === 'unreachable' && (
@@ -389,3 +382,61 @@ export default function EvidenceDetailPage() {
     </>
   );
 }
+
+/* B82 ev */
+/** The page's §EV section: the resolution of THIS version, the cited bytes (own; a fragment highlighted in its parent), verification, rights. */
+function B82Evidence({ scope, evd, payload, source, resolved, lastRead, setLastRead, onChanged }: {
+  scope: Scope; evd: Record<string, unknown>; payload: Record<string, unknown>; source: Record<string, unknown> | null; resolved: ResolutionState;
+  lastRead: ViewerRead | null; setLastRead: (r: ViewerRead) => void; onChanged: () => void;
+}) {
+  const [verifyError, setVerifyError] = useState<{ code: string; message: string; correlationId: string } | null>(null);
+  const r = resolved.state === 'ready' ? [...resolved.byKey.values()][0] ?? null : null;
+  const leaf = r?.leaves[0] ?? null;
+  const fragment = (payload['fragment'] ?? null) as Record<string, unknown> | null;
+  const parentId = typeof payload['parent_evd_id'] === 'string' ? payload['parent_evd_id'] as string : null;
+  const ar = ((source?.['contract'] as Record<string, unknown> | undefined)?.['authority_and_rights'] ?? {}) as Record<string, unknown>;
+  const contract: ContractRights | null = source === null ? null : {
+    rightsState: typeof source['rights_state'] === 'string' ? source['rights_state'] as string : null, licence: typeof ar['licence'] === 'string' ? ar['licence'] as string : null,
+    permittedUse: Array.isArray(ar['permitted_use']) ? (ar['permitted_use'] as unknown[]).map(String) : [], attribution: typeof ar['attribution'] === 'string' ? ar['attribution'] as string : null,
+    retention: typeof ar['retention'] === 'string' ? ar['retention'] as string : null,
+  };
+  const authenticity = (payload['authenticity'] ?? {}) as Record<string, string>;
+  const facets: VerificationFacet[] = [
+    bytesVerification(lastRead),
+    { facet: 'Publisher signature (content authenticity)', outcome: authenticity['content_authenticity'] === 'verified' ? 'verified' : 'unavailable',
+      detail: authenticity['content_authenticity'] === 'verified' ? 'the publisher’s signature verified at admission' : 'this publisher offers no signature mechanism; the content’s origin is neither verified nor refuted', checkedAt: null },
+  ];
+  const sourceId = leaf?.sourceId ?? (/^SRC:([0-9a-f-]{36})@/.exec(String(evd['provenance_ref'] ?? ''))?.[1] ?? null);
+  const contractVersion = leaf?.contractVersion ?? (Number(/@(\d+)$/.exec(String(evd['provenance_ref'] ?? ''))?.[1]) || null);
+  const length = Number(payload['byte_length']);
+  return (
+    <section aria-labelledby="b82-ev" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
+      <h2 id="b82-ev" style={{ marginBlockStart: 0, fontSize: 'var(--eye-type-heading-3)' }}>The cited bytes, their verification and their rights</h2>
+      {resolved.state === 'loading' && <p className="eye-ev-note">Resolving this version…</p>}
+      {resolved.state === 'refused' && <ErrorNote error={resolved.error} />}
+      {r !== null && <EvidenceDisclosure model={evidenceDisclosure([r])} />}
+      {leaf !== null && <EvidenceCard leaf={leaf} />}
+      {leaf !== null && <EvidenceViewer leaf={leaf} scope={scope} onRead={setLastRead} label="This version’s bytes" contextBytes={0} />}
+      {fragment !== null && parentId !== null && (
+        <EvidenceViewer scope={scope} label="This fragment, highlighted in its parent’s bytes"
+          leaf={{ evidence: { id: parentId, version: 0, digest: '', byteStart: Number(fragment['byte_start']), byteEnd: Number(fragment['byte_end']), mediaType: leaf?.evidence?.mediaType ?? null } }} />
+      )}
+      <RightsNotice terms={leaf?.rights ?? null} contract={contract} />
+      <RightsTermsForm scope={scope} sourceId={sourceId} contractVersion={contractVersion} current={leaf?.rights ?? null} onChanged={onChanged} />
+      <VerificationPanel facets={facets} receipt={lastRead?.receipt ?? null}
+        onVerifyAgain={leaf === null || !Number.isFinite(length) || length < 1 ? undefined : async () => {
+          setVerifyError(null);
+          const x = await evidenceApi.segment(scope, String(evd['object_id']), { version: Number(evd['object_version']), byteStart: 0, byteEnd: Math.min(length, 65_536), context: 0 });
+          const at = new Date().toISOString();
+          if (!x.ok || x.data === undefined) {
+            setVerifyError(x.error ?? null);
+            if (x.status === 409) setLastRead({ integrity: 'failed', contentDigest: null, at, detail: x.error?.message ?? null, receipt: null });
+            throw new Error('refused');
+          }
+          setLastRead({ integrity: x.data.segment.integrity, contentDigest: x.data.segment.contentDigest, at, detail: x.data.segment.degraded?.label ?? null, receipt: x.data.receipt });
+        }} />
+      <ErrorNote error={verifyError} />
+    </section>
+  );
+}
+/* end B82 ev */
