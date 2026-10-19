@@ -467,6 +467,15 @@ const TWIN_RULES: typeof RULES = [
  * 409 → 422, so a new refusal is never phrased so that an earlier rule catches it.
  */
 const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 'EYE_STA_001' | 'EYE_AUT_001' | 'EYE_REQ_001' }> = [
+  /* B50 §0 (0120 §0) — the knowledge hooks' refusals, in the CLASS form (anchored): `object use rejected (<class>)` raised by
+     objects.assert_usable and the hooks §HD / §PV fill (unknown_object → 404; incomplete_header, unfit → 409 — a state of the object its
+     owner can resolve; use and the rest → 422), and the freeze the re-declared ports raise on a frozen source: `publication rejected
+     (held)` and `export rejected (held)` → 409. Placed at the head: the B36 publication 422 row and the unclassed `^export rejected` 422
+     row below would shadow them. No earlier row raises these texts. */
+  { match: /^object use rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^object use rejected \((incomplete_header|unfit)\)|^(publication|export) rejected \(held\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^object use rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B50 §0 */
   /* B35 reopen (0101 §P3) — the reopen's NEW causes refuse in the CLASS form `reopen rejected (<class>): …` (unknown_challenge, unknown_appeal,
      unknown_change → 404; cause_state → 409; cause → 422). Placed at the head: the unclassed `^reopen rejected` 422 row below would shadow them.
      The older unclassed reopen texts keep their rows. */
