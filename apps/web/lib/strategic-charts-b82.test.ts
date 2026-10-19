@@ -6,10 +6,11 @@
  */
 import { describe, expect, it } from 'vitest';
 import { CHART_KINDS, type ChartSpec } from './b82-seams';
+import { bridgeRows, bridgeSteps } from './chart-b82';
 import {
   ALERT_COLUMNS, SC_REQUIRED_DEFINITIONS, alertGeometry, alertInput, alertRows, alertSpec, auditGeometry, auditRows, auditSpec, comparisonFrame, comparisonGeometry,
   comparisonRows, comparisonSpec, coverageGeometry, coverageInput, coverageRows, coverageSpec, diffGeometry, diffInput, diffRows, diffSpec, dominantUnit, fanGeometry,
-  fanIdentity, fanRows, fanSpec, FAN_KIND_IDENTITY, healthBridgeInput, healthGeometry, healthRows, healthSpec, healthWaterfallInput, isoOf, numOf, opportunityFromDetail,
+  fanIdentity, fanRows, fanSpec, FAN_KIND_IDENTITY, healthBridgeInput, healthBridgeSpec, healthWaterfallSpec, outcomeBridgeSpec, healthGeometry, healthRows, healthSpec, healthWaterfallInput, isoOf, numOf, opportunityFromDetail,
   opportunityGeometry, opportunityRows, opportunitySpec, optionGeometry, optionMatrixInput, optionRows, optionSpec, riskGeometry, riskInput, riskRows, riskSpec, runBasis,
   runGeometry, runRows, runSpec, runSpread, statusCounts, statusFromDegraded, statusGeometry, statusOrder, statusRows, statusSpec, strategicGrammar, tornadoGeometry,
   tornadoInput, tornadoRowsOf, tornadoSpec, type AuditIn, type CompareItemIn, type FanBranchIn, type HealthCompIn, type HealthDimIn, type RunIn, type StatusIn,
@@ -186,6 +187,18 @@ describe('HealthDecomposition (VIZ-12) and the health bridges', () => {
     const b = healthBridgeInput({ aggregate: { from: 50, to: 58 }, dimensions: [{ key: 'exec', label: 'Execution', delta: 6 }, { key: 'k2', label: 'Strategy', delta: 3 }] }, { exec: 2, k2: 1 });
     expect(b!.drivers.map((d) => d.delta)).toEqual([4, 1]);
     expect(healthBridgeInput({ aggregate: { from: null, to: 1 }, dimensions: [] }, {})).toBeNull();
+  });
+});
+
+describe('§CF\'s Waterfall and VarianceBridge as §SC places them (health, review)', () => {
+  const dims: HealthDimIn[] = [{ key: 'a', label: 'Execution', value: 60, status: 'computed', coverage: 1, weight: 1, bands: [], band: null }, { key: 'b', label: 'Strategy', value: 40, status: 'computed', coverage: 1, weight: 1, bands: [], band: null }];
+  it('the score\'s waterfall and the comparison\'s bridge pass the grammar with the rows the components derive', () => {
+    const w = healthWaterfallInput(dims, 52);
+    ok(healthWaterfallSpec({ aggregate: 52, dims, formula: 'weighted-mean@1', at: AS_OF, asOf: AS_OF, snapshotId: 's' }), bridgeRows(bridgeSteps(w.start, w.components, w.end)));
+    const b = healthBridgeInput({ aggregate: { from: 48, to: 52 }, dimensions: [{ key: 'a', label: 'Execution', delta: 6 }, { key: 'b', label: 'Strategy', delta: 0 }] }, { a: 1, b: 1 })!;
+    ok(healthBridgeSpec({ from: 48, to: 52, baselineAt: AS_OF, snapshotAt: AS_OF, asOf: AS_OF, formula: 'f' }), bridgeRows(bridgeSteps({ label: 'baseline', value: b.from }, b.drivers, { label: 'actual', value: b.to }, 'Unattributed')));
+    ok(outcomeBridgeSpec({ criterion: 'on-time share', unit: '%', target: 95, observed: 91, comparator: '>=', met: false, assessedAt: AS_OF, asOf: AS_OF, inferred: 'difference-in-differences, confidence 0.6' }),
+      bridgeRows(bridgeSteps({ label: 'target', value: 95 }, [], { label: 'observed', value: 91 }, 'Unattributed')));
   });
 });
 

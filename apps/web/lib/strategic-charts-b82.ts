@@ -20,7 +20,7 @@
  * CONSTRUCTION only — nothing here is demonstrated or accepted; every value a page passes is the server's (on a demonstration, SYNTHETIC).
  */
 import type { AlternativeColumn, AlternativeRow, ChartKind, ChartSource, ChartSpec, ChartTime, DashPattern, LegendEntry, MarkerShape } from './b82-seams';
-import { causalWordsIn, chartGrammar, chartNumber, extentOf, linearScale, niceDomain, plotBox, spreadLabels, timeTicks, toInstant, type Box } from './chart-b82';
+import { BRIDGE_COLUMNS, causalWordsIn, chartGrammar, chartNumber, extentOf, linearScale, niceDomain, plotBox, spreadLabels, timeTicks, toInstant, type Box } from './chart-b82';
 
 export const SC_RULES_VERSION = 'b82-sc-grammar-1';
 
@@ -592,6 +592,57 @@ export function healthBridgeInput(cmp: { aggregate: { from: number | null; to: n
   return {
     from: cmp.aggregate.from, to: cmp.aggregate.to,
     drivers: cmp.dimensions.map((d) => ({ key: d.key, label: d.label, delta: finite(d.delta) && total > 0 && weights[d.key] !== undefined ? Number(((d.delta * weights[d.key]!) / total).toPrecision(10)) : null, source: weights[d.key] === undefined ? null : `weight ${weights[d.key]} of ${total}` })),
+  };
+}
+
+/** §CF's Waterfall on /decisions/health: the score built from its dimensions (the reading's method declared; the residual always drawn). */
+export function healthWaterfallSpec(a: { aggregate: number; dims: readonly HealthDimIn[]; formula: string; at: string | null; asOf: string; snapshotId: string }): ChartSpec {
+  const valued = a.dims.filter((d) => finite(d.value)).length;
+  return {
+    kind: 'waterfall', title: `The score of ${chartNumber(a.aggregate)} built from its dimensions`,
+    basis: `each dimension's value times its weight share among the dimensions that carry a value — a reading of the snapshot laid end to end; the server's formula (${a.formula}) is the score's, and the residual is what this reading does not explain`,
+    time: { basis: 'valid', cutoff: cutoffOf(a.at, a.asOf, 'the snapshot records no instant'), asOf: a.asOf },
+    units: [{ measure: 'score', unit: 'score (0–100)' }], sources: READ(`executive.health.read · /executive/health/snapshots/${shortId(a.snapshotId)}/get`, 'the health snapshot'),
+    uncertainty: { kind: 'not_quantified', statement: 'the dimensions\' own coverage and confidence are in their decompositions below; a dimension without a value adds nothing and is said' },
+    legend: [{ key: 'up', label: 'a dimension\'s share (open bar)', dash: 'solid', marker: 'square' }, { key: 'residual', label: 'residual (dashed) — not explained by this reading', dash: 'dashed', marker: 'none' }],
+    alternative: {
+      summary: `${valued} of ${a.dims.length} dimension(s) carry a value; from 0 to the score ${chartNumber(a.aggregate)}, the residual stated.`,
+      columns: BRIDGE_COLUMNS('score (0–100)'),
+      definitions: [{ term: 'Method', definition: 'value × weight ÷ the total weight of the dimensions with a value; the residual is the score minus their sum' }, { term: 'Residual', definition: 'shown always — "fully attributed" when it is zero' }],
+    },
+  };
+}
+/** §CF's VarianceBridge on /decisions/health: the baseline snapshot's score → this snapshot's, each dimension's change weighted, the unattributed delta drawn. */
+export function healthBridgeSpec(a: { from: number; to: number; baselineAt: string | null; snapshotAt: string | null; asOf: string; formula: string }): ChartSpec {
+  return {
+    kind: 'variance_bridge', title: 'This snapshot against its baseline — the change by dimension',
+    basis: `the comparison read of two snapshots of the same definition and formula (${a.formula}); each dimension's change times its weight share — the unattributed delta drawn as its own step`,
+    time: { basis: 'valid', cutoff: cutoffOf(a.snapshotAt, a.asOf, 'the snapshot records no instant'), asOf: a.asOf },
+    units: [{ measure: 'score', unit: 'score (0–100)' }], sources: READ('executive.health.read · /executive/health/compare', 'the comparison of the two snapshots'),
+    uncertainty: { kind: 'not_quantified', statement: 'a withheld (indeterminate) side is never compared; a dimension without a change adds nothing and is said' },
+    legend: [{ key: 'step', label: 'a dimension\'s weighted change (open: up, hatched: down)', dash: 'solid', marker: 'square' }, { key: 'unattributed', label: 'unattributed (dashed)', dash: 'dashed', marker: 'none' }],
+    alternative: {
+      summary: `From ${chartNumber(a.from)} (baseline${a.baselineAt === null ? '' : ` at ${a.baselineAt.slice(0, 10)}`}) to ${chartNumber(a.to)} (this snapshot${a.snapshotAt === null ? '' : ` at ${a.snapshotAt.slice(0, 10)}`}).`,
+      columns: BRIDGE_COLUMNS('score (0–100)'),
+      definitions: [{ term: 'Drivers', definition: 'each dimension\'s change in value × its weight ÷ the total weight — this reading, not the server\'s formula' }, { term: 'Unattributed', definition: 'actual − baseline − the drivers: shown, never hidden in a driver' }],
+    },
+  };
+}
+/** §CF's VarianceBridge on /decisions/review: an outcome criterion's committed target → its observed value; the decision's inferred
+ *  contribution is measured against the counterfactual, NOT this target — so it is not drawn as a driver, and the whole gap is unattributed. */
+export function outcomeBridgeSpec(a: { criterion: string; unit: string; target: number; observed: number; comparator: string; met: boolean; assessedAt: string; asOf: string; inferred: string }): ChartSpec {
+  return {
+    kind: 'variance_bridge', title: `${a.criterion}: the committed target against the observed outcome`,
+    basis: 'the outcome assessment as recorded: the criterion\'s target (the commitment) and the observed value; the gap is unattributed on this read',
+    time: { basis: 'record', cutoff: cutoffOf(a.assessedAt, a.asOf, 'the assessment records no instant'), asOf: a.asOf },
+    units: [{ measure: a.criterion, unit: a.unit }], sources: READ('decision.read · /decisions/:id/review', 'the outcome assessment'),
+    uncertainty: { kind: 'not_quantified', statement: 'the observed value as recorded; the inferred contribution carries its own method and confidence (not a driver here)' },
+    legend: [{ key: 'gap', label: 'unattributed gap (dashed)', dash: 'dashed', marker: 'none' }, { key: 'level', label: 'target and observed (filled)', dash: 'solid', marker: 'square' }],
+    alternative: {
+      summary: `Target ${a.comparator} ${chartNumber(a.target)} ${a.unit}; observed ${chartNumber(a.observed)} ${a.unit} — ${a.met ? 'met' : 'NOT met'}.`,
+      columns: BRIDGE_COLUMNS(a.unit),
+      definitions: [{ term: 'Unattributed', definition: `the whole gap: the inferred contribution (${a.inferred}) is measured against the counterfactual, not this target, so it is not drawn as a driver` }],
+    },
   };
 }
 

@@ -61,12 +61,13 @@ describe('dg-lint-4 over planted sources', () => {
 describe('dg-lint-4 over the REAL web source — the ratchet holds', () => {
   const repo = readRepository();
   it('reads the repository', () => { expect(repo).not.toBeNull(); });
-  it('today\'s findings are exactly the committed list (the two div charts §SC replaces); nothing new, nothing stale', () => {
+  it('today\'s findings are exactly the committed list — empty since §SC replaced the two div charts; nothing new, nothing stale', () => {
     const r = lintCharts(repo!.files);
     const k = chartRatchet(r.findings, CHART_LINT_RATCHET);
     expect(k.regressions.map((x) => `${x.rule} ${x.file}:${x.line} ${x.excerpt}`)).toEqual([]);
     expect(k.resolved.map((x) => `${x.rule} ${x.file}`)).toEqual([]);
-    expect(new Set(CHART_LINT_RATCHET.map((x) => x.file))).toEqual(new Set(['apps/web/app/decisions/health/page.tsx', 'apps/web/app/twins/simulations/impact/page.tsx']));
+    /* B82 sc: the two div charts replaced (SensitivityTornado, HealthDecomposition) — the committed list is EMPTY: dg-lint-4 at zero */
+    expect(CHART_LINT_RATCHET).toEqual([]); expect(r.findings).toEqual([]);
   });
   it('the library\'s chart files compose ChartFrame and add no finding', () => {
     const r = lintCharts(repo!.files);
