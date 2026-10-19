@@ -1550,6 +1550,24 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B50 lc */
+  /* B82 ts */
+  /* B82 §TS (0121_b82_x_ts; TS-06/08/10, HX-02, UX-06-004/-005/-006). ONE EXACT rule, placed BEFORE the `objects.read` and `objects.` prefix
+     rules (neither is a prefix of `objects.display_truth.read` except `objects.`, which would admit the administrators only). THE DISPLAY-TRUTH
+     READ (objects.display_truth — RECOMMENDED / CORRECTED / INDETERMINATE derived, never stored): EXACTLY graph.provenance.read's readers
+     (B50 §PV), who already read every product's truth and lifecycle state through graph.explain — no role gains a read it did not hold
+     (DESIGN D9: no new permission in substance); audited, purpose-bound, C2 at most. The read asserts the caller's tenant and domain itself. */
+  ...((): Rule[] => {
+    const d = (role: string) => ({ role, atScope: 'DOMAIN' as Scope });
+    const readers = [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }, { role: 'auditor', atScope: 'TENANT' as Scope },
+      { role: 'retention_authority', atScope: 'TENANT' as Scope },
+      ...['domain_admin', 'domain_analyst', 'collection_manager', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator',
+        'knowledge_owner', 'record_authority', 'retention_steward', 'ontology_steward', 'data_steward', 'method_steward', 'decision_owner', 'decision_approver', 'decision_authority',
+        'executive', 'executive_operator', 'risk_owner', 'privacy_officer'].map(d)];
+    return [
+      { actionPrefix: 'objects.display_truth.read', exact: true, requiredAnyRole: readers, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B82 ts */
   {
     actionPrefix: 'objects.read',
     requiredAnyRole: [
