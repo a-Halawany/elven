@@ -31,9 +31,12 @@ import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui'
 /* B50 ci */
 import { CommandReview } from '../../../components/authority';
 import { AffectedProductList } from '../../../components/knowledge';
-import { eligibility, rolesIn } from '../../../lib/authority-b81';
+import { eligibility, rolesIn, /* B40 res */ typedPhrase /* end B40 res */ } from '../../../lib/authority-b81';
 import { impactB50, type TriggerWalkAnswer } from '../../../lib/impact-b50-api';
-import { TRIGGERS, TRIGGER_KINDS, parseAffected, triggerFormProblems, triggerPayload, triggerStateText, walkOutcomeText, type TriggerKind } from '../../../lib/impact-b50';
+import { TRIGGERS, TRIGGER_KINDS, parseAffected, triggerFormProblems, triggerStateText, walkOutcomeText, type TriggerKind } from '../../../lib/impact-b50';
+/* B40 res */
+import { CHALLENGE_CLOSE_CONTRACT, TRIGGER_RECORD_CONTRACT, closeReviewPayload, triggerReviewPayload } from '../../../lib/impact-b50';
+/* end B40 res */
 import type { AffectedProduct } from '../../../lib/b50-seams';
 /* end B50 ci */
 
@@ -305,6 +308,8 @@ export default function ImpactPage() {
           action={`graph.impact.trigger.${kind}`}
           object={{ type: objectType, id: objectId.trim() === '' ? 'not named yet' : objectId.trim(), version: null, title: TRIGGERS[kind].label }}
           digest={null}
+          /* B40 res (R1): the record route binds no version or digest — a CLIENT-SIDE review of the exact payload it sends (said on the control) */
+          payloadReview={{ payload: triggerReviewPayload({ kind, objectType, objectId, reason, basis }), contract: TRIGGER_RECORD_CONTRACT }}
           eligibility={eligibility({ action: `graph.impact.trigger.${kind}`, me: me.principalId, isHuman: me.kind === 'human', roles: rolesIn(me.bindings, scope), requiredRoles: TRIGGERS[kind].roles })}
           consequence={{ source: 'stated', effect: `records the ${TRIGGERS[kind].label.toLowerCase()} on the object; the domain's propagation agent then walks what rests on it and every product it reaches is classed`,
             affected: [`${objectType} ${objectId.trim() === '' ? '(not named yet)' : objectId.trim().slice(0, 8)}`, 'what rests on it'], users: ['the owners of the reached products'],
@@ -314,7 +319,7 @@ export default function ImpactPage() {
           receipt={triggerReceipt} problem={triggerProblem}
           onRun={async () => {
             setTriggerProblem(null);
-            const r = await impactB50.record(scope, kind, triggerPayload({ kind, objectType, objectId, reason, basis }));
+            const r = await impactB50.record(scope, kind, triggerReviewPayload({ kind, objectType, objectId, reason, basis }).payload);   // B40 res: exactly the reviewed payload
             if (!r.ok || r.data === undefined) { const m = r.error?.message ?? 'the trigger was not recorded; check the fields and try again'; setTriggerProblem(m); throw new Error(m); }
             setWalk(r.data.walk); setTriggerReceipt(r.data.receipt);
             await load(); await loadTriggers();
@@ -346,6 +351,10 @@ export default function ImpactPage() {
             action="graph.impact.trigger.close"
             object={{ type: 'ITR', id: String(closing['trigger_id']), version: null, title: `Human challenge on ${String(closing['object_type'])} ${String(closing['object_id']).slice(0, 8)}…`, state: 'open' }}
             digest={null}
+            /* B40 res (R1): the close route binds no version (the port checks the challenge is still open) — a CLIENT-SIDE review of the
+               exact payload; the close cannot be undone, so the challenge's short id is typed to confirm it */
+            payloadReview={{ payload: closeReviewPayload(String(closing['trigger_id']), closeReason), contract: CHALLENGE_CLOSE_CONTRACT }}
+            typedPhrase={typedPhrase({ name: String(closing['trigger_id']).slice(0, 8) })}
             eligibility={eligibility({ action: 'graph.impact.trigger.close', me: me.principalId, isHuman: me.kind === 'human', roles: rolesIn(me.bindings, scope), requiredRoles: ['knowledge_owner', 'domain_admin'],
               excluded: [{ principal: String(closing['recorded_by']), why: 'you opened this challenge — the deciding person closes it' }] })}
             consequence={{ source: 'stated', effect: 'closes the challenge: what rests on the object is no longer classed challenged at the next walk', affected: [`${String(closing['object_type'])} ${String(closing['object_id']).slice(0, 8)}`],
@@ -355,7 +364,8 @@ export default function ImpactPage() {
             problem={closeProblem}
             onRun={async () => {
               setCloseProblem(null);
-              const r = await impactB50.close(scope, String(closing['trigger_id']), closeReason.trim());
+              const sent = closeReviewPayload(String(closing['trigger_id']), closeReason);   // B40 res: exactly the reviewed payload
+              const r = await impactB50.close(scope, sent.triggerId, sent.payload.reason);
               if (!r.ok) { const m = r.error?.message ?? 'the challenge was not closed; check the reason and try again'; setCloseProblem(m); throw new Error(m); }
               setClosing(null); await loadTriggers();
             }} />

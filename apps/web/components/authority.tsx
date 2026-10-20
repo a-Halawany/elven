@@ -6,7 +6,8 @@
  *
  *   CommandReview       CMP-044: identity, authority, exact state + digest, consequence, the deliberate act, the receipt — the act DISABLED
  *                       with every unmet condition named (not eligible, digest not frozen, consequence not read, no rationale, the typed
- *                       phrase not matched); the palette / intent hand off to it (?review=<action>) and nothing else acts.
+ *                       phrase not matched); the palette / intent hand off to it (?review=<action>) and nothing else acts. B40 res: a
+ *                       command whose server binds NO version passes `payloadReview` — the exact payload reviewed client-side (said so).
  *   ConsequencePreview  CMP-045 / HX-13 / PAT-17: effect, affected objects and people, reversibility, residual risk, audit — the SERVER's
  *                       preview, or the effect STATED by the command catalogue (said as such, never as computed); rendered whole, inline,
  *                       before the control (never behind a disclosure).
@@ -31,6 +32,7 @@ import { Digest, Timestamp } from './text';
 import { gateStateMark, signatureLine, type GateStateRow } from '../lib/gates-b36';
 import {
   actionClassOf, commandReviewGate, isConsequential, isIrreversible, shortDigest, shortId, signatureReceiptView, typedState,
+  /* B40 res */ canonicalPayload, PAYLOAD_REVIEW_NOTE, /* end B40 res */
   type ConsequenceView, type ContestRoute, type ContestRow, type DigestView, type Eligibility, type ReviewRecordModel,
 } from '../lib/authority-b81';
 
@@ -131,7 +133,7 @@ export function TypedConfirmation({ phrase, value, onChange, what }: { phrase: s
 
 /* ───────────────────────── CMP-044: the command review ───────────────────────── */
 
-export function CommandReview({ action, object, digest, currentDigest, eligibility, consequence, consequenceRead, rationale, typedPhrase, extraReasons, actionLabel, pendingLabel, variant, onRun, receipt, problem, children }: {
+export function CommandReview({ action, object, digest, currentDigest, eligibility, consequence, consequenceRead, rationale, typedPhrase, extraReasons, actionLabel, pendingLabel, variant, onRun, receipt, problem, children, /* B40 res */ payloadReview /* end B40 res */ }: {
   /** the governed action (PDP name) */ action: string;
   object: { type: string; id: string; version: number | null; title: string; state?: string | null };
   /** the digest SHOWN to the person (frozen at the review) and the digest the command carries now */ digest: string | null; currentDigest?: string | null;
@@ -144,9 +146,18 @@ export function CommandReview({ action, object, digest, currentDigest, eligibili
   actionLabel: string; pendingLabel: string; variant?: 'primary' | 'critical';
   /** the governed act: resolves on the server's answer (throw on refusal — the page shows the server's words) */ onRun: () => Promise<void>;
   receipt?: ReceiptT; problem?: string | null; children?: ReactNode;
+  /* B40 res (R1) */
+  /** ONLY for a command whose server contract binds NO version or digest: the exact payload the command sends, and the server's contract in
+   *  words. The review then binds that payload CLIENT-SIDE (said so on the control) instead of a digest; any change voids it. */
+  payloadReview?: { payload: unknown; contract: string } | null;
+  /* end B40 res */
 }) {
   const id = useId();
   const [typed, setTyped] = useState('');
+  /* B40 res (R1): the payload the person reviewed (canonical), and the payload the command would send now */
+  const [reviewed, setReviewed] = useState<string | null>(null);
+  const current = payloadReview ? canonicalPayload(payloadReview.payload) : '';
+  /* end B40 res */
   const irreversible = isIrreversible(action);
   /* PAT-17: a consequential act needs its consequence read; a review-class act (review, acknowledge, ready) records a reading only */
   const read = consequence !== null ? (consequenceRead ?? consequence.source === 'stated') : !isConsequential(actionClassOf(action));
@@ -155,6 +166,7 @@ export function CommandReview({ action, object, digest, currentDigest, eligibili
     rationale: rationale ? { value: rationale.value, min: rationale.min } : null,
     typed: irreversible ? (typedPhrase ? { phrase: typedPhrase, value: typed } : null) : null,
     source: 'deliberate',
+    /* B40 res */ payloadReview: payloadReview ? { reviewed, current } : null, /* end B40 res */
   });
   const gate = { enabled: g0.enabled && (extraReasons ?? []).length === 0, reasons: [...g0.reasons, ...(extraReasons ?? [])] };
   /* the deliberate controls sit UNDER the consequence they act on (the preview's region holds them) */
@@ -162,10 +174,24 @@ export function CommandReview({ action, object, digest, currentDigest, eligibili
     <>
       {children}
       {rationale ? <input aria-label={rationale.label} className="eye-authority-input eye-authority-wide" value={rationale.value} onChange={(e) => rationale.onChange(e.target.value)} placeholder="your rationale, in your own words" /> : null}
+      {/* B40 res (R1): the client-side payload review — the exact payload shown, reviewed deliberately, voided by any change */}
+      {payloadReview ? (
+        <div>
+          <p className="eye-authority-small"><strong>Binding: {PAYLOAD_REVIEW_NOTE}.</strong> The server checks: {payloadReview.contract}.</p>
+          <GovernedButton label="Review the exact payload" pendingLabel="reviewing" variant="quiet" onRun={async () => { setReviewed(current); }} />
+          {reviewed === null ? null : (
+            <>
+              <pre className="eye-mono-wrap" tabIndex={0} aria-label="The reviewed payload">{JSON.stringify(JSON.parse(reviewed), null, 2)}</pre>
+              {reviewed !== current ? <p role="note" className="eye-authority-warn">The payload changed after you reviewed it — the review is void; review it again.</p> : null}
+            </>
+          )}
+        </div>
+      ) : null}
+      {/* end B40 res */}
       {irreversible && typedPhrase ? <TypedConfirmation phrase={typedPhrase} value={typed} onChange={setTyped} what={actionLabel.toLowerCase()} /> : null}
       <span aria-describedby={gate.enabled ? undefined : `${id}-why`}>
         <GovernedButton label={actionLabel} pendingLabel={pendingLabel} variant={variant ?? 'primary'} disabled={!gate.enabled}
-          onRun={async () => { await onRun(); setTyped(''); }} />
+          onRun={async () => { await onRun(); setTyped(''); /* B40 res: a sent payload needs a new review before another act */ setReviewed(null); }} />
       </span>
       {!gate.enabled ? <ul id={`${id}-why`} className="eye-cld-reasons" aria-label="Why the action is not available">{gate.reasons.map((r) => <li key={r}>{r}</li>)}</ul> : null}
       {problem ? <p role="alert" className="eye-authority-critical">{problem}</p> : null}
@@ -175,7 +201,9 @@ export function CommandReview({ action, object, digest, currentDigest, eligibili
     <section aria-label={`Command review: ${actionLabel}`} className="eye-authority-review" data-action={action}>
       <p className="eye-authority-line">
         <strong>{object.title}</strong> · {object.type} <span className="eye-mono-wrap">{shortId(object.id)}</span>{object.version !== null ? ` v${object.version}` : ''}{object.state ? ` · ${object.state.replace(/_/g, ' ')}` : ''}
-        {' · '}digest {digest === null ? 'not bound' : <span className="eye-mono-wrap" title={digest}>{shortDigest(digest)}</span>}
+        {' · '}{payloadReview /* B40 res: a command the server binds by no version says so, never "digest not bound" */
+          ? 'binding: client-side payload review (no server version)'
+          : <>digest {digest === null ? 'not bound' : <span className="eye-mono-wrap" title={digest}>{shortDigest(digest)}</span>}</>}
         {' · '}<span className="eye-authority-small">{action}{irreversible ? ' — cannot be undone' : ''}</span>
       </p>
       <p className="eye-authority-small">{eligibility.can ? `Your authority: ${eligibility.basis}.` : `Not available to you: ${eligibility.reason}`}</p>

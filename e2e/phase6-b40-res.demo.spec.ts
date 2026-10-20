@@ -35,7 +35,8 @@ const shot = (page: Page, name: string) => page.screenshot({ path: join(SHOTS, `
 const RECORDER = process.env['EYE_B40RES_RECORDER'] ?? 'a.hoffmann';
 const CLOSER = process.env['EYE_B40RES_CLOSER'] ?? 'k.mueller';
 const RUN = Date.now().toString(36);
-const REASON = `B40 res walk ${RUN}: the claim's source was restated (SYNTHETIC)`;
+// EYE_B40RES_REASON: W2 alone on a challenge recorded elsewhere (the before-fix observation of the close control)
+const REASON = process.env['EYE_B40RES_REASON'] ?? `B40 res walk ${RUN}: the claim's source was restated (SYNTHETIC)`;
 
 async function signedIn(browser: Browser, username: string): Promise<Page> {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
