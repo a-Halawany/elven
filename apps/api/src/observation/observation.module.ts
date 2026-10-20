@@ -31,10 +31,12 @@ import { CollectionOrchestrator } from './acquisition/orchestrator.service.js';
 import { ObservationExceptionFilter } from './observation.filter.js';
 /* B82 ev */ import { EvidenceB82Controller } from './evidence-b82/evidence-b82.controller.js'; /* end B82 ev */
 /* B40 §0 */ import { INTAKE_STAGE_PROVIDERS } from './acquisition/intake-stages.js'; /* end B40 §0 */
+/* B40 va */ import { AuthenticityController } from './authenticity-b40/authenticity.controller.js'; /* end B40 va */
 
 @Module({
   imports: [PipelineModule, IdentityModule],
-  controllers: [ObservationController, UploadController, /* B82 ev: the cited evidence segment, the rights terms (0121 §EV) */ EvidenceB82Controller /* end B82 ev */],
+  controllers: [ObservationController, UploadController, /* B82 ev: the cited evidence segment, the rights terms (0121 §EV) */ EvidenceB82Controller /* end B82 ev */,
+    /* B40 va: publisher keys, evidence authenticity + attributes, inheritance, transformation rules, the tenant retention register (0123_b40_x_va) */ AuthenticityController /* end B40 va */],
   providers: [
     SourcesService,
     SourceCredentialStore,
