@@ -97,7 +97,14 @@ export type InjectionPoint =
   /* B40 va — F47 (DESIGN D17): the authenticate stage's check (stages/authenticate-va.ts) faults before it answers — the item is recorded
      `unavailable` (never verified, never silently trusted: payload content_authenticity unknown, provenance PARTIAL) */
   | 'f47.authenticity_check'
-  /* end B40 va */;
+  /* end B40 va */
+  /* B40 in */
+  // CP-6 B40 §IN (DESIGN D2, D17; V03-T-276) — the inspection engines fail CLOSED: F48 the sandboxed content inspector crashes or times out
+  // (raised where the stage asks the sandbox; the stage answers `unavailable` → the item is quarantined inspection_unavailable); F49 the clamd
+  // engine is unavailable (raised where the adapter would connect; the same answer). Never a clean verdict.
+  | 'f48.inspector_crash_or_timeout'
+  | 'f49.clamd_unavailable'
+  /* end B40 in */;
 
 /** Raised by an armed injection point. Distinguishable from a real failure. */
 export class InjectedFault extends Error {

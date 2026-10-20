@@ -33,12 +33,14 @@ import { ObservationExceptionFilter } from './observation.filter.js';
 /* B40 §0 */ import { INTAKE_STAGE_PROVIDERS } from './acquisition/intake-stages.js'; /* end B40 §0 */
 /* B40 rg */ import { RegistryB40Controller } from './registry-b40/registry-b40.controller.js'; /* end B40 rg */
 /* B40 va */ import { AuthenticityController } from './authenticity-b40/authenticity.controller.js'; /* end B40 va */
+/* B40 in */ import { IntakeB40Controller } from './intake-b40/intake-b40.controller.js'; /* end B40 in */
 
 @Module({
   imports: [PipelineModule, IdentityModule],
   controllers: [ObservationController, UploadController, /* B82 ev: the cited evidence segment, the rights terms (0121 §EV) */ EvidenceB82Controller /* end B82 ev */,
     /* B40 rg: the source registry, stewardship, the rights lifecycle and revocation impact (0123_b40_x_rg) */ RegistryB40Controller /* end B40 rg */,
-    /* B40 va: publisher keys, evidence authenticity + attributes, inheritance, transformation rules, the tenant retention register (0123_b40_x_va) */ AuthenticityController /* end B40 va */],
+    /* B40 va: publisher keys, evidence authenticity + attributes, inheritance, transformation rules, the tenant retention register (0123_b40_x_va) */ AuthenticityController /* end B40 va */,
+    /* B40 in: the intake review queue, the case's why, the verdicts, the upload approval (0123 §IN) */ IntakeB40Controller /* end B40 in */],
   providers: [
     SourcesService,
     SourceCredentialStore,
