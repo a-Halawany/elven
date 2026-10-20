@@ -13,6 +13,6 @@
   "data_classes": [
     "consignment status (internal)"
   ],
-  "protocol": "b40-cell-provisional-1",
+  "protocol": "eye-cell/1",
   "synthetic": true
 }

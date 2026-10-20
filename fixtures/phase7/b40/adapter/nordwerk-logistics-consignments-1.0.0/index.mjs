@@ -1,6 +1,6 @@
 /**
  * nordwerk-logistics-consignments 1.0.0 — a CUSTOMER-WRITTEN adapter (SYNTHETIC; CP-6 B40 scene 5). It runs only inside §CR's
- * connector cell; its only egress is ctx.gatewayFetch (the egress gateway), and it holds no credential. Protocol: b40-cell-provisional-1.
+ * connector cell; its only egress is ctx.gatewayFetch (the egress gateway), and it holds no credential. Protocol: eye-cell/1.
  */
 const START = 'https://consignments.partner-logistics.synthetic.example/v1/consignments?page=1';
 const REGISTERED = new Set(["consignments.partner-logistics.synthetic.example"]);
