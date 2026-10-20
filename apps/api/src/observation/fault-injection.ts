@@ -80,6 +80,14 @@ export type InjectionPoint =
   | 'f41.after_noop_before_response'
   | 'f42.new_observation_before_obs_insert'
   | 'f44.after_shared_digest_resolved_before_commit'
+  /* B40 cr — CP-6 B40 §CR (0123_b40_x_cr; D17): the connector cell's egress gateway and its records. Each fails CLOSED: F54 the gateway
+     cannot start (no cell is spawned, no request leaves, the run fails); F55 the transfer receipts cannot be written (nothing the cell
+     framed is admitted — no item without its receipts); F56 the suspension / requalification cannot be written (the run fails closed
+     all the same, its refusal receipt recorded, and the reason says the requalification was NOT recorded). */
+  | 'f54.gateway_down'
+  | 'f55.receipt_write'
+  | 'f56.requalification_write'
+  /* end B40 cr */
   // CP-6 B11 — the archive executor's copy into the archive tier (0070 §2; D3): before the write, and after the rename before the port records the move
   | 'b11.archive_copy_partial'
   | 'b11.archive_after_copy_before_record'

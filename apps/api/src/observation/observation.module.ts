@@ -31,10 +31,12 @@ import { CollectionOrchestrator } from './acquisition/orchestrator.service.js';
 import { ObservationExceptionFilter } from './observation.filter.js';
 /* B82 ev */ import { EvidenceB82Controller } from './evidence-b82/evidence-b82.controller.js'; /* end B82 ev */
 /* B40 §0 */ import { INTAKE_STAGE_PROVIDERS } from './acquisition/intake-stages.js'; /* end B40 §0 */
+/* B40 cr */ import { ConnectorCellController } from './connector-cell/connector-cell.controller.js'; import { ConnectorCellService } from './connector-cell/connector-cell.service.js'; /* end B40 cr */
 
 @Module({
   imports: [PipelineModule, IdentityModule],
-  controllers: [ObservationController, UploadController, /* B82 ev: the cited evidence segment, the rights terms (0121 §EV) */ EvidenceB82Controller /* end B82 ev */],
+  controllers: [ObservationController, UploadController, /* B82 ev: the cited evidence segment, the rights terms (0121 §EV) */ EvidenceB82Controller /* end B82 ev */,
+    /* B40 cr: the connectors register, the egress receipts, the adapter packages, requalification, credential rotation (0123 §CR) */ ConnectorCellController /* end B40 cr */],
   providers: [
     SourcesService,
     SourceCredentialStore,
@@ -54,6 +56,7 @@ import { ObservationExceptionFilter } from './observation.filter.js';
     /* B40 §0: the intake seam — the composition and the four parts' stages (authorize-ap, throttle-ap, inspect-in, authenticate-va) */
     ...INTAKE_STAGE_PROVIDERS,
     /* end B40 §0 */
+    /* B40 cr: the connector cell (the adapter kind's connector, its egress gateway, the contract tests) */ ConnectorCellService, /* end B40 cr */
     // Registered AFTER the Phase 0 filter so it is consulted first for these
     // routes; a refusal a governed port raised deliberately answers as the rule
     // it is, and everything else falls through unchanged.

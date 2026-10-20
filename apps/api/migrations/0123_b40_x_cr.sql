@@ -22,7 +22,7 @@
 --   observation.connector_requalifications (+ …_events)                    REQUALIFICATION (IA-47-005): opened when a cell's run is failed
 --        closed for its own behaviour (an unregistered destination, a changed destination identity, a package whose bytes do not verify)
 --        or when its credential is rotated — the contract SUSPENDED (cursor, checkpoint and custody untouched); SUBMITTED by a collection
---        manager with the package now in force (a NEW digest for a behaviour cause) and the CONTRACT TESTS the API ran in a cell; APPROVED
+--        manager with the package now to be in force (a NEW digest when the cell's own behaviour was the cause) and the CONTRACT TESTS the API ran in a cell; APPROVED
 --        by a second person (≠ the submitter, never an agent). Reactivation is refused while one is open.
 --   observation.connector_credential_bindings                              THE CREDENTIAL ROTATION of an adapter contract: a new binding
 --        version names a new credential REFERENCE (the B11 form EYE_SRC_*; never a value), the previous one is revoked, the contract is
@@ -200,14 +200,14 @@ CREATE TABLE observation.connector_requalifications (
   decided_at          timestamptz,
   decision_reason     text,
   correlation_id      uuid NOT NULL,
-  CONSTRAINT ocr_scope CHECK (observation.scope_ok(scope, tenant_id, domain_id)),
-  CONSTRAINT ocr_submitted CHECK (state = 'required' OR (submitted_by IS NOT NULL AND contract_tests IS NOT NULL)),
-  CONSTRAINT ocr_decided CHECK ((state IN ('approved', 'rejected')) = (decided_by IS NOT NULL)),
-  CONSTRAINT ocr_second_person CHECK (decided_by IS NULL OR decided_by <> submitted_by)
+  CONSTRAINT oqr_scope CHECK (observation.scope_ok(scope, tenant_id, domain_id)),
+  CONSTRAINT oqr_submitted CHECK (state = 'required' OR (submitted_by IS NOT NULL AND contract_tests IS NOT NULL)),
+  CONSTRAINT oqr_decided CHECK ((state IN ('approved', 'rejected')) = (decided_by IS NOT NULL)),
+  CONSTRAINT oqr_second_person CHECK (decided_by IS NULL OR decided_by <> submitted_by)
 );
 COMMENT ON TABLE observation.connector_requalifications IS 'B40 §CR (IA-47-005): a connector''s requalification — opened when its run was failed closed for its own behaviour (an unregistered destination, a changed destination identity, a package whose bytes do not verify) or its credential was rotated (the contract suspended, cursor and custody intact); submitted by a collection manager with the package in force and the contract tests the API ran in a cell; approved or rejected by a second person. Reactivation is refused while one is open. The state is a projection of the append-only events.';
-CREATE UNIQUE INDEX ocr_one_open ON observation.connector_requalifications (source_id, contract_version) WHERE state IN ('required', 'submitted', 'rejected');
-CREATE INDEX ocr_domain ON observation.connector_requalifications (tenant_id, domain_id, opened_at DESC);
+CREATE UNIQUE INDEX oqr_one_open ON observation.connector_requalifications (source_id, contract_version) WHERE state IN ('required', 'submitted', 'rejected');
+CREATE INDEX oqr_domain ON observation.connector_requalifications (tenant_id, domain_id, opened_at DESC);
 
 CREATE TABLE observation.connector_requalification_events (
   event_id            uuid PRIMARY KEY,
@@ -221,11 +221,11 @@ CREATE TABLE observation.connector_requalification_events (
   details             jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(details) = 'object'),
   request_id          uuid UNIQUE,
   correlation_id      uuid NOT NULL,
-  CONSTRAINT ocre_scope CHECK (observation.scope_ok(scope, tenant_id, domain_id))
+  CONSTRAINT oqre_scope CHECK (observation.scope_ok(scope, tenant_id, domain_id))
 );
 COMMENT ON TABLE observation.connector_requalification_events IS 'B40 §CR: the ledger of every requalification act (required, submitted, approved, rejected) — who, when, the package and the tests; append-only.';
-CREATE INDEX ocre_req ON observation.connector_requalification_events (requalification_id, occurred_at);
-CREATE TRIGGER ocre_append_only BEFORE UPDATE OR DELETE ON observation.connector_requalification_events FOR EACH ROW EXECUTE FUNCTION public.raise_append_only();
+CREATE INDEX oqre_req ON observation.connector_requalification_events (requalification_id, occurred_at);
+CREATE TRIGGER oqre_append_only BEFORE UPDATE OR DELETE ON observation.connector_requalification_events FOR EACH ROW EXECUTE FUNCTION public.raise_append_only();
 
 CREATE TABLE observation.connector_credential_bindings (
   scope              text NOT NULL,
@@ -267,7 +267,7 @@ REVOKE ALL ON FUNCTION observation.occb_guard() FROM PUBLIC;
 CREATE TRIGGER occb_guard BEFORE UPDATE OR DELETE ON observation.connector_credential_bindings FOR EACH ROW EXECUTE FUNCTION observation.occb_guard();
 
 /* The requalification row changes only along its state machine (required|rejected → submitted → approved|rejected), its identity never. */
-CREATE OR REPLACE FUNCTION observation.ocr_guard() RETURNS trigger
+CREATE OR REPLACE FUNCTION observation.oqr_guard() RETURNS trigger
 LANGUAGE plpgsql SET search_path = observation, pg_catalog, pg_temp AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN
@@ -283,8 +283,8 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
-REVOKE ALL ON FUNCTION observation.ocr_guard() FROM PUBLIC;
-CREATE TRIGGER ocr_guard BEFORE UPDATE OR DELETE ON observation.connector_requalifications FOR EACH ROW EXECUTE FUNCTION observation.ocr_guard();
+REVOKE ALL ON FUNCTION observation.oqr_guard() FROM PUBLIC;
+CREATE TRIGGER oqr_guard BEFORE UPDATE OR DELETE ON observation.connector_requalifications FOR EACH ROW EXECUTE FUNCTION observation.oqr_guard();
 
 REVOKE ALL ON observation.adapter_packages, observation.adapter_package_events, observation.egress_receipts, observation.egress_destination_pins,
               observation.connector_requalifications, observation.connector_requalification_events, observation.connector_credential_bindings FROM PUBLIC;
@@ -296,7 +296,7 @@ BEGIN
     EXECUTE format('ALTER TABLE observation.%I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('ALTER TABLE observation.%I FORCE ROW LEVEL SECURITY', t);
     EXECUTE format($f$
-      CREATE POLICY ocr_isolation ON observation.%I
+      CREATE POLICY oqr_isolation ON observation.%I
         USING (
           tenant_id = public.eye_tenant()
           AND (public.eye_scope() = 'TENANT' OR domain_id = public.eye_domain())
@@ -358,7 +358,9 @@ REVOKE ALL ON FUNCTION observation.cr_assert_lease(text, uuid, uuid, uuid, int, 
 /* The package digest the SDK defines (@eye/connector-sdk packageDigest): sha256 over "<file>\0<sha256>\n" for the files sorted by name. */
 CREATE OR REPLACE FUNCTION observation.cr_package_digest(p_files jsonb) RETURNS text
 LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
-  SELECT encode(sha256(convert_to(coalesce(string_agg((f ->> 'file') || chr(0) || (f ->> 'sha256') || chr(10), '' ORDER BY convert_to(f ->> 'file', 'UTF8')), ''), 'UTF8')), 'hex')
+  -- built as bytea: a text value cannot hold the NUL separator
+  SELECT encode(sha256(coalesce(string_agg(convert_to(f ->> 'file', 'UTF8') || '\x00'::bytea || convert_to((f ->> 'sha256') || chr(10), 'UTF8'), ''::bytea
+                                           ORDER BY convert_to(f ->> 'file', 'UTF8')), ''::bytea)), 'hex')
     FROM jsonb_array_elements(p_files) f
 $$;
 REVOKE ALL ON FUNCTION observation.cr_package_digest(jsonb) FROM PUBLIC;
@@ -571,7 +573,7 @@ BEGIN
   PERFORM observation.cr_assert_person('adapter package', v_actor, p_tenant, p_domain, ARRAY['domain_admin', 'collection_manager'], p.registered_by,
                                        'deciding an adapter package (a second person: never its registrant)');
   IF p.state <> 'registered' THEN
-    IF p.decided_by = v_actor AND p.state = CASE p_decision WHEN 'approve' THEN 'approved' ELSE 'rejected' END
+    IF p.decided_by = v_actor AND p.state = (CASE p_decision WHEN 'approve' THEN 'approved' ELSE 'rejected' END)
        AND EXISTS (SELECT 1 FROM observation.adapter_package_events e WHERE e.package_id = p.package_id AND e.details ->> 'request_id' = p_request_id::text) THEN
       RETURN observation.cr_package_json(p) || jsonb_build_object('replayed', true);
     END IF;
@@ -700,7 +702,8 @@ GRANT EXECUTE ON FUNCTION observation.connector_suspend_for_requalification(uuid
 -- §CR.7 REQUALIFICATION AND ROTATION (human, a second person) ─────────────────────────────────────────────────────────────────────────────
 /* SUBMIT: a named collection manager submits the open requalification with the package now to be in force (approved, of the same name
    as the one in force; a NEW digest when the cause was the connector's behaviour) and the contract tests the API ran in a cell — which
-   must have passed. */
+   must have passed. A package whose bytes did not verify (package_integrity) or a rotated credential requalifies the same digest once the
+   bytes verify again / the new reference is bound; a connector suspended for its OWN behaviour needs a new digest. */
 CREATE OR REPLACE FUNCTION observation.submit_requalification(p_request_id uuid, p_tenant uuid, p_domain uuid, p_requalification_id uuid, p_package_id uuid,
                                                              p_contract_tests jsonb, p_reason text, p_actor uuid, p_correlation uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = observation, governance, pg_catalog, pg_temp AS $$
@@ -746,8 +749,8 @@ BEGIN
     IF cur.package_id IS NOT NULL AND cur.name <> p.name THEN
       RAISE EXCEPTION 'requalification rejected (package): the contract runs %; a requalification moves it to another version of the same package, not to %', cur.name, p.name USING ERRCODE = '22023';
     END IF;
-    IF r.cause <> 'credential_rotated' AND p.package_digest = r.digest_at_opening THEN
-      RAISE EXCEPTION 'requalification rejected (package): the connector was suspended for its behaviour (%); the same package digest % cannot requalify it — a new digest is required', r.cause, p.package_digest USING ERRCODE = '22023';
+    IF r.cause IN ('unregistered_destination', 'destination_identity_changed') AND p.package_digest = r.digest_at_opening THEN
+      RAISE EXCEPTION 'requalification rejected (package): the connector was suspended for its own behaviour (%); the same package digest % cannot requalify it — a new digest is required', r.cause, p.package_digest USING ERRCODE = '22023';
     END IF;
   ELSIF p_package_id IS NOT NULL THEN
     RAISE EXCEPTION 'requalification rejected (package): only an adapter contract binds a package' USING ERRCODE = '22023';

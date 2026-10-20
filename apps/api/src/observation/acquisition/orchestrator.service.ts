@@ -43,6 +43,7 @@ import { RestConnector } from '../connectors/rest.connector.js';
 import { RssConnector } from '../connectors/rss.connector.js';
 import { UploadConnector, type UploadedFile } from '../connectors/upload.connector.js';
 import type { Connector, RunBudgets } from '../connectors/sdk.js';
+/* B40 cr */ import { AdapterCellConnector, ConnectorCellService } from '../connector-cell/connector-cell.service.js'; /* end B40 cr */
 
 type TestEgress = NonNullable<NonNullable<ConstructorParameters<typeof RestConnector>[0]>['egress']>;
 
@@ -102,6 +103,7 @@ export class CollectionOrchestrator {
     private readonly coverage: CoverageService,
     private readonly facts: CoverageFactsService,
     private readonly principals: PrincipalsService,
+    /* B40 cr */ private readonly cells: ConnectorCellService, /* end B40 cr */
   ) {}
 
   /**
@@ -122,6 +124,9 @@ export class CollectionOrchestrator {
       case 'rest': return this.egressForTests === null ? new RestConnector() : new RestConnector({ egress: this.egressForTests });
       case 'rss': return new RssConnector();
       case 'upload': return new UploadConnector(files);
+      /* B40 cr: an SRC@v4 contract of kind adapter — its approved package runs in a connector cell behind the egress gateway (§CR) */
+      case 'adapter': return this.cells.connector();
+      /* end B40 cr */
       default:
         throw new HttpException(
           errorBody('EYE_REQ_001', newId(),
@@ -242,6 +247,11 @@ export class CollectionOrchestrator {
       }
       throw e;
     }
+    /* B40 cr: a cell's run acts as this agent — its binding read, receipts and suspension are the agent's own governed acts */
+    if (connector instanceof AdapterCellConnector) {
+      connector.bindRun({ principal, tenantId: a.tenantId, domainId: a.domainId, correlationId: a.correlationId, purposeId: a.purposeId });
+    }
+    /* end B40 cr */
     return this.lifecycle.run({
       sourceId: a.sourceId, contractVersion: a.contractVersion,
       agentId: a.agentId, agentVersion: a.agentVersion,
