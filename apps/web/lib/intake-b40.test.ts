@@ -10,10 +10,10 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  D2_SENTENCE, INSPECTION_OUTCOMES, PAYLOAD_REVIEW_NOTE, approvalConsequence, approvalEligibility, classLabel, duplicateWords, engineConfigLines, engineIdentityLine,
-  excerptParts, findingLine, normalisedFilename, outcomeWords, payloadKey, printable, reviewControls, reviewReasonLabel, uploadOutcomeLines, type UploadApproval,
+  D2_SENTENCE, INSPECTION_OUTCOMES, APPROVAL_SERVER_CONTRACT, approvalConsequence, approvalPayload, approvalEligibility, classLabel, duplicateWords, engineConfigLines, engineIdentityLine,
+  excerptParts, findingLine, normalisedFilename, outcomeWords, printable, reviewControls, reviewReasonLabel, uploadOutcomeLines, type UploadApproval,
 } from './intake-b40';
-import { commandReviewGate } from './authority-b81';
+import { canonicalPayload, commandReviewGate, PAYLOAD_REVIEW_NOTE } from './authority-b81';
 
 const approval = (over: Partial<UploadApproval> = {}): UploadApproval => ({
   approval_id: '01a00000-0000-7000-8000-000000000001', state: 'pending', requester: 'p-uploader', purpose: 'observation', rule: { mode: 'never' },
@@ -75,18 +75,21 @@ describe('the review controls and the upload decision — the server re-checks e
     expect(approvalEligibility(approval({ state: 'declined' }), me).reason).toBe('the upload is already declined');
     expect(approvalEligibility(null, me).can).toBe(false);
   });
-  it('the CLIENT-SIDE payload review: the key holds the exact payload; a changed decision or reason voids the review (the CommandReview gate)', () => {
-    const p = { approvalId: approval().approval_id, decision: 'approve', reason: 'the delivery note matches the order (SYNTHETIC)' };
-    const k = payloadKey(p);
-    expect(k).toMatch(/^[0-9a-f]{16}$/);
-    expect(payloadKey({ ...p })).toBe(k);
-    expect(payloadKey({ ...p, decision: 'decline' })).not.toBe(k);
-    expect(payloadKey({ ...p, reason: `${p.reason}.` })).not.toBe(k);
+  it('the CLIENT-SIDE payload review (B40 integration: CommandReview\'s shared payloadReview): the exact payload is held; a changed decision or reason voids it', () => {
+    const p = approvalPayload({ approvalId: approval().approval_id, decision: 'approve', reason: ' the delivery note matches the order (SYNTHETIC) ' });
+    expect(p).toEqual({ approvalId: approval().approval_id, decision: 'approve', reason: 'the delivery note matches the order (SYNTHETIC)' });
+    const k = canonicalPayload(p);
+    expect(canonicalPayload({ ...p })).toBe(k);
+    expect(canonicalPayload({ ...p, decision: 'decline' })).not.toBe(k);
+    expect(canonicalPayload({ ...p, reason: `${p.reason}.` })).not.toBe(k);
     const elig = { can: true, reason: null, role: 'collection_manager', basis: 'x' };
-    expect(commandReviewGate({ action: 'observation.upload.approve' }, { eligibility: elig, shownDigest: k, currentDigest: k, consequenceRead: true }).enabled).toBe(true);
-    expect(commandReviewGate({ action: 'observation.upload.approve' }, { eligibility: elig, shownDigest: k, currentDigest: payloadKey({ ...p, decision: 'decline' }), consequenceRead: true }).enabled).toBe(false);
-    expect(commandReviewGate({ action: 'observation.upload.approve' }, { eligibility: elig, shownDigest: null, currentDigest: k, consequenceRead: true }).enabled).toBe(false);
-    expect(PAYLOAD_REVIEW_NOTE).toMatch(/^client-side payload review — the decide route carries no version or digest for the server to bind/);
+    const gate = (reviewed: string | null, current: string) => commandReviewGate({ action: 'observation.upload.approve' },
+      { eligibility: elig, shownDigest: null, currentDigest: null, consequenceRead: true, payloadReview: { reviewed, current } });
+    expect(gate(k, k).enabled).toBe(true);
+    expect(gate(k, canonicalPayload({ ...p, decision: 'decline' })).reasons).toContain('the payload changed after you reviewed it — review it again (a client-side payload review; the server binds no version here)');
+    expect(gate(null, k).enabled).toBe(false);
+    expect(PAYLOAD_REVIEW_NOTE).toMatch(/^client-side payload review — this command carries no version or digest for the server to bind/);
+    expect(APPROVAL_SERVER_CONTRACT).toMatch(/no version or digest is bound$/);
   });
   it('the stated consequence: the decline says what is KEPT (the bytes, the case, its verdicts); neither is said as a server preview', () => {
     expect(approvalConsequence('decline').effect).toMatch(/the bytes are kept in the quarantine volume, the case and its verdicts are kept/);
@@ -131,9 +134,9 @@ describe('the real sources', () => {
     expect(casePage).not.toMatch(/dangerouslySetInnerHTML|<iframe|<object|<embed/);
     expect(lib).toMatch(/<mark key=/);
   });
-  it('the upload decision goes through CommandReview with the payload key — no dummy digest', () => {
+  it('the upload decision goes through CommandReview with the shared client-side payload review — no dummy digest (B40 integration)', () => {
     expect(lib).toMatch(/<CommandReview action="observation\.upload\.approve"/);
-    expect(lib).toMatch(/digest=\{reviewed\} currentDigest=\{current\}/);
+    expect(lib).toMatch(/digest=\{null\} payloadReview=\{\{ payload, contract: APPROVAL_SERVER_CONTRACT \}\}/);
     expect(lib).not.toMatch(/digest=\{['"`]/);
   });
 });

@@ -109,6 +109,9 @@ export interface EgressResult {
 const RETAINED_HEADERS = [
   'content-type', 'content-length', 'content-encoding', 'etag', 'last-modified',
   'date', 'retry-after', 'cache-control',
+  /* B40 integration (§VA, DESIGN D6): a publisher's DETACHED signature (authenticity-b40/verify.ts SIGNATURE_HEADER) — kept so a live REST /
+     RSS item is CHECKED by the authenticate stage, never read unsigned. A signature is public; no other header is added. */
+  'x-publisher-signature',
 ];
 
 /**

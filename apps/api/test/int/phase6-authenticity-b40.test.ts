@@ -22,6 +22,17 @@
  * Every row here is SYNTHETIC fixture data. CONSTRUCTION only — DEMONSTRATED OPERATION is the act's, REAL ACCEPTANCE never claimed.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+/* B40 integration */
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createServer, type Server } from 'node:https';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { egressPinned } from '../../src/observation/connectors/http-client.js';
+import { checkSignature, presentedSignature, SIGNATURE_HEADER, type IntakeKey } from '../../src/observation/authenticity-b40/verify.js';
+import { assertSyntheticListener } from '../../../../scripts/act-target.mjs';
+/* end B40 integration */
 import { sql } from 'kysely';
 import { uuidv7 } from 'uuidv7';
 import { createHash } from 'node:crypto';
@@ -283,6 +294,20 @@ describe('VA2 · verification at intake (DESIGN D6) — the Djibouti customs bul
     expect(unknownSigner).toMatchObject({ kind: 'quarantined', reasonClass: 'unknown_signer' });
     expect(await ledgerOf(unknownSigner)).toMatchObject({ outcome: 'unknown_signer', evd_object_id: null, scheme: 'ed25519_detached' });
   }, 120_000);
+  it('B40 integration: RELEASING the unknown-signer case (a second person, §IN\'s close port) records the released version `unavailable` — never silently none', async () => {
+    if (unknownSigner.kind !== 'quarantined') throw new Error('the unknown-signer case is the previous case\'s');
+    await obs.reviewQuarantine(h.req(h.manager, 'observation.quarantine.review', 'QAR', unknownSigner.caseId, 'observation'), T(), D(), unknownSigner.caseId,
+      { payload: { decision: 'release', reason: 'B40 integration: released by the collection manager after a call to the customs office (SYNTHETIC)' } });
+    const rel = await one(sql`select c.evd_object_id::text id from observation.custody_events c where c.event = 'custody.admitted' and c.details ->> 'released_from_case' = ${unknownSigner.caseId}`);
+    expect(rel['id']).toMatch(/^[0-9a-f-]{36}$/);
+    const row = await one(sql`select outcome, scheme, evd_version, signature_digest, detail from observation.evidence_authenticity where evd_object_id = ${String(rel['id'])}::uuid`);
+    expect(row).toMatchObject({ outcome: 'unavailable', scheme: 'ed25519_detached', evd_version: 1, signature_digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      detail: expect.objectContaining({ released_from_case: unknownSigner.caseId, case_outcome: 'unknown_signer' }) });
+    expect(await ledgerOf(unknownSigner)).toMatchObject({ outcome: 'unknown_signer' });   // the case's own row kept
+    const st = (await one(sql`select graph.ev_evidence_state(${T()}::uuid, ${D()}::uuid, ${String(rel['id'])}::uuid, 1, null, null, clock_timestamp()) s`))['s'] as Row;
+    expect(st['authenticity']).toMatchObject({ outcome: 'unavailable' });
+    expect(await rows(sql`select 1 from observation.custody_events where evd_object_id = ${String(rel['id'])}::uuid and event = 'custody.authenticity_recorded'`)).toHaveLength(1);
+  }, 120_000);
   it('UNSIGNED (the contract declares a scheme, no signature presented): admitted, payload unknown, recorded unsigned — never verified', async () => {
     unsigned = await upload(weber, customs, 'djibouti-bulletin-09.json', variant('09'), null);
     expect(await payloadCa(asEvd(unsigned))).toBe('unknown');
@@ -362,6 +387,11 @@ describe('VA3 · the decision-active use (D6) — the failed version is refused,
     expect(['strong', 'partial']).toContain(strong['strength']);
     const env = (await one(sql`select graph.trust_envelope(${T()}::uuid, ${D()}::uuid, 'CLM', ${failedClaim.id}::uuid, 1) s`))['s'] as Row;
     expect((env['provenance'] as Row)['strength']).toBe('weak');
+    // B40 integration: the envelope's custody facet reads the authenticity — TRUST INDETERMINATE with the reason (px_facet re-declared, 0123 §VA.17)
+    expect(env['indeterminate']).toBe(true);
+    expect(env['reasons']).toContainEqual(expect.objectContaining({ facet: 'custody', outcome: 'failed', detail: expect.stringMatching(/authenticity failed/) }));
+    const envOk = (await one(sql`select graph.trust_envelope(${T()}::uuid, ${D()}::uuid, 'CLM', ${verifiedClaim.id}::uuid, 1) s`))['s'] as Row & { facets: Row[] };
+    expect(String(envOk.facets.find((f) => f['facet'] === 'custody')?.['detail'] ?? '')).not.toMatch(/authenticity failed/);
     const dt = ((await one(sql`select objects.display_truth(${T()}::uuid, ${D()}::uuid, ${JSON.stringify([{ type: 'CLM', id: failedClaim.id, version: 1 }])}::jsonb) s`))['s'] as Array<Row & { reasons: Row[] }>)[0]!;
     expect(dt.reasons.find((r) => r['code'] === 'weak_provenance')?.['detail']).toMatch(/provenance strength WEAK \(.*authenticity failed/);
   });
@@ -548,4 +578,47 @@ describe('VA10 · the V rows re-verified on this harness (V00-T-120, V00-T-122, 
     const bytesOk = await one(sql`select bm.content_digest = ${s.bytesDigest} ok from observation.blob_manifests bm where bm.manifest_id = (select (payload ->> 'manifest_id')::uuid from objects.canonical_objects where object_id = ${s.id}::uuid)`);
     expect(bytesOk).toEqual({ ok: true });
   });
+});
+
+/* B40 integration — the detached signature of a LIVE REST / RSS answer is kept through the vetted client (http-client RETAINED_HEADERS) and
+   CHECKED, never read unsigned: a loopback TLS publisher (B14's one transport substitution — the pinned address 127.0.0.1, the certificate
+   made here with openssl and removed; the port refused on the live addresses by the act-target module) answers the signed bulletin with
+   its `x-publisher-signature`; the tampered bytes under the same header fail. Keys generated at run time. */
+describe('VA-LB · a live detached signature kept through http-client and checked (loopback)', () => {
+  let server: Server | null = null; let dir = ''; let cert = ''; let port = 0;
+  const HOST = 'bulletins.b40-va.invalid';
+  const signed = signedBulletin();
+  const bodyFor: Record<string, Buffer> = { '/signed': signed.bytes, '/tampered': tamperedCopy(signed.bytes) };
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'eye-b40-va-'));
+    const made = spawnSync('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes', '-keyout', join(dir, 'k.pem'),
+      '-out', join(dir, 'c.pem'), '-days', '1', '-subj', `/CN=${HOST}`, '-addext', `subjectAltName=DNS:${HOST}`], { encoding: 'utf8' });
+    if (made.status !== 0) throw new Error(`openssl: ${made.stderr}`);
+    cert = readFileSync(join(dir, 'c.pem'), 'utf8');
+    server = createServer({ cert, key: readFileSync(join(dir, 'k.pem')) }, (req, res) => {
+      const body = bodyFor[req.url ?? ''];
+      if (body === undefined) { res.writeHead(404); res.end(); return; }
+      res.writeHead(200, { 'content-type': 'application/json', [SIGNATURE_HEADER]: signed.signature, 'x-unrelated': 'not kept' });
+      res.end(body);
+    });
+    await new Promise<void>((r) => server!.listen(0, '127.0.0.1', () => r()));
+    port = assertSyntheticListener((server.address() as AddressInfo).port);
+  });
+  afterAll(async () => { await new Promise<void>((r) => (server === null ? r() : server.close(() => r()))); if (dir !== '') rmSync(dir, { recursive: true, force: true }); });
+
+  it('the signature header reaches the stage\'s reader; the signed bytes verify, the tampered bytes fail; nothing else unlisted is kept', async () => {
+    const key: IntakeKey = { key_id: uuidv7(), key_ref: 'djibouti-customs-loopback', kind: 'signing_key', algorithm: 'Ed25519', fingerprint: signed.key.fingerprint,
+      public_key_pem: signed.key.publicKeyPem, valid_from: null, valid_to: null };
+    const policy = { hostAllowlist: [HOST], schemeAllowlist: ['https'], maxRedirects: 0, timeoutMs: 5_000, maxResponseBytes: 1_000_000, maxDecompressedBytes: 1_000_000, trustAnchorPem: cert };
+    const got = async (path: string) => egressPinned({ url: `https://${HOST}:${port}${path}`, policy }, '127.0.0.1');
+    const ok = await got('/signed');
+    expect(ok.headers[SIGNATURE_HEADER]).toBe(signed.signature);
+    expect(ok.headers['x-unrelated']).toBeUndefined();
+    const presented = presentedSignature('ed25519_detached', ok.body, ok.headers);
+    expect(presented).toBe(signed.signature);
+    expect(await checkSignature({ scheme: 'ed25519_detached', bytes: ok.body, signature: presented, keys: [key] })).toMatchObject({ outcome: 'verified' });
+    const bad = await got('/tampered');
+    expect(await checkSignature({ scheme: 'ed25519_detached', bytes: bad.body, signature: presentedSignature('ed25519_detached', bad.body, bad.headers), keys: [key] }))
+      .toMatchObject({ outcome: 'failed' });
+  }, 60_000);
 });

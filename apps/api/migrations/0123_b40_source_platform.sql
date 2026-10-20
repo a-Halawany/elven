@@ -3347,6 +3347,133 @@ END $$;
 REVOKE ALL ON FUNCTION retention.tenant_register(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION retention.tenant_register(uuid) TO eye_app, eye_commit;
 
+-- §VA.17 (B40 integration) graph.px_facet — 0121 §PX.6, its LAST definition, copied WHOLE; the addition marked `-- B40 integration` ──────────
+/* The trust envelope (graph.trust_envelope) derives its facets from px_facet, which read every evidence version's state through
+   graph.ev_evidence_state but not its AUTHENTICITY (§VA.11 adds it there): a claim resting on evidence whose publisher signature FAILED read
+   WEAK (px_strength_of) and yet its envelope stayed determinate. The CUSTODY facet — the facet of each evidence version's own record — now
+   FAILS for a version recorded authenticity `failed` (D6), with the recorded statement, so the envelope reads TRUST INDETERMINATE with that
+   reason. `unsigned`, `unavailable` and `not_recorded` change nothing here (content authenticity unknown is not a failure). */
+CREATE OR REPLACE FUNCTION graph.px_facet(p_tenant uuid, p_domain uuid, o objects.canonical_objects, x jsonb, p_facet text, p_at timestamptz) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = graph, objects, observation, pg_catalog, pg_temp AS $$
+DECLARE n jsonb; g jsonb; v_ref jsonb; s jsonb; v_out text; v_detail text[] := '{}'; v_failed int := 0; v_unavail int := 0; v_ok int := 0; v_none int := 0; y record;
+        v_integrity int := 0; v_unres int := 0; v_ex jsonb := '{}'::jsonb; v_root text := x ->> 'ref';
+BEGIN
+  IF p_facet = 'lineage' THEN
+    FOR g IN SELECT * FROM jsonb_array_elements(coalesce(x -> 'gaps', '[]'::jsonb)) LOOP
+      IF g ->> 'kind' IN ('broken_custody', 'unverifiable_artifact') THEN v_integrity := v_integrity + 1; ELSE v_unres := v_unres + 1; END IF;
+      IF cardinality(v_detail) < 5 THEN v_detail := v_detail || format('%s at %s: %s', replace(g ->> 'kind', '_', ' '), g ->> 'at', g ->> 'reason'); END IF;
+    END LOOP;
+    v_ex := jsonb_build_object('examined', x -> 'examined', 'gaps', jsonb_array_length(coalesce(x -> 'gaps', '[]'::jsonb)), 'truncated', x -> 'truncated', 'method', x -> 'method');
+    IF v_integrity + v_unres > 0 THEN
+      RETURN jsonb_build_object('facet', p_facet, 'outcome', 'failed', 'examined', v_ex,
+        'detail', format('%s gap(s) on the backward path (%s integrity, %s unresolved): %s', v_integrity + v_unres, v_integrity, v_unres, array_to_string(v_detail, '; ')));
+    ELSIF coalesce((x ->> 'truncated')::boolean, false) THEN
+      RETURN jsonb_build_object('facet', p_facet, 'outcome', 'unavailable', 'examined', v_ex,
+        'detail', format('the walk reached its bounds after %s objects — nothing beyond them was verified or refuted', x ->> 'examined'));
+    END IF;
+    RETURN jsonb_build_object('facet', p_facet, 'outcome', 'verified', 'examined', v_ex, 'detail', format('%s object(s) on the backward path resolve; no gap recorded', x ->> 'examined'));
+  ELSIF p_facet IN ('custody', 'rights') THEN
+    FOR n IN SELECT * FROM jsonb_array_elements(coalesce(x -> 'nodes', '[]'::jsonb)) LOOP
+      CONTINUE WHEN n ->> 'node_id' NOT LIKE 'obj:EVD:%';
+      v_ref := graph.pv_ref(n ->> 'ref');
+      CONTINUE WHEN v_ref ->> 'version' IS NULL;
+      s := graph.ev_evidence_state(p_tenant, p_domain, (v_ref ->> 'id')::uuid, (v_ref ->> 'version')::int, NULL, NULL, p_at);
+      IF p_facet = 'custody' THEN
+        IF (s ->> 'integrity_failed')::boolean OR s #>> '{custody,state}' = 'not_established' OR (s ->> 'digest_ok') = 'false' THEN
+          v_failed := v_failed + 1; IF cardinality(v_detail) < 5 THEN v_detail := v_detail || format('%s: custody %s%s', n ->> 'ref', replace(coalesce(s #>> '{custody,state}', 'unknown'), '_', ' '), coalesce(' — ' || (s ->> 'detail'), '')); END IF;
+        ELSIF s #>> '{authenticity,outcome}' = 'failed' THEN                                                                                    -- B40 integration (§VA, D6)
+          v_failed := v_failed + 1; IF cardinality(v_detail) < 5 THEN v_detail := v_detail || format('%s: authenticity failed — %s', n ->> 'ref',      -- B40 integration
+            coalesce(s #>> '{authenticity,detail}', 'its publisher signature did not verify at admission (admitted marked, never established as the publisher''s content)')); END IF;   -- B40 integration
+        ELSIF (s ->> 'unreachable')::boolean OR (s ->> 'tombstoned')::boolean THEN
+          v_unavail := v_unavail + 1; IF cardinality(v_detail) < 5 THEN v_detail := v_detail || format('%s: %s', n ->> 'ref', coalesce(s ->> 'detail', 'the bytes cannot be reached')); END IF;
+        ELSE v_ok := v_ok + 1; END IF;
+      ELSE
+        IF s ->> 'rights_state' IN ('expired', 'withdrawn') THEN
+          v_failed := v_failed + 1; IF cardinality(v_detail) < 5 THEN v_detail := v_detail || format('%s: rights %s (%s)', n ->> 'ref', s ->> 'rights_state', coalesce(s #>> '{rights,expiry_statement}', '')); END IF;
+        ELSIF s ->> 'rights_state' = 'in_force' THEN v_ok := v_ok + 1;
+        ELSE v_none := v_none + 1; END IF;
+      END IF;
+    END LOOP;
+    v_ex := jsonb_build_object('evidence', v_ok + v_failed + v_unavail + v_none, 'verified', v_ok, 'failed', v_failed, 'unavailable', v_unavail, 'none_declared', v_none);
+    IF v_ok + v_failed + v_unavail + v_none = 0 THEN
+      RETURN jsonb_build_object('facet', p_facet, 'outcome', 'not_checked', 'examined', v_ex, 'detail', 'no evidence version lies on the backward path — nothing to check');
+    ELSIF v_failed > 0 THEN
+      RETURN jsonb_build_object('facet', p_facet, 'outcome', 'failed', 'examined', v_ex, 'detail', format('%s of %s evidence version(s) fail: %s', v_failed, v_ok + v_failed + v_unavail + v_none, array_to_string(v_detail, '; ')));
+    ELSIF v_unavail > 0 THEN
+      RETURN jsonb_build_object('facet', p_facet, 'outcome', 'unavailable', 'examined', v_ex, 'detail', format('%s evidence version(s) could not be checked: %s', v_unavail, array_to_string(v_detail, '; ')));
+    ELSIF p_facet = 'rights' AND v_ok = 0 THEN
+      RETURN jsonb_build_object('facet', p_facet, 'outcome', 'not_checked', 'examined', v_ex, 'detail', format('no rights terms are declared for the %s evidence version(s) on the path — the source contracts'' own rights stand', v_none));
+    END IF;
+    RETURN jsonb_build_object('facet', p_facet, 'outcome', 'verified', 'examined', v_ex,
+      'detail', CASE WHEN p_facet = 'custody' THEN format('custody established and intact for %s evidence version(s)', v_ok)
+                     ELSE format('rights terms in force for %s evidence version(s)%s', v_ok, CASE WHEN v_none > 0 THEN format('; %s with no terms declared', v_none) ELSE '' END) END);
+  ELSIF p_facet = 'correction' THEN
+    SELECT c.object_version, c.lifecycle_state, c.truth_state INTO y FROM objects.canonical_objects c
+     WHERE c.object_id = o.object_id AND c.object_type = o.object_type AND c.tenant_id = p_tenant AND c.object_version > o.object_version
+       AND (c.truth_state = 'withdrawn' OR c.lifecycle_state = 'withdrawn' OR c.correction_of IN (o.object_id::text || '@' || o.object_version, o.object_type || ':' || o.object_id::text || '@' || o.object_version))
+     ORDER BY c.object_version LIMIT 1;
+    IF FOUND THEN
+      RETURN jsonb_build_object('facet', p_facet, 'outcome', 'failed', 'examined', jsonb_build_object('later_version', y.object_version),
+        'detail', format('this version is %s by v%s — read the later version for any current use', CASE WHEN y.truth_state = 'withdrawn' OR y.lifecycle_state = 'withdrawn' THEN 'withdrawn' ELSE 'corrected' END, y.object_version));
+    END IF;
+    SELECT count(*) FILTER (WHERE r ->> 'code' IN ('withdrawn_input', 'corrected_input')) AS k,
+           string_agg(r ->> 'detail', '; ') FILTER (WHERE r ->> 'code' IN ('withdrawn_input', 'corrected_input')) AS d INTO y
+      FROM jsonb_array_elements(graph.px_strength_of(p_tenant, p_domain, x) -> 'reasons') r;
+    IF y.k > 0 THEN
+      RETURN jsonb_build_object('facet', p_facet, 'outcome', 'failed', 'examined', jsonb_build_object('inputs_changed', y.k), 'detail', format('%s input(s) changed since: %s', y.k, left(y.d, 1200)));
+    END IF;
+    RETURN jsonb_build_object('facet', p_facet, 'outcome', 'verified', 'examined', '{}'::jsonb, 'detail', 'no correction or withdrawal is recorded on this version or on its inputs');
+  ELSIF p_facet = 'policy' THEN
+    FOR n IN SELECT * FROM jsonb_array_elements(coalesce(x -> 'nodes', '[]'::jsonb)) LOOP
+      CONTINUE WHEN n ->> 'kind' <> 'policy_decision' OR coalesce(n ->> 'ref', '') !~* '^policy:[0-9a-f-]{36}$' OR n ->> 'label' LIKE 'denied:%';
+      SELECT d.decision, d.action, d.expires_at INTO y FROM policy.policy_decisions d WHERE d.id = substring(n ->> 'ref' from 8)::uuid;
+      CONTINUE WHEN NOT FOUND;
+      IF y.decision NOT IN ('allow', 'allow_with_obligations') THEN
+        v_failed := v_failed + 1; IF cardinality(v_detail) < 5 THEN v_detail := v_detail || format('%s: %s', y.action, y.decision); END IF;
+      ELSIF y.expires_at IS NOT NULL AND y.expires_at <= p_at THEN
+        v_failed := v_failed + 1; IF cardinality(v_detail) < 5 THEN v_detail := v_detail || format('%s: allowed, EXPIRED at %s', y.action, graph.pv_iso(y.expires_at)); END IF;
+      ELSE v_ok := v_ok + 1; END IF;
+    END LOOP;
+    v_ex := jsonb_build_object('decisions', v_ok + v_failed, 'allowed', v_ok, 'failed', v_failed);
+    IF v_ok + v_failed = 0 THEN
+      RETURN jsonb_build_object('facet', p_facet, 'outcome', 'not_checked', 'examined', v_ex, 'detail', 'no policy decision is recorded on the production path (retrieval and admission of its claims)');
+    ELSIF v_failed > 0 THEN
+      RETURN jsonb_build_object('facet', p_facet, 'outcome', 'failed', 'examined', v_ex, 'detail', format('%s policy decision(s) on the production path deny or have expired: %s', v_failed, array_to_string(v_detail, '; ')));
+    END IF;
+    RETURN jsonb_build_object('facet', p_facet, 'outcome', 'verified', 'examined', v_ex, 'detail', format('%s policy decision(s) on the production path allowed and in force', v_ok));
+  ELSIF p_facet = 'evaluation' THEN
+    IF o.object_type = 'FCT' THEN
+      SELECT fa.verdict, fa.fitness_class, fa.rule_version, fa.assessed_at INTO y FROM prediction.forecast_fitness_assessments fa
+       WHERE fa.forecast_id = o.object_id AND fa.tenant_id = p_tenant ORDER BY fa.assessed_at DESC LIMIT 1;
+      IF FOUND THEN
+        RETURN jsonb_build_object('facet', p_facet, 'outcome', CASE y.verdict WHEN 'fit' THEN 'verified' WHEN 'unfit' THEN 'failed' ELSE 'unavailable' END,
+          'examined', jsonb_build_object('rule_version', y.rule_version, 'assessed_at', graph.pv_iso(y.assessed_at)),
+          'detail', format('forecast fitness %s%s under %s at %s', y.verdict, coalesce(' (' || y.fitness_class || ')', ''), y.rule_version, graph.pv_iso(y.assessed_at)));
+      END IF;
+    END IF;
+    SELECT fm.verdict, fm.reasons, fm.rule_version, fm.marked_at INTO y FROM graph.product_fitness_marks fm
+     WHERE fm.object_id = o.object_id AND fm.object_version = o.object_version AND fm.tenant_id = p_tenant ORDER BY fm.marked_at DESC LIMIT 1;
+    IF FOUND THEN
+      RETURN jsonb_build_object('facet', p_facet, 'outcome', CASE y.verdict WHEN 'fit' THEN 'verified' WHEN 'unfit' THEN 'failed' ELSE 'unavailable' END,
+        'examined', jsonb_build_object('rule_version', y.rule_version, 'marked_at', graph.pv_iso(y.marked_at)),
+        'detail', format('fitness mark %s%s under %s at %s', y.verdict, CASE WHEN cardinality(y.reasons) > 0 THEN ' (' || array_to_string(y.reasons, ', ') || ')' ELSE '' END, y.rule_version, graph.pv_iso(y.marked_at)));
+    END IF;
+    RETURN jsonb_build_object('facet', p_facet, 'outcome', 'not_checked', 'examined', '{}'::jsonb, 'detail', 'not evaluated — no fitness assessment or mark is recorded for this version');
+  ELSIF p_facet = 'freshness' THEN
+    IF o.freshness_state IS NULL OR jsonb_typeof(o.freshness_state) <> 'object' THEN
+      RETURN jsonb_build_object('facet', p_facet, 'outcome', 'not_checked', 'examined', '{}'::jsonb, 'detail', 'no freshness assessment is recorded on this version');
+    ELSIF o.freshness_state ->> 'state' = 'stale' THEN
+      RETURN jsonb_build_object('facet', p_facet, 'outcome', 'failed', 'examined', o.freshness_state,
+        'detail', format('STALE under %s%s', coalesce(o.freshness_state ->> 'method', 'its method'), coalesce(format(' — stale by %s day(s)', o.freshness_state ->> 'stale_by_days'), '')));
+    END IF;
+    RETURN jsonb_build_object('facet', p_facet, 'outcome', 'verified', 'examined', o.freshness_state,
+      'detail', format('%s under %s%s', coalesce(o.freshness_state ->> 'state', 'assessed'), coalesce(o.freshness_state ->> 'method', 'its method'), coalesce(' as of ' || (o.freshness_state ->> 'as_of'), '')));
+  END IF;
+  RETURN jsonb_build_object('facet', p_facet, 'outcome', 'not_checked', 'examined', '{}'::jsonb, 'detail', 'not computed by a read');
+END $$;
+REVOKE ALL ON FUNCTION graph.px_facet(uuid, uuid, objects.canonical_objects, jsonb, text, timestamptz) FROM PUBLIC;
+
+
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 -- §IN — intake inspection, quarantine and the intake review queue (F-P1-03)
@@ -3841,6 +3968,7 @@ CREATE OR REPLACE FUNCTION observation.close_quarantine_case(
 SECURITY DEFINER SET search_path = observation, ctx, identity, public, pg_catalog, pg_temp AS $$
 DECLARE v_row observation.quarantine_current%ROWTYPE; v_actor uuid := public.eye_principal(); v_has_role boolean;
         v_uploader uuid; v_approval observation.upload_approvals%ROWTYPE; v_held boolean := false;   -- B40 in
+        v_auth observation.evidence_authenticity%ROWTYPE; v_rel record; v_rel_ver int; v_scheme text;                                       -- B40 integration
 BEGIN
   IF p_outcome = 'expired' THEN
     PERFORM observation.assert_authority(ARRAY['observation.sweeper.reconcile']);
@@ -3929,6 +4057,38 @@ BEGIN
       || CASE WHEN v_uploader IS NOT NULL THEN jsonb_build_object('uploaded_by', v_uploader, 'reviewer_is_not_uploader', true) ELSE '{}'::jsonb END   -- B40 in
       || CASE WHEN v_held THEN jsonb_build_object('upload_approval', v_approval.approval_id) ELSE '{}'::jsonb END,                                    -- B40 in
     p_correlation);
+
+  -- B40 integration (§VA × §IN, DESIGN D6): releasing an UNKNOWN-SIGNER case records the authenticity of the EVD version the release admitted
+  -- (the release's custody.admitted, written before this close in the same transaction) as `unavailable` — the signer was never established,
+  -- the content is not verified — never silently none; the case's own row (unknown_signer) is kept. A release that admitted nothing refuses.
+  IF p_outcome = 'admitted' THEN                                                                                                            -- B40 integration
+    SELECT * INTO v_auth FROM observation.evidence_authenticity x WHERE x.case_id = p_case_id AND x.tenant_id = p_tenant AND x.domain_id = p_domain;  -- B40 integration
+    IF v_row.reason_class = 'unknown_signer' OR v_auth.outcome = 'unknown_signer' THEN                                                      -- B40 integration
+      SELECT c.evd_object_id, c.manifest_id, c.content_digest INTO v_rel FROM observation.custody_events c                                  -- B40 integration
+       WHERE c.tenant_id = p_tenant AND c.domain_id = p_domain AND c.event = 'custody.admitted' AND c.details ->> 'released_from_case' = p_case_id::text  -- B40 integration
+       ORDER BY c.occurred_at DESC LIMIT 1;                                                                                                 -- B40 integration
+      IF v_rel.evd_object_id IS NULL THEN                                                                                                   -- B40 integration
+        RAISE EXCEPTION 'quarantine review rejected (state): the release of unknown-signer case % admitted no evidence version — its authenticity cannot be recorded', p_case_id  -- B40 integration
+          USING ERRCODE = '23514';                                                                                                          -- B40 integration
+      END IF;                                                                                                                               -- B40 integration
+      SELECT max(o.object_version)::int INTO v_rel_ver FROM objects.canonical_objects o                                                     -- B40 integration
+       WHERE o.object_type = 'EVD' AND o.object_id = v_rel.evd_object_id AND o.tenant_id = p_tenant AND o.domain_id = p_domain;             -- B40 integration
+      SELECT coalesce(v_auth.scheme, NULLIF(s.contract #>> '{authenticity,scheme}', 'none'), 'ed25519_detached') INTO v_scheme             -- B40 integration
+        FROM observation.source_contracts_current s WHERE s.source_id = v_row.source_id AND s.contract_version = v_row.contract_version;    -- B40 integration
+      INSERT INTO observation.evidence_authenticity (record_id, scope, tenant_id, domain_id, source_id, contract_version, run_id, evd_object_id, evd_version,  -- B40 integration
+                                                     manifest_id, content_digest, item_key, outcome, scheme, signature, signature_digest, detail, recorded_by, correlation_id)  -- B40 integration
+      VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, v_row.source_id, v_row.contract_version, v_row.run_id, v_rel.evd_object_id, coalesce(v_rel_ver, 1),  -- B40 integration
+              v_rel.manifest_id, v_rel.content_digest, v_row.item_key, 'unavailable', coalesce(v_scheme, 'ed25519_detached'), v_auth.signature, v_auth.signature_digest,  -- B40 integration
+              jsonb_build_object('statement', 'released by a person from an unknown-signer quarantine case — the signer was never established: content authenticity NOT verified',  -- B40 integration
+                                 'released_from_case', p_case_id, 'case_outcome', coalesce(v_auth.outcome, 'unknown_signer'), 'release_reason', p_reason),  -- B40 integration
+              v_actor, p_correlation);                                                                                                      -- B40 integration
+      PERFORM observation.append_custody(gen_random_uuid(), p_tenant, p_domain, v_rel.manifest_id, NULL::uuid, v_rel.evd_object_id, v_row.source_id,  -- B40 integration
+        v_row.contract_version, v_row.run_id, 'custody.authenticity_recorded', 'principal:' || v_actor::text, NULL::uuid, NULL, NULL,       -- B40 integration
+        'quarantine.release', '1.0.0', 'quarantine-release@1.0.0', v_rel.content_digest, NULL::boolean,                                     -- B40 integration
+        jsonb_build_object('outcome', 'unavailable', 'scheme', coalesce(v_scheme, 'ed25519_detached'), 'case_id', p_case_id, 'evd_version', coalesce(v_rel_ver, 1),  -- B40 integration
+                           'signature_digest', v_auth.signature_digest), p_correlation);                                                    -- B40 integration
+    END IF;                                                                                                                                 -- B40 integration
+  END IF;                                                                                                                                   -- B40 integration
 END $$ LANGUAGE plpgsql;
 REVOKE ALL ON FUNCTION observation.close_quarantine_case(uuid,uuid,uuid,text,text,uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION observation.close_quarantine_case(uuid,uuid,uuid,text,text,uuid,uuid) TO eye_commit;

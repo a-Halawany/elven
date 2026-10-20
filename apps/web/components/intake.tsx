@@ -13,7 +13,8 @@
  *   CaseExcerpt            the bytes around a finding, read under observation.evidence.retrieve (D9: only a role that already reads evidence
  *                          bytes — a refusal shown in the server's words); escaped printable text, the cited span in <mark>, never HTML.
  *   UploadApprovalReview   SP-22: a second person's decision on a held upload, through CommandReview with a CLIENT-SIDE PAYLOAD REVIEW
- *                          (the decide route binds no version — said on the control); a decline states what is kept.
+ *                          (CommandReview's `payloadReview`, lib/authority-b81.ts — the decide route binds no version, said on the control;
+ *                          B40 integration: the shared binding replaced §IN's local key); a decline states what is kept.
  *
  * Accessibility: names on every control; reasons as text; logical properties; state never by colour alone. CONSTRUCTION — the walk
  * demonstrates on SYNTHETIC personas; real acceptance is B111's path, then H3/R2.
@@ -26,7 +27,7 @@ import { GovernedButton, LiveStatus } from './observation';
 import { Receipt } from './ui';
 import {
   D2_SENTENCE, approvalConsequence, approvalEligibility, duplicateWords, engineConfigLines, engineIdentityLine, excerptParts, findingLine, intake,
-  outcomeWords, payloadKey, PAYLOAD_REVIEW_NOTE, reviewReasonLabel, scoreOf, NOT_RECORDED,
+  outcomeWords, /* B40 integration */ approvalPayload, APPROVAL_SERVER_CONTRACT, /* end B40 integration */ reviewReasonLabel, scoreOf, NOT_RECORDED,
   type Assessment, type Finding, type Scope, type UploadApproval, type Verdict,
 } from '../lib/intake-b40';
 
@@ -175,11 +176,10 @@ export function UploadApprovalReview({ scope, caseId, approval, me, onDecided }:
   const id = useId();
   const [decision, setDecision] = useState<'approve' | 'decline'>('approve');
   const [reason, setReason] = useState('');
-  const [reviewed, setReviewed] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<{ policyDecisionId: string; auditSeq: number } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<string | null>(null);
-  const current = payloadKey({ approvalId: approval.approval_id, decision, reason });
+  const payload = approvalPayload({ approvalId: approval.approval_id, decision, reason });
   const elig = approvalEligibility(approval, me);
   const label = decision === 'approve' ? 'Approve the upload and release it' : 'Decline the upload and reject its case';
   return (
@@ -195,7 +195,7 @@ export function UploadApprovalReview({ scope, caseId, approval, me, onDecided }:
       ]} />
       {approval.state === 'pending' && (
         <CommandReview action="observation.upload.approve" object={{ type: 'QAR', id: caseId, version: null, title: 'Held upload', state: approval.state }}
-          digest={reviewed} currentDigest={current} eligibility={elig} consequence={approvalConsequence(decision)}
+          digest={null} payloadReview={{ payload, contract: APPROVAL_SERVER_CONTRACT }} eligibility={elig} consequence={approvalConsequence(decision)}
           actionLabel={label} pendingLabel={decision === 'approve' ? 'Approving' : 'Declining'} variant={decision === 'approve' ? 'primary' : 'critical'}
           extraReasons={reason.trim().length < 8 ? ['state the reason for your decision (8+ characters, recorded with your name)'] : []}
           receipt={receipt} problem={problem}
@@ -207,10 +207,9 @@ export function UploadApprovalReview({ scope, caseId, approval, me, onDecided }:
             setOutcome(r.data.review_refused !== undefined
               ? `the upload is ${String(r.data.approval['state'])}; the quarantine review then refused (${r.data.review_refused.status}): ${r.data.review_refused.message}`
               : `the upload is ${String(r.data.approval['state'])}; its case was ${decision === 'approve' ? 'released into evidence' : 'rejected — the bytes are kept in the quarantine volume'}`);
-            setReviewed(null); setReason('');
+            setReason('');
             await onDecided();
           }}>
-          <p className="eye-authority-small">{PAYLOAD_REVIEW_NOTE}.</p>
           <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
             <legend className="eye-authority-small">Your decision</legend>
             <label><input type="radio" name={`${id}-d`} checked={decision === 'approve'} onChange={() => setDecision('approve')} /> Approve — release it into evidence</label>{' '}
@@ -218,8 +217,6 @@ export function UploadApprovalReview({ scope, caseId, approval, me, onDecided }:
           </fieldset>
           <label htmlFor={`${id}-r`} className="eye-authority-small">Reason for the decision — recorded with your name</label>
           <input id={`${id}-r`} className="eye-authority-input eye-authority-wide" value={reason} onChange={(e) => setReason(e.target.value)} />
-          <button type="button" className="eye-cld-btn-quiet eye-cld-btn-sm" onClick={() => setReviewed(current)} aria-describedby={`${id}-rv`}>Review this exact payload</button>
-          <span id={`${id}-rv`} className="eye-authority-small" role="status">{reviewed === null ? ' not yet reviewed' : reviewed === current ? ' reviewed — this payload is held' : ' the payload changed after you reviewed it — review it again'}</span>
         </CommandReview>
       )}
       {outcome !== null && <LiveStatus>{outcome}</LiveStatus>}

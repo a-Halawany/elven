@@ -134,17 +134,13 @@ export function approvalEligibility(a: UploadApproval | null, me: { principalId:
 }
 
 /* ───────────────────────── the client-side payload review (the decide route binds no version) ───────────────────────── */
-export const PAYLOAD_REVIEW_NOTE = 'client-side payload review — the decide route carries no version or digest for the server to bind; this review holds the exact payload shown (the approval, the decision and the reason), and any change to it voids the review';
-/** A deterministic key of the exact payload (two 32-bit FNV-1a lanes, hex): a review binding on this page, never a security digest. */
-export function payloadKey(payload: { approvalId: string; decision: string; reason: string }): string {
-  const s = JSON.stringify([payload.approvalId, payload.decision, payload.reason.trim()]);
-  let a = 0x811c9dc5; let b = 0x01000193 ^ 0x9e3779b9;
-  for (let i = 0; i < s.length; i += 1) {
-    const c = s.charCodeAt(i);
-    a = Math.imul(a ^ c, 0x01000193) >>> 0;
-    b = Math.imul(b ^ ((c * 31 + i) & 0xffff), 0x01000193) >>> 0;
-  }
-  return `${a.toString(16).padStart(8, '0')}${b.toString(16).padStart(8, '0')}`;
+/* B40 integration: the binding is the shared one — CommandReview's `payloadReview` (lib/authority-b81.ts canonicalPayload /
+   payloadReviewState, b40/res), which says on the control that it is a CLIENT-SIDE payload review; §IN's local key is removed. */
+/** What the decide route's SERVER checks (said beside the client-side review — it binds no version or digest). */
+export const APPROVAL_SERVER_CONTRACT = 'the person (a named human), the role (collection_manager or domain_admin), that the decider is not the uploader, and that the approval is still pending — no version or digest is bound';
+/** The exact payload the decide route sends — what the client-side review holds (the reason as sent, trimmed). */
+export function approvalPayload(payload: { approvalId: string; decision: 'approve' | 'decline'; reason: string }): { approvalId: string; decision: 'approve' | 'decline'; reason: string } {
+  return { approvalId: payload.approvalId, decision: payload.decision, reason: payload.reason.trim() };
 }
 /** The effect of the decision, STATED (no server preview exists for it) — a destructive decline states what is kept. */
 export function approvalConsequence(decision: 'approve' | 'decline'): ConsequenceView {
