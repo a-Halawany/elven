@@ -47,8 +47,8 @@ export class AcquisitionPolicyStore {
   }
 
   /** ES-31-007: the rights from current state, before a request. */
-  rightsNow(r: RunRef): Promise<{ ok: boolean; class: 'rights' | 'licence' | 'policy' | null; reason: string }> {
-    return this.one('acquisition policy: rights re-check', sql<{ r: { ok: boolean; class: 'rights' | 'licence' | 'policy' | null; reason: string } }>`select
+  rightsNow(r: RunRef): Promise<{ ok: boolean; class: 'rights' | 'licence' | 'policy' | null; reason: string; at?: string }> {
+    return this.one('acquisition policy: rights re-check', sql<{ r: { ok: boolean; class: 'rights' | 'licence' | 'policy' | null; reason: string; at?: string } }>`select
       observation.ap_rights_now(${r.tenantId}::uuid, ${r.domainId}::uuid, ${r.sourceId}::uuid, ${r.contractVersion}::int, ${r.runId}::uuid) as r`);
   }
 

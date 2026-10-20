@@ -50,6 +50,7 @@ import { BASE, Phase4Harness, sdmxWindow } from './phase4-helpers.js';
 import { B40_HOSTS, B40_REPLAY_ROOT, v4Blocks } from './phase6-b40-fixtures.js';
 import { assertSyntheticListener, ActTargetRefused } from '../../../../scripts/act-target.mjs';
 
+const ENV_BEFORE = Object.fromEntries(['EYE_CONNECTOR_REPLAY_ROOT', 'EYE_SCHEDULER_ENABLED', 'EYE_CONNECTOR_PER_SOURCE_CONCURRENCY'].map((k) => [k, process.env[k]]));
 process.env['EYE_CONNECTOR_REPLAY_ROOT'] = B40_REPLAY_ROOT;   // the B40 replay sets (phase6-b40-fixtures)
 process.env['EYE_SCHEDULER_ENABLED'] = 'true';                  // the contract's retry runs on the real queue (Redis EYE_REDIS_PORT)
 process.env['EYE_CONNECTOR_PER_SOURCE_CONCURRENCY'] = '1';
@@ -150,6 +151,7 @@ afterEach(() => { fault.disarm(); vi.restoreAllMocks(); app(RobotsService).useEg
 afterAll(async () => {
   await app(SchedulerService).obliterateForTests(h.fx.tenantId, h.fx.domainId).catch(() => undefined);
   await h?.close();
+  for (const [k, v] of Object.entries(ENV_BEFORE)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }   // this file's settings never outlive it
 });
 
 describe('AU · the acquisition authorization of an SRC@v4 run (V03-T-266, L1-I02, V03-T-072, V03-T-073, V04-T-019)', () => {
@@ -391,6 +393,27 @@ describe('RL · the publisher\'s 429 + Retry-After on the SYNTHETIC replay set (
     const r = await runWith(publisher());
     expect(r.reason).toMatch(/^throttle refused \(rate_limited\): the publisher answered 429 Too Many Requests with an unreadable Retry-After \("60"\); the contract's backoff holds the source 60 s/);
     expect((await rateLimitsOf(v))[0]).toMatchObject({ retry_after_state: 'unparsed', retry_after_seconds: null, retry_after_raw: '60', applied_delay_seconds: 60 });
+  }, 120_000);
+
+  it('THE STREAM FORM: the 429 window and every later window of the run are explicit `rate_limited` ranges — no request sent during the hold', async () => {
+    const v = await v4({ backfill: { from: '2021-10-01', to: '2021-10-29', windowDays: 7 } });
+    const p = publisher({ status: (_u, n) => (n === 2 ? 429 : 200), headers: (_u, n): Record<string, string> => (n === 2 ? { 'retry-after': '120' } : {}) });
+    app(RobotsService).useEgressForTests(p.egress);
+    app(CollectionOrchestrator).useEgressForTests(p.egress);
+    const { ObservationController } = await import('../../src/observation/observation.controller.js');
+    const out = await h.app.get(ObservationController).openStream(h.req(h.manager, 'observation.stream.open', 'AQS', null, 'observation'), h.fx.tenantId, h.fx.domainId,
+      h.fx.sourceId, { payload: { contractVersion: v, partitionKey: `${sourceKey}:backfill`, credit: 1 } }) as unknown as { run: Row; stream: Row };
+    expect(out.run['state'], String(out.run['reason'])).toBe('finished');
+    expect(p.data()).toHaveLength(2);   // the first window, then the 429 — no later window was requested during the hold
+    const ranges = await rows(sql`select reason_class, range_from, detail from observation.acquisition_incomplete_ranges where stream_id = ${String(out.stream['stream_id'])}::uuid order by range_from`);
+    expect(ranges.length).toBeGreaterThanOrEqual(2);
+    expect(ranges.every((x) => x['reason_class'] === 'rate_limited')).toBe(true);
+    expect(ranges[0]).toMatchObject({ range_from: '2021-10-08', detail: expect.stringMatching(/^throttle refused \(rate_limited\): the publisher answered 429 Too Many Requests with Retry-After 120 s/) });
+    expect(ranges[1]!['detail']).toMatch(/held by the contract's backoff for the rest of this run \(the publisher's 429, attempt 1\)/);
+    expect(out.stream['state']).toBe('closed_incomplete');
+    expect(await rateLimitsOf(v)).toEqual([expect.objectContaining({ origin: 'publisher_429', retry_after_seconds: 120, applied_delay_seconds: 120, run_id: out.run['runId'] })]);
+    const read = (await readPolicy()).acquisition as Row;
+    expect((read['incomplete_ranges'] as Row[]).filter((x) => x['stream_id'] === out.stream['stream_id']).map((x) => x['reason_class'])).toEqual(ranges.map(() => 'rate_limited'));
   }, 120_000);
 
   it('D8: a v1–v3 contract\'s 429 stays the transport failure it always was — no interval, no hold', async () => {

@@ -34,6 +34,9 @@ export interface RunPolicy {
   mode: 'replay' | 'live';
   replaySet: string;
   endpoints: string[];
+  /** IN THIS RUN: the hold a rate-limited request started (epoch ms) and why — every later request of the run is refused before egress. */
+  heldUntil?: number | null;
+  heldWhy?: string | null;
 }
 
 export const runRefOf = (ctx: IntakeStageContext): RunRef => ({

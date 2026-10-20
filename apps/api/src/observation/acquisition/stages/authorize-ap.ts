@@ -80,21 +80,27 @@ export class AuthorizeStageAp implements AuthorizeStage {
     } catch (e) {
       refuse('unavailable', `the residency profile could not be resolved (${(e as Error).message.slice(0, 160)}) — nothing was requested`);
     }
-    // ── the collection window ───────────────────────────────────────────────────────────────────────────────────────────────────────
-    const window = windowVerdict(policy.window, at);
+    // ── the collection window — of a collection: an operator's upload is not collected from a publisher (no window, no request) ────────
+    const upload = ctx.contract.connector_kind === 'upload';
+    const window = upload ? { open: true, at: at.toISOString(), blackout: null, reason: 'not applicable — an operator upload is not collected from a publisher on a window' }
+      : windowVerdict(policy.window, at);
     if (!window.open) refuse('window_closed', window.reason);
     // ── the contract's backoff: a rate-limited interval still open holds collection ──────────────────────────────────────────────────
     if (inputs.hold !== null) {
       refuse('policy', `rate_limited: the contract's backoff holds collection until ${inputs.hold.until} (attempt ${inputs.hold.attempt} of ${inputs.hold.max_attempts}, ${inputs.hold.origin.replace('_', ' ')}) — no request before the hold ends`);
     }
     // ── the rate: the bucket must answer (F50) ──────────────────────────────────────────────────────────────────────────────────────
-    const ping = refusal === null ? await this.bucket.ping() : { ok: true as const };
+    const pinged = refusal === null && !upload;
+    const ping = pinged ? await this.bucket.ping() : { ok: true as const };
     if (!ping.ok) refuse('unavailable', `${ping.reason} — no request goes out without its rate`);
     // ── robots, per endpoint, only for a run nothing else refused (F52) ─────────────────────────────────────────────────────────────
     const robotsMap = new Map<string, RobotsGroup[]>();
     for (const r of inputs.robots) robotsMap.set(r.origin, Array.isArray(r.rules) ? r.rules : []);
     const robotsRecord: Row = { mode: policy.robots.mode };
-    if (policy.robots.mode === 'not_applicable') {
+    if (upload) {
+      robotsRecord['verdict'] = 'not_applicable';
+      robotsRecord['reason'] = 'not applicable — an operator upload requests nothing from a publisher';
+    } else if (policy.robots.mode === 'not_applicable') {
       robotsRecord['verdict'] = 'not_applicable';
       robotsRecord['reason'] = `not applicable — the contract says why: ${policy.robots.reason ?? ''}`;
     } else if (refusal === null) {
@@ -129,7 +135,7 @@ export class AuthorizeStageAp implements AuthorizeStage {
                 verdict: rightsOk && c.lifecycle_state === 'active' ? 'in_force' : 'refused' },
       licence: { ok: licence.ok, class: licence.class, reason: licence.reason, use_purposes: licence.usePurposes, acquisition_purpose: ctx.purposeId, contract_licence: c.licence },
       credential_ref: c.credential_ref,
-      rate: { ...policy.rate, bucket: ping.ok ? 'reachable' : 'unavailable' },
+      rate: { ...policy.rate, bucket: upload ? 'not_applicable' : !pinged ? 'not_checked' : ping.ok ? 'reachable' : 'unavailable' },
       residency: residency === null ? { verdict: 'unavailable' } : { ...residency, profile_of: inputs.residency.profile_of },
       window: { ...window, declared: policy.window },
       robots: robotsRecord,

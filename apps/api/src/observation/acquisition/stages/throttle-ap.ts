@@ -57,10 +57,15 @@ export class ThrottleStageAp implements ThrottleStage {
     }
     if (!rights.ok) throw new IntakeStageRefused('throttle', rights.class ?? 'rights', `${rights.reason} — the request to ${redactEndpoint(request.endpoint)} was not sent`);
     // 2. the window, at this request
-    const w = windowVerdict(policy.window, new Date());
+    const w = windowVerdict(policy.window, rights.at === undefined ? new Date() : new Date(rights.at));   // the database's clock, as the authorization's
     if (!w.open) throw new IntakeStageRefused('throttle', 'window_closed', `${w.reason} — the request to ${redactEndpoint(request.endpoint)} was not sent`);
-    // 3. robots for this request's path
+    // the hold this run already met (a 429 or its own rate earlier in the run): no further request of the run before it ends
     const p = this.policyFor(ctx);
+    if (p.heldUntil !== undefined && p.heldUntil !== null && p.heldUntil > Date.now()) {
+      return { kind: 'refuse', reasonClass: 'rate_limited', retryAfterSeconds: Math.ceil((p.heldUntil - Date.now()) / 1000),
+        reason: `held by the contract's backoff for the rest of this run (${p.heldWhy ?? 'rate-limited earlier in the run'}) — the request to ${redactEndpoint(request.endpoint)} was not sent` };
+    }
+    // 3. robots for this request's path
     if (policy.robots.mode === 'evaluate') {
       const origin = originOf(request.endpoint);
       let groups = p.robots.get(origin);
@@ -81,8 +86,11 @@ export class ThrottleStageAp implements ThrottleStage {
       if (Date.now() - started + got.waitMs <= MAX_IN_RUN_WAIT_MS) { await sleep(got.waitMs); continue; }
       // the contract's own rate cannot serve this run in time: the run stops, the interval and the contract's backoff are recorded
       const waitSeconds = Math.ceil(got.waitMs / 1000);
+      let applied = waitSeconds;
       const rec = await this.store.recordRateLimit(run, { origin: 'contract_rate', endpoint: redactEndpoint(request.endpoint), status: null, retryAfterRaw: null, retryAfterSeconds: waitSeconds },
-        (attempt) => contractBackoff(policy.backoff, attempt, null, waitSeconds)).catch((e: unknown) => { this.log.warn(`run ${ctx.runId}: the rate-limited interval could not be recorded: ${(e as Error).message.slice(0, 200)}`); return null; });
+        (attempt) => { const b = contractBackoff(policy.backoff, attempt, null, waitSeconds); applied = b.appliedDelaySeconds; return b; })
+        .catch((e: unknown) => { this.log.warn(`run ${ctx.runId}: the rate-limited interval could not be recorded: ${(e as Error).message.slice(0, 200)}`); return null; });
+      p.heldUntil = Date.now() + applied * 1000; p.heldWhy = `the contract's own rate, attempt ${rec?.attempt ?? '—'}`;
       return { kind: 'refuse', reasonClass: 'rate_limited', retryAfterSeconds: waitSeconds,
         reason: `the contract's rate (${policy.rate.requests} per ${policy.rate.per_seconds} s, burst ${policy.rate.burst}) frees a token in ${waitSeconds} s, beyond the run's wait of ${MAX_IN_RUN_WAIT_MS / 1000} s; ${rec === null ? 'the interval could not be recorded' : `the source is held until ${String(rec.until)} (attempt ${rec.attempt})`} — the request was not sent` };
     }
@@ -102,6 +110,8 @@ export class ThrottleStageAp implements ThrottleStage {
     const rec = await this.store.recordRateLimit(runRefOf(ctx), { origin: 'publisher_429', endpoint: redactEndpoint(endpoint), status: 429, retryAfterRaw: ra.raw, retryAfterSeconds: ra.seconds },
       (attempt) => { const b = contractBackoff(policy.backoff, attempt, ra); applied = b.appliedDelaySeconds; return b; })
       .catch((e: unknown) => { this.log.warn(`run ${ctx.runId}: the rate-limited interval could not be recorded: ${(e as Error).message.slice(0, 200)}`); return null; });
+    const held = this.policyFor(ctx);
+    held.heldUntil = Date.now() + Math.max(applied, 1) * 1000; held.heldWhy = `the publisher's 429, attempt ${rec?.attempt ?? '—'}`;
     const asked = ra.state === 'parsed' ? `Retry-After ${ra.seconds} s` : ra.state === 'unparsed' ? `an unreadable Retry-After ("${ra.raw ?? ''}")` : 'no Retry-After';
     return { kind: 'refuse', reasonClass: 'rate_limited', ...(applied > 0 ? { retryAfterSeconds: applied } : ra.seconds !== null ? { retryAfterSeconds: ra.seconds } : {}),
       reason: `the publisher answered 429 Too Many Requests with ${asked}; ${rec === null
