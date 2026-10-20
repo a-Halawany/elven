@@ -1,0 +1,35 @@
+{
+  "captured_by": "scripts/phase6/build-b40-fixtures.mjs",
+  "manifest_version": "v1",
+  "synthetic": true,
+  "set": "nordwerk-logistics-partner",
+  "source_key": "nordwerk-logistics-partner",
+  "note": "SYNTHETIC replay set (CP-6 B40 scene 5): the partner's consignment pages, served to the adapter through the egress gateway.",
+  "entries": [
+    {
+      "url": "https://consignments.partner-logistics.synthetic.example/v1/consignments?page=1",
+      "retrieved_at": "2026-10-20T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json"
+      },
+      "file": "consignments-page-1.json",
+      "sha256": "7d741c7bb11a549467e0a7b5bc1f490406481aebaed333c910adb30e64093f30",
+      "byte_length": 550,
+      "acquisition_mode": "replay"
+    },
+    {
+      "url": "https://consignments.partner-logistics.synthetic.example/v1/consignments?page=2",
+      "retrieved_at": "2026-10-20T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json"
+      },
+      "file": "consignments-page-2.json",
+      "sha256": "8efb4e74a938ff6438af1327455a00ac1e3d96d74619533ca60f229da1d7eb52",
+      "byte_length": 359,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-B40-05: tracking_detail_url names a host the contract never registered — adapter 1.0.0 follows it and the gateway blocks the request"
+    }
+  ]
+}

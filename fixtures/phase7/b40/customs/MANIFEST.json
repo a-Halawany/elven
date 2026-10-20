@@ -1,0 +1,16 @@
+{
+  "captured_by": "scripts/phase6/build-b40-fixtures.mjs",
+  "manifest_version": "v1",
+  "synthetic": true,
+  "set": "djibouti-customs-bulletins",
+  "note": "SYNTHETIC customs bulletin (CP-6 B40 scene 2). Committed UNSIGNED: the publisher key pair is generated at run time, the bulletin signed (Ed25519, detached) at run time, and the tampered copy derived at run time — no key and no signature is in the repository.",
+  "entries": [
+    {
+      "file": "djibouti-transshipment-bulletin-2026-10-19.json",
+      "sha256": "d2cad3f838a1408146eb12bf7f150b30e20257933cc8dc4d4a19f20a0d233390",
+      "byte_length": 651,
+      "media_type": "application/json",
+      "planted_defect": "DEF-B40-02 (derived at run time, never committed): the tampered copy changes consignments[0].status cleared → held and keeps the original signature — verification FAILS; it is admitted marked authenticity_failed (D6)"
+    }
+  ]
+}

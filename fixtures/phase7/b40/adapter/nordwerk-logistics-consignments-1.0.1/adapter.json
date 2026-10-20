@@ -1,0 +1,18 @@
+{
+  "name": "nordwerk-logistics-consignments",
+  "version": "1.0.1",
+  "entry": "index.mjs",
+  "author": "R. Haddad's firm — partner logistics (SYNTHETIC, customer-written)",
+  "declared_destinations": [
+    "consignments.partner-logistics.synthetic.example"
+  ],
+  "purposes": [
+    "corridor monitoring",
+    "supply assurance"
+  ],
+  "data_classes": [
+    "consignment status (internal)"
+  ],
+  "protocol": "b40-cell-provisional-1",
+  "synthetic": true
+}

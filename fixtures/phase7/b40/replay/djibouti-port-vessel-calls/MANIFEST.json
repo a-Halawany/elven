@@ -1,0 +1,65 @@
+{
+  "captured_by": "scripts/phase6/build-b40-fixtures.mjs",
+  "manifest_version": "v1",
+  "synthetic": true,
+  "set": "djibouti-port-vessel-calls",
+  "source_key": "djibouti-port-vessel-calls",
+  "note": "SYNTHETIC replay set (CP-6 B40 scene 4, DESIGN D10): the same request answered 429 + Retry-After twice, then 200. `attempt` orders the responses to one URL; a responder that does not read it serves the first (the 429). The robots.txt allows /v1/ and disallows /internal/.",
+  "entries": [
+    {
+      "url": "https://api.port-djibouti.synthetic.example/v1/vessel-calls?date=2026-10-20",
+      "retrieved_at": "2026-10-20T00:00:00Z",
+      "status": 429,
+      "retained_headers": {
+        "content-type": "application/json",
+        "retry-after": "60"
+      },
+      "file": "vessel-calls-429-1.json",
+      "sha256": "da08b21cb27888f7170496c812a7737ec00470d0f96ef2335b53081bd0476c63",
+      "byte_length": 102,
+      "acquisition_mode": "replay",
+      "attempt": 1,
+      "planted_defect": "DEF-B40-04a: 429 Too Many Requests with Retry-After: 60 — the contract backs off and records a rate_limited range"
+    },
+    {
+      "url": "https://api.port-djibouti.synthetic.example/v1/vessel-calls?date=2026-10-20",
+      "retrieved_at": "2026-10-20T00:00:00Z",
+      "status": 429,
+      "retained_headers": {
+        "content-type": "application/json",
+        "retry-after": "120"
+      },
+      "file": "vessel-calls-429-2.json",
+      "sha256": "e96ee96d7a6b2dc93e9c67f3bb2b859e6fc5c31ce0cc986a784028c2685a3377",
+      "byte_length": 102,
+      "acquisition_mode": "replay",
+      "attempt": 2,
+      "planted_defect": "DEF-B40-04b: a second 429 with Retry-After: 120 — the backoff honours the larger delay"
+    },
+    {
+      "url": "https://api.port-djibouti.synthetic.example/v1/vessel-calls?date=2026-10-20",
+      "retrieved_at": "2026-10-20T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json"
+      },
+      "file": "vessel-calls-2026-10-20.json",
+      "sha256": "8ad04f78a62c5bc663b1010f463bfd8cc3c5437f7565bf0a741cae0ff17b7835",
+      "byte_length": 638,
+      "acquisition_mode": "replay",
+      "attempt": 3
+    },
+    {
+      "url": "https://api.port-djibouti.synthetic.example/robots.txt",
+      "retrieved_at": "2026-10-20T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "text/plain"
+      },
+      "file": "robots.txt",
+      "sha256": "0ea463627e62774cb745977a9299360d3d4d569a4cc1862441e82b980eb661ff",
+      "byte_length": 47,
+      "acquisition_mode": "replay"
+    }
+  ]
+}
