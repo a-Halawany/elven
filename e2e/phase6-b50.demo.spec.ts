@@ -190,12 +190,15 @@ test.describe('CP-6 B50 — the act\'s walk: the header, the lifecycle, the expl
     await expect(page.getByText(/corrected on .* — not yet known at the instant/).first()).toBeVisible();                                     // today's restatement, never folded into the past
     await shot(page, '14-timeline-corrected-later', true);
     await page.goto(`/graph/trace/DPK/${required('EYE_B50_DECISION_PACKAGE')}?version=${env('EYE_B50_DECISION_PACKAGE_VERSION', '1')}`);
-    await expect(page.getByRole('heading', { name: 'From the sources to the product', level: 2 })).toBeVisible();
+    // The trace read costs ~11 s on the demonstration (measured 2026-10-20 on the pre-pass build cd3e8d91 and the integration pass's build alike,
+    // 10.5–11.8 s, scheduler off); with the live scheduler's ticks serialised behind the audit chain head (a pre-existing behaviour, CP6 §B82.8)
+    // it exceeded the default 20 s in two of four runs. The wait for the trace heading is 45 s; what the page must show is unchanged.
+    await expect(page.getByRole('heading', { name: 'From the sources to the product', level: 2 })).toBeVisible({ timeout: 45_000 });
     await oneH1(page);
     for (const h of [/^Sources \(\d+\)$/, /^Evidence \(\d+\)$/, /^Products \(\d+\)$/, /^Decisions \(\d+\)$/]) await expect(page.getByRole('heading', { name: h, level: 3 })).toBeVisible();
     await shot(page, '15-trace-decision', true);
     await page.goto(`/graph/trace/EVD/${required('EYE_B50_UPLOAD_EVD')}?version=1`);
-    await expect(page.getByRole('heading', { name: 'From the sources to the product', level: 2 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'From the sources to the product', level: 2 })).toBeVisible({ timeout: 45_000 });
     await oneH1(page);
     await expect(page.getByRole('list', { name: 'Limitations the sources state' })).toBeVisible();                                           // D20: stated, not a reason it is incomplete
     await expect(page.getByRole('status').filter({ hasText: /^Complete/ }).first()).toBeVisible();
