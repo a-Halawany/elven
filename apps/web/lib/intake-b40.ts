@@ -59,6 +59,7 @@ export const CLASS_LABEL: Readonly<Record<string, string>> = Object.freeze({
   inspection_incomplete: 'A scan did not cover the whole item', duplicate: 'Duplicate', quality: 'Quality below the contract’s rule', rights: 'Rights',
   policy_prohibited: 'Held by the contract’s policy', residency_conflict: 'Residency conflict', destination_identity_changed: 'Destination identity changed',
   unknown_signer: 'Unknown signer', response_anomaly: 'Response anomaly',
+  /* B40 integration */ approval_required: 'Held for a second person’s approval (SP-22)',
 });
 export const classLabel = (c: unknown): string => (typeof c === 'string' && CLASS_LABEL[c] !== undefined ? CLASS_LABEL[c]! : typeof c === 'string' ? c : 'unclassified');
 export const DUPLICATE_WORDS: Readonly<Record<string, string>> = Object.freeze({

@@ -77,7 +77,10 @@ ALTER TABLE observation.quarantine_current ADD CONSTRAINT q_current_reason_class
     -- B40 §0: §IN (content policy, engines, the review reasons), §VA (unknown signer), §AP (rights, residency, response anomaly), §CR (identity)
     'active_content', 'macro', 'embedded_file', 'hidden_instruction', 'malware_verdict', 'inspection_unavailable', 'inspection_failed',
     'inspection_incomplete', 'duplicate', 'quality', 'rights', 'policy_prohibited', 'residency_conflict', 'destination_identity_changed',
-    'unknown_signer', 'response_anomaly'));
+    'unknown_signer', 'response_anomaly',
+    -- B40 integration (§IN, SP-22): an upload HELD for a second person's approval — not prohibited by policy, waiting for a person (§IN built
+    -- it on policy_prohibited; the integrator gives it its own class). The CHECK is new in 0123, so every historic row stays valid.
+    'approval_required'));
 
 ALTER TABLE observation.custody_events DROP CONSTRAINT custody_events_event_check,
   ADD CONSTRAINT custody_events_event_check CHECK (event IN (
@@ -1022,6 +1025,10 @@ BEGIN
   RETURN jsonb_build_object('change_id', ch.change_id, 'operation', 'withdraw', 'source_id', p_source, 'source_name', v_name, 'contract_version', p_named_version, 'affected', v_affected,
     'suspended_version', v_suspended, 'schedule', CASE WHEN v_removed > 0 THEN 'removed' ELSE 'none_scheduled' END, 'retention_action_id', v_action, 'incident_id', v_incident,
     'deletion_obligation', ch.deletion_obligation,
+    -- B40 integration: what the route announces as RetentionActionDue@v1 (the event an opened action carries — retention.service.ts dueEvent)
+    'retention_action', CASE WHEN v_action IS NULL THEN NULL ELSE jsonb_build_object('action_id', v_action, 'kind', 'deletion', 'target_kind', 'evidence',   -- B40 integration
+      'selector', jsonb_build_object('source_id', p_source, 'reason', 'rights withdrawn — the declared deletion obligation: ' || btrim(p_deletion), 'rights_change_id', p_change),  -- B40 integration
+      'retention_profile', v_retention, 'opened_by', p_actor) END,                                                                          -- B40 integration
     'deletion_statement', CASE WHEN v_action IS NULL THEN 'no deletion obligation was declared with the withdrawal: no retention action was opened'
                                ELSE 'a retention action (deletion of the source''s evidence) was opened; it waits for the retention authority''s approval and is executed by the steward — never automatically' END,
     'impact', v_impact, 'attention_items', v_items, 'recorded_at', ch.recorded_at, 'replayed', false);
@@ -3533,7 +3540,7 @@ LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
     WHEN p_class IN ('active_content', 'macro', 'embedded_file', 'hidden_instruction', 'malware_verdict', 'inspection_unavailable', 'inspection_failed',
                      'inspection_incomplete') THEN 'safety'
     WHEN p_class = 'unknown_signer' THEN 'authenticity'
-    WHEN p_class IN ('policy_prohibited', 'residency_conflict') THEN 'policy'
+    WHEN p_class IN ('policy_prohibited', 'residency_conflict', 'approval_required') THEN 'policy'   -- B40 integration: + approval_required (SP-22)
     WHEN p_class = 'duplicate' THEN 'duplicate'
     WHEN p_class = 'quality' THEN 'quality'
     WHEN p_class = 'rights' THEN 'rights'

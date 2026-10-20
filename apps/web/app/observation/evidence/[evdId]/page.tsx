@@ -38,6 +38,9 @@ import { authenticityApi } from '../../../../lib/authenticity-api-b40';
 import { UNKNOWN_NOTE, contentAuthenticityNote, toEvidenceAuthenticity, type EvidenceVersionAuthenticity } from '../../../../lib/authenticity-b40';
 import { AttributeOverrideForm } from './attribute-form';
 /* end B40 va */
+/* B40 integration (§IN): the inspection verdicts of this version, mounted here */
+import { InspectionPanel } from '../../../../components/intake';
+/* end B40 integration */
 
 const AUTHENTICITY_LABEL: Record<string, string> = {
   transport_endpoint: 'Transport endpoint',
@@ -230,6 +233,14 @@ export default function EvidenceDetailPage() {
       <B82Evidence scope={scope} evd={evd} payload={payload} source={source} resolved={resolved} lastRead={lastRead} setLastRead={setLastRead} onChanged={() => setRev((n) => n + 1)}
         /* B40 va */ recorded={authn !== null && 'versions' in authn ? authn.versions.find((x) => x.version === Number(evd['object_version'])) ?? null : null} /* end B40 va */ />
       {/* end B82 ev */}
+
+      {/* B40 integration (§IN, D2, D9) — every engine's verdict on this version with its identity, findings by code and offset (never content),
+          read on demand under observation.inspection.read; an item admitted before B40 or under a v1–v3 contract says "not recorded" */}
+      <section aria-labelledby="inspection" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
+        <h2 id="inspection" style={{ marginBlockStart: 0, fontSize: 'var(--eye-type-heading-3)' }}>Inspection</h2>
+        <InspectionPanel scope={scope} evdId={String(evd['object_id'] ?? evdId)} version={Number.isFinite(Number(evd['object_version'])) ? Number(evd['object_version']) : null} />
+      </section>
+      {/* end B40 integration */}
 
       {/* ── chain of custody ───────────────────────────────────────── */}
       <section aria-labelledby="custody" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>

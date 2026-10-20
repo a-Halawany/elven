@@ -148,3 +148,32 @@ export function srcV4Contract(a: {
     ...(a.kind === 'adapter' ? { adapter: a.adapter } : {}),
   };
 }
+
+/* ── B40 integration — §RG's evaluation gate (DESIGN D5) ───────────────────────────────────────────────────────────────────────────── */
+/**
+ * An SRC@v4 contract is APPROVED only on a recorded evaluation of THAT version recommending approval (0123 §RG approve_source; v1–v3 keep
+ * their path). The harnesses of §VA, §IN, §AP and §CR approve v4 contracts: each records the evaluation FIRST through this one helper —
+ * §RG's own port (observation.source.evaluate, the evaluation capability) by a collection manager who did not register the version (the
+ * harness's manager, never the registrar). Everything recorded is SYNTHETIC.
+ */
+export async function evaluateForApproval(
+  h: { pipeline: { write: (...a: never[]) => Promise<{ result: unknown }> }; env: (p: never, action: string, type: string, id: string | null) => unknown },
+  evaluator: { principalId: string },
+  a: { tenantId: string; domainId: string; sourceId: string; contractVersion: number; label?: string },
+): Promise<Record<string, unknown>> {
+  const { RegistryB40Capability } = await import('../../src/observation/registry-b40/registry.capabilities.js');
+  const { uuidv7 } = await import('uuidv7');
+  const label = a.label ?? 'B40 fixture';
+  const write = h.pipeline.write as unknown as (env: unknown, principal: unknown, route: unknown, factory: unknown,
+    handler: (cap: { evaluate: (x: Record<string, unknown>) => Promise<Record<string, unknown>> }) => Promise<unknown>) => Promise<{ result: Record<string, unknown> }>;
+  const out = await write.call(h.pipeline, h.env(evaluator as never, 'observation.source.evaluate', 'SRC', a.sourceId), evaluator,
+    { scope: 'DOMAIN', tenantId: a.tenantId, domainId: a.domainId, action: 'observation.source.evaluate', objectType: 'SRC', objectId: a.sourceId },
+    RegistryB40Capability.evaluation,
+    async (cap) => ({ result: await cap.evaluate({ requestId: uuidv7(), tenantId: a.tenantId, domainId: a.domainId, sourceId: a.sourceId, contractVersion: a.contractVersion,
+      authority: `${label}: the publisher is a SYNTHETIC fixture publisher of this harness`, rightsEvidence: `${label}: the fixture's terms permit internal monitoring use (SYNTHETIC)`,
+      coverageFit: `${label}: the fixture covers what the harness exercises (SYNTHETIC)`, cost: 'none (fixture)', risks: [],
+      contractTests: [{ name: 'fixture contract parses', outcome: 'pass', note: null }], recommendation: 'approve',
+      reason: `${label}: evaluated before its approval — §RG's gate (D5), SYNTHETIC`, actor: evaluator.principalId, correlationId: uuidv7() }),
+      targetType: 'SRC', targetId: a.sourceId, targetVersion: String(a.contractVersion), outboxEvent: null }));
+  return out.result;
+}

@@ -81,7 +81,8 @@ export interface ThrottleStage {
 export type IntakeQuarantineClass =
   | 'active_content' | 'macro' | 'embedded_file' | 'hidden_instruction' | 'malware_verdict' | 'inspection_unavailable' | 'inspection_failed'
   | 'inspection_incomplete' | 'duplicate' | 'quality' | 'rights' | 'policy_prohibited' | 'residency_conflict' | 'destination_identity_changed'
-  | 'unknown_signer' | 'response_anomaly';
+  | 'unknown_signer' | 'response_anomaly'
+  /* B40 integration: an upload held for a second person's approval (SP-22) — its own class, never policy_prohibited */ | 'approval_required';
 
 /**
  * THE SCAN OUTCOME of one engine on one item (DESIGN D2; 0123 §0's domain observation.inspection_outcome). ONLY `clean` admits; every other

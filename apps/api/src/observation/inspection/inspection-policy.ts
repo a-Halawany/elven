@@ -10,7 +10,7 @@
  *      unless the contract says `admit_opaque` (with its reason) for that class — the order macro → active_content → embedded_file →
  *      hidden_instruction picks the case's class; the reason lists every class found.
  *   3. THE UPLOAD RULE (SP-22): a manual upload that passed 1 and 2 is admitted without a second person only within the contract's auto_admit
- *      rule (`within_limits`: its size and media type); otherwise it is HELD — quarantined with the policy class `policy_prohibited` and the
+ *      rule (`within_limits`: its size and media type); otherwise it is HELD — quarantined with the class `approval_required` (B40 integration) and the
  *      reason saying it awaits a second person's approval (nothing in it is prohibited), and the record opens the upload approval.
  * A v1–v3 contract never reaches this module (the stage passes it through, D8).
  */
@@ -124,7 +124,7 @@ export function decideInspection(p: PolicyInput): { decision: InspectDecision; e
     else if (!(rule.media_types ?? []).map((m) => m.toLowerCase()).includes(media)) because = `the media type ${media === '' ? '(not stated)' : media} is not one the contract auto-admits`;
     if (because !== null) {
       extras.hold = { kind: 'upload_approval', because, rule: { ...rule }, purpose: p.purpose };
-      return quarantine('policy_prohibited', `held for a second person's approval (SP-22): ${because}; every engine answered clean and no content rule applies — the upload is not prohibited, it waits for approval`);
+      return quarantine(/* B40 integration */ 'approval_required', `held for a second person's approval (SP-22): ${because}; every engine answered clean and no content rule applies — the upload is not prohibited, it waits for approval`);
     }
   }
   return { decision: { kind: 'pass', verdicts }, extras };

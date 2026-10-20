@@ -66,7 +66,7 @@ describe('§0.1 · the vocabularies, widened in one place', () => {
     const q = await constraint('observation.quarantine_current', 'q_current_reason_class');
     for (const c of ['path_traversal', 'expansion_limit', 'entry_limit', 'compression_ratio', 'malformed_archive', 'type_mismatch', 'oversize', 'schema_drift',
       ...Object.values(QUARANTINE_CLASS_OF_OUTCOME).filter((x): x is string => x !== null), 'active_content', 'macro', 'embedded_file', 'hidden_instruction',
-      'duplicate', 'quality', 'rights', 'policy_prohibited', 'residency_conflict', 'destination_identity_changed', 'unknown_signer', 'response_anomaly']) expect(q).toContain(`'${c}'`);
+      'duplicate', 'quality', 'rights', 'policy_prohibited', 'residency_conflict', 'destination_identity_changed', 'unknown_signer', 'response_anomaly', /* B40 integration */ 'approval_required']) expect(q).toContain(`'${c}'`);
     const cu = await constraint('observation.custody_events', 'custody_events_event_check');
     for (const e of ['custody.acquired', 'custody.retrieval_degraded', 'custody.inspected', 'custody.authenticity_recorded']) expect(cu).toContain(`'${e}'`);
   });

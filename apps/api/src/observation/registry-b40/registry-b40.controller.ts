@@ -234,7 +234,20 @@ export class RegistryB40Controller {
           outboxEvent = { eventType: 'SourceHealthChanged', payload: { schema_version: 'v1', source_id: sourceId, contract_version: r['reactivated_version'],
             state: 'active', reason: `rights restored: ${reason}`.slice(0, 500), cause: 'rights', rights_change_id: r['change_id'] } };
         }
-        return { result: { ...r, schedule_runtime: schedule }, targetType: 'SRC', targetId: sourceId, targetVersion: String(contractVersion), outboxEvent };
+        /* B40 integration: a withdrawal that opened a retention action (its declared deletion obligation) announces it as the retention unit's
+           own event, RetentionActionDue@v1 — the shape retention.service.ts dueEvent writes for POST …/retention/actions/open (L3-I04; the
+           interface register unchanged). The action is opened by the port (retention.open_action is reserved to retention.action.open /
+           retention.schedule.evaluate, so the rights port writes the same row and event); nothing is deleted here. */
+        const ra = r['retention_action'] as Row | null | undefined;
+        const outboxEvents = !replayed && operation === 'withdraw' && ra !== null && ra !== undefined
+          ? [{ eventType: 'RetentionActionDue', payload: {
+              schema: 'RetentionActionDue', schema_version: 'v1', action_id: ra['action_id'], kind: ra['kind'], target_kind: ra['target_kind'], selector: ra['selector'],
+              retention_profile: ra['retention_profile'] ?? null, schedule_id: null, due_from: new Date().toISOString(), opened_by: principal.principalId,
+              temporal: { known_at: new Date().toISOString() }, cause: { action: 'observation.source.change_rights', actor: principal.principalId, target_type: 'RTA', target_id: ra['action_id'] },
+            } as Row }]
+          : [];
+        /* end B40 integration */
+        return { result: { ...r, schedule_runtime: schedule }, targetType: 'SRC', targetId: sourceId, targetVersion: String(contractVersion), outboxEvent, outboxEvents };
       });
     return { change: out.result, receipt: receipt(out) };
   }

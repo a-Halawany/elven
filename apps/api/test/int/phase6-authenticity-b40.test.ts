@@ -48,7 +48,7 @@ import { PdpService } from '../../src/policy/pdp.service.js';
 import * as fault from '../../src/observation/fault-injection.js';
 import { Phase4Harness } from './phase4-helpers.js';
 import { inCommitContext } from './phase1-helpers.js';
-import { fixtureBytes, publisherKeyPair, signedBulletin, signDetached, signJws, srcV4Contract, tamperedCopy, B40_FILES, type PublisherKeyPair } from './phase6-b40-fixtures.js';
+import { evaluateForApproval, fixtureBytes, publisherKeyPair, signedBulletin, signDetached, signJws, srcV4Contract, tamperedCopy, B40_FILES, type PublisherKeyPair } from './phase6-b40-fixtures.js';
 
 type Row = Record<string, unknown>;
 let h: Phase4Harness; let pdp: PdpService;
@@ -106,6 +106,7 @@ async function v4UploadSource(label: string, authenticity: Row, attributes?: Row
   (contract['authority_and_rights'] as Row)['purposes'] = ['observation', 'corridor monitoring'];   // the upload route's purpose
   const r = await controller.registerSource(h.req(h.registrar, 'observation.source.register', 'SRC', null, 'observation'), T(), D(), { payload: { contract } }) as { source: { sourceId: string } };
   const sourceId = r.source.sourceId;
+  await evaluateForApproval(h, h.manager, { tenantId: T(), domainId: D(), sourceId, contractVersion: 1, label: 'B40 §VA fixture' });   // B40 integration: §RG's gate (D5)
   for (const [action, fn] of [
     ['observation.source.approve', (cap: never) => (cap as { approveSource: (a: Row) => Promise<void> }).approveSource({ sourceId, contractVersion: 1, tenantId: T(), domainId: D(), decision: 'approve', reason: 'B40 §VA fixture (SYNTHETIC)', eventId: uuidv7(), correlationId: uuidv7() })],
     ['observation.source.transition', (cap: never) => (cap as { transitionContract: (a: Row) => Promise<void> }).transitionContract({ sourceId, contractVersion: 1, tenantId: T(), domainId: D(), target: 'active', reason: 'B40 §VA fixture: active', eventId: uuidv7(), correlationId: uuidv7() })],

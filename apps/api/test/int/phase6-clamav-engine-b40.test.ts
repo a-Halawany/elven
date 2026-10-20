@@ -32,7 +32,7 @@ import { COMMIT_DB } from '../../src/shared/shared.module.js';
 import type { Db } from '../../src/shared/db.js';
 import { Phase4Harness } from './phase4-helpers.js';
 import { inCommitContext } from './phase1-helpers.js';
-import { eicarTestBytes, fixtureBytes, srcV4Contract, B40_FILES } from './phase6-b40-fixtures.js';
+import { evaluateForApproval, eicarTestBytes, fixtureBytes, srcV4Contract, B40_FILES } from './phase6-b40-fixtures.js';
 
 type Row = Record<string, unknown>;
 
@@ -65,6 +65,7 @@ async function v4Source(): Promise<string> {
   (contract['authority_and_rights'] as Row)['purposes'] = ['observation'];
   const r = await obs.registerSource(h.req(h.registrar, 'observation.source.register', 'SRC', null, 'observation'), h.fx.tenantId, h.fx.domainId, { payload: { contract } }) as { source: { sourceId: string } };
   const id = r.source.sourceId;
+  await evaluateForApproval(h, h.manager, { tenantId: h.fx.tenantId, domainId: h.fx.domainId, sourceId: id, contractVersion: 1, label: 'B40 §IN real-engine fixture' });   // B40 integration: §RG's gate (D5)
   for (const action of ['observation.source.approve', 'observation.source.transition'] as const) {
     await h.pipeline.write(h.env(h.manager, action, 'SRC', id), h.manager, { scope: 'DOMAIN', tenantId: h.fx.tenantId, domainId: h.fx.domainId, action, objectType: 'SRC', objectId: id },
       ObservationCapability.registry, async (cap) => {

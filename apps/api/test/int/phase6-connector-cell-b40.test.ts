@@ -41,7 +41,7 @@ import { VaultService } from '../../src/observation/vault/vault.service.js';
 import * as fault from '../../src/observation/fault-injection.js';
 import { Phase4Harness } from './phase4-helpers.js';
 import { inCommitContext } from './phase1-helpers.js';
-import { B40_FIXTURES, B40_HOSTS, B40_REPLAY_ROOT, adapterPackage, sha256, srcV4Contract } from './phase6-b40-fixtures.js';
+import { evaluateForApproval, B40_FIXTURES, B40_HOSTS, B40_REPLAY_ROOT, adapterPackage, sha256, srcV4Contract } from './phase6-b40-fixtures.js';
 
 process.env['EYE_CONNECTOR_REPLAY_ROOT'] = B40_REPLAY_ROOT;
 
@@ -97,6 +97,7 @@ async function adapterSource(label: string, pkg: { package_id: string; version: 
   const r = await h.app.get(ObservationController).registerSource(h.req(h.registrar, 'observation.source.register', 'SRC', null, 'observation'), T(), D(),
     { payload: { contract: c } }) as { source: { sourceId: string } };
   const sourceId = r.source.sourceId;
+  await evaluateForApproval(h, h.manager, { tenantId: T(), domainId: D(), sourceId, contractVersion: 1, label: 'B40 §CR fixture' });   // B40 integration: §RG's gate (D5)
   await h.pipeline.write(h.env(h.manager, 'observation.source.approve', 'SRC', sourceId), h.manager,
     { scope: 'DOMAIN', tenantId: T(), domainId: D(), action: 'observation.source.approve', objectType: 'SRC', objectId: sourceId }, ObservationCapability.registry,
     async (cap) => {

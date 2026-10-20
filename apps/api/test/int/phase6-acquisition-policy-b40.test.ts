@@ -45,7 +45,7 @@ import { SchedulerService, type CollectionJobPayload } from '../../src/observati
 import { EvidenceB82Controller } from '../../src/observation/evidence-b82/evidence-b82.controller.js';
 import type { Db } from '../../src/shared/db.js';
 import { BASE, Phase4Harness, sdmxWindow } from './phase4-helpers.js';
-import { B40_HOSTS, B40_REPLAY_ROOT, v4Blocks } from './phase6-b40-fixtures.js';
+import { evaluateForApproval, B40_HOSTS, B40_REPLAY_ROOT, v4Blocks } from './phase6-b40-fixtures.js';
 import { assertSyntheticListener, ActTargetRefused } from '../../../../scripts/act-target.mjs';
 
 const ENV_BEFORE = Object.fromEntries(['EYE_CONNECTOR_REPLAY_ROOT', 'EYE_SCHEDULER_ENABLED', 'EYE_CONNECTOR_PER_SOURCE_CONCURRENCY'].map((k) => [k, process.env[k]]));
@@ -90,6 +90,7 @@ async function v4(o: { ap?: Partial<Policy>; mode?: 'live' | 'replay'; endpoints
     h.req(h.registrar, 'observation.source.register', 'SRC', h.fx.sourceId, 'observation'), h.fx.tenantId, h.fx.domainId,
     { payload: { contract, sourceId: h.fx.sourceId } });
   const { ObservationCapability } = await import('../../src/observation/observation.capabilities.js');
+  await evaluateForApproval(h, h.manager, { tenantId: h.fx.tenantId, domainId: h.fx.domainId, sourceId: h.fx.sourceId, contractVersion: version, label: 'B40 §AP fixture' });   // B40 integration: §RG's gate (D5)
   await h.pipeline.write(h.env(h.manager, 'observation.source.approve', 'SRC', h.fx.sourceId), h.manager,
     { scope: 'DOMAIN', tenantId: h.fx.tenantId, domainId: h.fx.domainId, action: 'observation.source.approve', objectType: 'SRC', objectId: h.fx.sourceId },
     ObservationCapability.registry,

@@ -340,7 +340,7 @@ describe('the decision — ONLY clean admits (D2); the content rules (D7); the u
     const up = (auto: PolicyInput['contentPolicy']['auto_admit'], byteLength = 765, declaredType = 'application/pdf') =>
       decideInspection(input([clean('content-inspector'), clean('clamav')], { connectorKind: 'upload', contentPolicy: policy({ auto_admit: auto }), item: { byteLength, declaredType, sniffedType: 'application/pdf', filename: 'n.pdf' } }));
     const never = up({ mode: 'never', max_bytes: null, media_types: [] });
-    expect(never.decision).toMatchObject({ kind: 'quarantine', reasonClass: 'policy_prohibited' });
+    expect(never.decision).toMatchObject({ kind: 'quarantine', reasonClass: 'approval_required' });   // B40 integration
     expect(never.extras.hold).toMatchObject({ kind: 'upload_approval', because: 'the contract admits no upload without a second person (auto_admit: never)' });
     expect(never.decision.kind === 'quarantine' && never.decision.reason).toMatch(/not prohibited, it waits for approval/);
     expect(up({ mode: 'within_limits', max_bytes: 1000, media_types: ['application/pdf'] }).decision.kind).toBe('pass');

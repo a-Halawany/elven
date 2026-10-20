@@ -41,7 +41,7 @@ import { contentInspectorRuleSetDigest } from '../../src/observation/inspection/
 import * as fault from '../../src/observation/fault-injection.js';
 import { Phase4Harness, fakeEgress } from './phase4-helpers.js';
 import { inCommitContext } from './phase1-helpers.js';
-import { fixtureBytes, srcV4Contract, B40_FILES, sha256 } from './phase6-b40-fixtures.js';
+import { evaluateForApproval, fixtureBytes, srcV4Contract, B40_FILES, sha256 } from './phase6-b40-fixtures.js';
 
 type Row = Record<string, unknown>;
 let h: Phase4Harness;
@@ -72,7 +72,8 @@ async function v4UploadSource(label: string, blocks: Parameters<typeof srcV4Cont
   (contract['authority_and_rights'] as Row)['purposes'] = ['observation', 'supplier quality review'];   // the upload route's purpose
   const r = await obs.registerSource(h.req(h.registrar, 'observation.source.register', 'SRC', null, 'observation'), h.fx.tenantId, h.fx.domainId, { payload: { contract } }) as { source: { sourceId: string } };
   const sourceId = r.source.sourceId;
-  // §RG (wave 1, sibling) gates a v4 APPROVAL on a recorded evaluation: at the fold this helper records one first (the integrator's swap)
+  // §RG gates a v4 APPROVAL on a recorded evaluation (D5): recorded first, through the shared helper (B40 integration)
+  await evaluateForApproval(h, h.manager, { tenantId: h.fx.tenantId, domainId: h.fx.domainId, sourceId, contractVersion: 1, label: 'B40 §IN fixture' });
   for (const [action, act] of [['observation.source.approve', 'approve'], ['observation.source.transition', 'activate']] as const) {
     await h.pipeline.write(h.env(h.manager, action, 'SRC', sourceId), h.manager,
       { scope: 'DOMAIN', tenantId: h.fx.tenantId, domainId: h.fx.domainId, action, objectType: 'SRC', objectId: sourceId }, ObservationCapability.registry,
@@ -325,7 +326,7 @@ describe('§IN.4 THE UPLOAD APPROVAL (SP-22): outside auto_admit an upload waits
     const run = await upload(src.sourceId, uploader, [{ filename: 'regensburg-bearings-delivery-note.pdf', mediaType: PDF, bytes: fixtureBytes(B40_FILES.cleanPdf) }]);
     expect(run).toMatchObject({ admitted: 0, quarantined: 1 });
     held = (await casesOf(run['runId']))[0]!;
-    expect(held['reason_class']).toBe('policy_prohibited');
+    expect(held['reason_class']).toBe('approval_required');   // B40 integration: its own class (SP-22)
     expect(String(held['reason'])).toMatch(/held for a second person's approval \(SP-22\).*not prohibited, it waits for approval/);
     const a = await one(sql`select approval_id, state, requester_principal_id, held_because from observation.upload_approvals where case_id = ${String(held['case_id'])}::uuid`);
     expect(a).toMatchObject({ state: 'pending', requester_principal_id: uploader.principalId, held_because: 'the contract admits no upload without a second person (auto_admit: never)' });

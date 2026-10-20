@@ -450,6 +450,11 @@ describe('RG4 · THE RIGHTS LIFECYCLE — preview, narrow, the new feed\'s withd
     // the outbox announced it, cause rights
     const evs = await rows(sql`select payload from objects.object_outbox where event_type = 'SourceHealthChanged' and payload ->> 'source_id' = ${V} and payload ->> 'cause' = 'rights'`);
     expect(evs[0]!['payload']).toMatchObject({ state: 'suspended', cause: 'rights', rights_change_id: r['change_id'] });
+    // B40 integration: the opened retention action is announced as the retention unit's own event (RetentionActionDue@v1), once
+    const due = await rows(sql`select payload from objects.object_outbox where event_type = 'RetentionActionDue' and payload ->> 'action_id' = ${String(r['retention_action_id'])}`);
+    expect(due).toHaveLength(1);
+    expect(due[0]!['payload']).toMatchObject({ schema: 'RetentionActionDue', schema_version: 'v1', kind: 'deletion', target_kind: 'evidence', selector: { source_id: V, rights_change_id: r['change_id'] },
+      opened_by: dvorak.principalId, cause: { action: 'observation.source.change_rights', target_type: 'RTA' } });
     // the feed is not reactivated while withdrawn (0022's rule), nor approved in a new version (RG7)
     await refused(transition(dvorak, V, 1, 'active'), /./, 409);
   });

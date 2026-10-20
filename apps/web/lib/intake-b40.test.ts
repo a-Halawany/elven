@@ -108,7 +108,7 @@ describe('the excerpt and the upload outcome', () => {
   it('the upload outcome is the server\'s counts and the queue\'s record of each file (held / quarantined with its class), the filename as the route normalises it', () => {
     expect(normalisedFilename('../../evil/Report Q3 (final).pdf')).toBe('Report Q3 _final_.pdf');
     const lines = uploadOutcomeLines({ state: 'finished', admitted: 1, quarantined: 2, noop: 0 }, ['note.pdf', 'Report Q3 (final).pdf', 'clean.pdf'], [
-      { item_key: 'upload:note.pdf@0123456789abcdef', reason_class: 'policy_prohibited', upload_approval: approval() },
+      { item_key: 'upload:note.pdf@0123456789abcdef', reason_class: 'approval_required', upload_approval: approval() },   // B40 integration
       { item_key: 'upload:Report Q3 _final_.pdf@fedcba9876543210', reason_class: 'active_content', upload_approval: null },
     ]);
     expect(lines).toEqual(['run finished: 1 admitted · 2 quarantined · 0 no-op',
