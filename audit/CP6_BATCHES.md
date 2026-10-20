@@ -7158,7 +7158,7 @@ Corrected 2026-10-20 — this section first said only that the 55-minute limit "
 
 ### B82.9 — #93's chain and #94
 - **Main's chain for `b673a9c`** (#93), each on attempt 1: ci **39397459927** → C19 lifecycle **39397459764** → C17 finalize **39406275446** → C19 anchor **39406433783**.
-- **#94** pushed only after it; retargeted to main; its hosted runs on the final head and its merge are recorded in the next delivery record.
+- **#94** pushed only after it; retargeted to main. **ci 39408165321 at `24c2ac0`**: build-test PASSED (integration 49m, C18 included), supply-chain PASSED (the history dispositions hold), C19 lifecycle 39408165295 passed; **browser-regression FAILED one journey newly exposed** — phase0 journey 7 had never run behind journey 5's failure: its `alert` locator also matched the shell's Display density control, which states in its own alert that a tenant administrator's saved density could not be read on the platform workspace (EYE-TEN-001; an honest B81 behaviour). The journey now takes the page's denial inside `#eye-main`; what it asserts is unchanged. The final head's runs and the merge are recorded in the next delivery record.
 
 ## Order and the next implementation batch
 
