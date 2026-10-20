@@ -28,12 +28,12 @@ import { newId } from '../../shared/ids.js';
 import { PipelineService } from '../../pipeline/pipeline.service.js';
 import type { EyeRequest } from '../../pipeline/http.js';
 import { CellCapability } from './cell.capabilities.js';
+import { asObservationRefusal } from '../observation-errors.js';
 import { ConnectorCellService } from './connector-cell.service.js';
 
 type Row = Record<string, unknown>;
 type Body_ = { payload?: Row } | undefined;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const NOUNS = /^(adapter package|egress receipt|connector suspension|requalification|credential rotation|connector cell) rejected \(([a-z_]+)\)/i;
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -49,17 +49,10 @@ const pathId = (v: string, what: string, correlationId: string): string => {
 };
 const requestIdOf = (p: Row): string => (typeof p['requestId'] === 'string' && UUID_RE.test(p['requestId']) ? (p['requestId'] as string).toLowerCase() : newId());
 
-/** A port's class-form refusal → its status, in the server's words; anything else passes through unchanged. */
+/** A port's class-form refusal → its status, in the server's words — through the CENTRAL mapper (observation-errors.ts, the B40 rows; the
+ *  integrator removed §CR's local NOUNS map, B40 integration); anything else passes through unchanged. */
 export function cellRefusal(e: unknown, correlationId: string): unknown {
-  if (e instanceof HttpException) return e;
-  const message = e instanceof Error ? e.message : '';
-  const m = NOUNS.exec(message);
-  if (m === null) return e;
-  const cls = (m[2] ?? '').toLowerCase();
-  if (['actor', 'authority', 'separation_of_duties'].includes(cls)) return new HttpException(errorBody('EYE_AUT_001', correlationId, message), 403);
-  if (cls.startsWith('unknown_')) return new HttpException(errorBody('EYE_STA_001', correlationId, message), 404);
-  if (['state', 'stale', 'duplicate', 'held', 'expired'].includes(cls)) return new HttpException(errorBody('EYE_STA_002', correlationId, message), 409);
-  return new HttpException(errorBody('EYE_REQ_001', correlationId, message), 422);
+  return asObservationRefusal(e, correlationId) ?? e;
 }
 const mapped = async <T>(correlationId: string, p: Promise<T>): Promise<T> => p.catch((e: unknown) => { throw cellRefusal(e, correlationId); });
 

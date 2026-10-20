@@ -2376,7 +2376,7 @@ BEGIN
       RAISE EXCEPTION 'publisher key rejected (rotation): a rotation replaces a key of the same source and kind (key % is a % of source %)', old.fingerprint, old.kind, old.source_id USING ERRCODE = '22023';
     END IF;
     IF old.retired_at IS NOT NULL THEN
-      RAISE EXCEPTION 'publisher key rejected (state): key % was retired at % — a rotation replaces an active key', old.fingerprint, graph.pv_iso(old.retired_at) USING ERRCODE = '55000';
+      RAISE EXCEPTION 'publisher key rejected (state): key % was retired at % — a rotation replaces an active key', old.fingerprint, graph.pv_iso(old.retired_at) USING ERRCODE = '23514';  -- B40 integration: 23514 (the mapped refusal SQLSTATE; 55000 is outside the observation mapper)
     END IF;
   END IF;
   INSERT INTO observation.publisher_keys (key_id, scope, tenant_id, domain_id, source_id, key_ref, kind, algorithm, public_key_pem, fingerprint, valid_from, valid_to, reason,
@@ -2420,7 +2420,7 @@ BEGIN
     RAISE EXCEPTION 'publisher key rejected (stale): the retirement names key % (%); the key you reviewed is %', p_key_id, k.fingerprint, coalesce(p_fingerprint, '<none>') USING ERRCODE = '23514';
   END IF;
   IF k.retired_at IS NOT NULL THEN
-    RAISE EXCEPTION 'publisher key rejected (state): key % was retired at % (%)', k.fingerprint, graph.pv_iso(k.retired_at), k.retire_reason USING ERRCODE = '55000';
+    RAISE EXCEPTION 'publisher key rejected (state): key % was retired at % (%)', k.fingerprint, graph.pv_iso(k.retired_at), k.retire_reason USING ERRCODE = '23514';  -- B40 integration: 23514 (the mapped refusal SQLSTATE; 55000 is outside the observation mapper)
   END IF;
   UPDATE observation.publisher_keys SET retired_at = v_at, retired_by = v_actor, retire_reason = btrim(p_reason) WHERE key_id = p_key_id RETURNING * INTO k;
   INSERT INTO observation.publisher_key_events (event_id, scope, tenant_id, domain_id, key_id, source_id, event, actor, details, correlation_id)
@@ -2595,7 +2595,7 @@ BEGIN
   PERFORM pg_advisory_xact_lock(hashtextextended('observation.evidence_attributes:' || p_evd || ':' || p_version, 0));
   SELECT * INTO cur FROM observation.evidence_attributes x WHERE x.evd_object_id = p_evd AND x.evd_version = p_version AND x.attribute = p_attribute ORDER BY x.recorded_at DESC, x.attribute_id DESC LIMIT 1;
   IF cur.attribute_id IS NOT NULL AND cur.value = p_value THEN
-    RAISE EXCEPTION 'evidence attribute rejected (unchanged): % of EVD % v% is already %', p_attribute, p_evd, p_version, p_value::text USING ERRCODE = '55000';
+    RAISE EXCEPTION 'evidence attribute rejected (unchanged): % of EVD % v% is already %', p_attribute, p_evd, p_version, p_value::text USING ERRCODE = '23514';  -- B40 integration: 23514 (the mapped refusal SQLSTATE; 55000 is outside the observation mapper)
   END IF;
   IF coalesce(e.provenance_ref, '') ~* '^SRC:[0-9a-f-]{36}@[1-9][0-9]{0,8}$' THEN v_src := substring(e.provenance_ref from 5 for 36)::uuid; v_cv := split_part(e.provenance_ref, '@', 2)::int; END IF;
   INSERT INTO observation.evidence_attributes (attribute_id, scope, tenant_id, domain_id, evd_object_id, evd_version, source_id, contract_version, attribute, value, basis, basis_ref, reason,
@@ -3091,7 +3091,7 @@ BEGIN
     RAISE EXCEPTION 'transformation rule rejected (stale): rule % is recorded with digest %; the rule you reviewed is %', r.rule_id, objects.tr_digest(r), coalesce(p_digest, '<none>') USING ERRCODE = '23514';
   END IF;
   IF r.state <> 'proposed' THEN
-    RAISE EXCEPTION 'transformation rule rejected (state): rule % is %; only a proposed rule is decided', r.rule_id, r.state USING ERRCODE = '55000';
+    RAISE EXCEPTION 'transformation rule rejected (state): rule % is %; only a proposed rule is decided', r.rule_id, r.state USING ERRCODE = '23514';  -- B40 integration: 23514 (the mapped refusal SQLSTATE; 55000 is outside the observation mapper)
   END IF;
   UPDATE objects.transformation_rules SET state = CASE p_decision WHEN 'approve' THEN 'approved' ELSE 'rejected' END, decided_by = v_actor, decided_at = clock_timestamp(),
          decision_reason = btrim(p_reason) WHERE rule_id = r.rule_id RETURNING * INTO r;
@@ -3121,7 +3121,7 @@ BEGIN
     RAISE EXCEPTION 'transformation rule rejected (stale): rule % is recorded with digest %; the rule you reviewed is %', r.rule_id, objects.tr_digest(r), coalesce(p_digest, '<none>') USING ERRCODE = '23514';
   END IF;
   IF r.state <> 'approved' THEN
-    RAISE EXCEPTION 'transformation rule rejected (state): rule % is %; only an approved rule is retired', r.rule_id, r.state USING ERRCODE = '55000';
+    RAISE EXCEPTION 'transformation rule rejected (state): rule % is %; only an approved rule is retired', r.rule_id, r.state USING ERRCODE = '23514';  -- B40 integration: 23514 (the mapped refusal SQLSTATE; 55000 is outside the observation mapper)
   END IF;
   UPDATE objects.transformation_rules SET state = 'retired', retired_by = v_actor, retired_at = clock_timestamp(), retire_reason = btrim(p_reason) WHERE rule_id = r.rule_id RETURNING * INTO r;
   INSERT INTO objects.transformation_rule_events (event_id, scope, tenant_id, domain_id, rule_id, event, actor, details, correlation_id)

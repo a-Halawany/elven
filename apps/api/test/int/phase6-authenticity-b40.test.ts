@@ -57,17 +57,10 @@ const refusal = async (p: Promise<unknown>): Promise<{ status: number | null; me
   const mapped = asObservationRefusal(e, 'harness');
   return { status: mapped?.getStatus() ?? null, message: e instanceof Error ? e.message : String(e), code: (e as { code?: string }).code ?? null };
 };
-/** The status the CLASS form takes under the central convention (what the integrator maps for the §VA nouns). */
-const classStatus = (message: string): number | null => {
-  const m = /^(publisher key|evidence authenticity|evidence attribute|transformation rule|obligations|retention register|object use) rejected \(([a-z_]+)\)/.exec(message);
-  if (m === null) return null;
-  const cls = m[2]!;
-  if (m[1] === 'object use') return 409;
-  if (['actor', 'authority', 'separation_of_duties', 'access'].includes(cls)) return 403;
-  if (cls.startsWith('unknown_')) return 404;
-  if (['state', 'stale', 'duplicate', 'held', 'expired', 'unchanged'].includes(cls)) return 409;
-  return 422;
-};
+/** The status a class-form refusal takes — through the CENTRAL mapper (observation-errors.ts, the B40 rows; B40 integration: the harness's
+ *  local copy of the convention is removed). The SQLSTATE is any the mapper considers: the B40 rows read the text. */
+const classStatus = (message: string): number | null =>
+  /^[a-z][a-z _-]* rejected \(/.test(message) ? asObservationRefusal(Object.assign(new Error(message), { code: '22023' }), 'harness')?.getStatus() ?? null : null;
 
 /* ───────────── the routes (in process) ───────────── */
 const req = (as: AuthenticatedPrincipal, action: string, type: string, id: string | null) => h.req(as, action, type, id, 'observation');

@@ -79,18 +79,10 @@ const rows = async (q: { execute: (db: never) => Promise<{ rows: unknown[] }> })
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
-/** The status a class-form refusal takes under the central convention (403 actor|authority|separation_of_duties|access · 404 unknown_* · 409
- *  state|stale|duplicate|held|expired|withdrawn|unevaluated|evaluation|rights_withdrawn · 422 the rest) — what the integrator maps for §RG's nouns. */
-const classStatus = (message: string): number | null => {
-  const m = /^(source candidate|source evaluation|source approval|rights change|customer approval|stewardship|source incident|source registry|object use) rejected \(([a-z_]+)\)/.exec(message);
-  if (m === null) return null;
-  const cls = m[2]!;
-  if (m[1] === 'object use') return 409;
-  if (['actor', 'authority', 'separation_of_duties', 'access'].includes(cls)) return 403;
-  if (cls.startsWith('unknown_')) return 404;
-  if (['state', 'stale', 'duplicate', 'held', 'expired', 'withdrawn', 'unevaluated', 'evaluation', 'rights_withdrawn'].includes(cls)) return 409;
-  return 422;
-};
+/** The status a class-form refusal takes — through the CENTRAL mapper (observation-errors.ts, the B40 rows; B40 integration: the harness's
+ *  local copy of the convention is removed). The SQLSTATE is any the mapper considers: the B40 rows read the text. */
+const classStatus = (message: string): number | null =>
+  /^[a-z][a-z _-]* rejected \(/.test(message) ? asObservationRefusal(Object.assign(new Error(message), { code: '22023' }), 'harness')?.getStatus() ?? null : null;
 /** A refusal: the route's own status, the central mapping's, or the class convention's (an unmapped §RG noun); the RAW message; the SQLSTATE. */
 const refusal = async (p: Promise<unknown>): Promise<{ status: number | null; message: string; code: string | null; sqlstate: string | null }> => {
   const e = await p.then(() => { throw new Error('the call should have been refused'); }, (err: unknown) => err);
