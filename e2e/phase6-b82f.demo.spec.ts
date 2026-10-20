@@ -85,6 +85,9 @@ test.describe('CP-6 B82-F — the act\'s walk: rights terms for their declarers,
 
   test('§CC the affected publication\'s owner (no graph.read): the case page refused in the server\'s words → his obligations → acknowledged; C. Brenner\'s own obligation acknowledged', async ({ browser }) => {
     const CASE = required('EYE_B82F_CASE');
+    // The act leaves the case OPEN for this walk, then closes it (EYE_B82F_CLOSE=1). The obligation read answers OPEN cases only, so once the act
+    // printed EYE_B82F_CASE_STATE=closed the walk asserts the closed state instead: the case page still refused, nothing of theirs left open.
+    const CLOSED = process.env['EYE_B82F_CASE_STATE'] === 'closed';
     for (const vp of WIDTHS) {
       const page = await signedIn(browser, OPERATOR, vp);
       await page.goto(`/observation/corrections/${CASE}`);
@@ -100,12 +103,17 @@ test.describe('CP-6 B82-F — the act\'s walk: rights terms for their declarers,
       await page.waitForURL((u) => u.pathname === '/observation/corrections/obligations' && u.searchParams.get('case') === CASE);
       await oneH1(page);                                                                                                    // one h1 while it reads
       await expect(page.getByRole('heading', { name: 'Your correction obligations', level: 1 })).toBeVisible();
-      const mine = page.getByRole('region').filter({ hasText: required('EYE_B82F_OPERATOR_CONSUMER') }).first();
-      await expect(mine).toBeVisible();
-      await expect(mine).toContainText(required('EYE_B82F_OPERATOR_CONSUMER'));
-      await expect(mine).toContainText('✓ acknowledged');
-      await expect(mine).toContainText(/acknowledged at .* by you/);
-      await expect(mine).toContainText('not frozen');
+      if (CLOSED) {
+        await expect(page.getByText('No open correction obligation is yours in this case.')).toBeVisible();
+        await expect(page.getByText(required('EYE_B82F_OPERATOR_CONSUMER'))).toHaveCount(0);
+      } else {
+        const mine = page.getByRole('region').filter({ hasText: required('EYE_B82F_OPERATOR_CONSUMER') }).first();
+        await expect(mine).toBeVisible();
+        await expect(mine).toContainText(required('EYE_B82F_OPERATOR_CONSUMER'));
+        await expect(mine).toContainText('✓ acknowledged');
+        await expect(mine).toContainText(/acknowledged at .* by you/);
+        await expect(mine).toContainText('not frozen');
+      }
       await oneH1(page);
       await expect(page.getByText(required('EYE_B82F_BRENNER_CONSUMER'))).toHaveCount(0);                                     // never another owner's consumer
       await noSidewaysScroll(page, `the obligations page at ${vp.width} px`);
@@ -117,11 +125,16 @@ test.describe('CP-6 B82-F — the act\'s walk: rights terms for their declarers,
     await page.goto(`/observation/corrections/obligations?case=${CASE}`);
     await oneH1(page);
     await expect(page.getByRole('heading', { name: 'Your correction obligations', level: 1 })).toBeVisible();
-    await expect(page.getByText(required('EYE_B82F_BRENNER_CONSUMER'))).toBeVisible();
-    const hers = page.getByRole('region').filter({ hasText: required('EYE_B82F_BRENNER_CONSUMER') }).first();
-    await expect(hers).toContainText('✓ acknowledged');
-    await expect(hers).toContainText(/acknowledged at .* by you/);
-    await expect(hers).toContainText('the accountable owner');
+    if (CLOSED) {
+      await expect(page.getByText('No open correction obligation is yours in this case.')).toBeVisible();
+      await expect(page.getByText(required('EYE_B82F_BRENNER_CONSUMER'))).toHaveCount(0);
+    } else {
+      await expect(page.getByText(required('EYE_B82F_BRENNER_CONSUMER'))).toBeVisible();
+      const hers = page.getByRole('region').filter({ hasText: required('EYE_B82F_BRENNER_CONSUMER') }).first();
+      await expect(hers).toContainText('✓ acknowledged');
+      await expect(hers).toContainText(/acknowledged at .* by you/);
+      await expect(hers).toContainText('the accountable owner');
+    }
     await expect(page.getByText(required('EYE_B82F_OPERATOR_CONSUMER'))).toHaveCount(0);
     await oneH1(page);
     await noSidewaysScroll(page, 'C. Brenner\'s obligations at 1280 px');
