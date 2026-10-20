@@ -527,7 +527,7 @@ describe('RG5 · DESIGN D4 — the fixture source S withdrawn: refused use with 
     expect((await c.option(d.package.packageId, v, { key: 'status-quo', title: 'Do nothing', kind: 'status_quo', consequences: [{ kind: 'run', id: w.controlId }, { kind: 'evidence', id: w.records.inv.id, version: w.records.inv.version }] })).option.optionId).toBeTruthy();
     expect(Number((await one(sql`select count(*)::int n from decision.options where tenant_id = ${T()}::uuid`))['n'])).toBe(optionsBefore + 1);
   });
-  it('GATE — the package proposed before the withdrawal is REFUSED decision-ready (its reroute option rests on S\'s evidence); no gate act recorded; a review (not decision-active) is still recorded', async () => {
+  it('GATE — the package proposed before the withdrawal is REFUSED decision-ready (its reroute option rests on S\'s evidence); no gate act recorded', async () => {
     const before = Number((await one(sql`select count(*)::int n from decision.gate_actions where package_id = ${proposedP.pkg}::uuid`))['n']);
     const r = await refusal(gate(hoffmann, proposedP.pkg, proposedP.v, 'ready', { rationale: 'Complete: options and citations read (B40 §RG)', informationPackageDigest: await infoDigest(proposedP.pkg, proposedP.v) }));
     expect(r.message).toMatch(/object use rejected \(rights_withdrawn\): .* rests on EVD .* not used for gate/);
@@ -640,18 +640,22 @@ describe('RG6 · BOTH RIGHTS SOURCES COUNT, and RECOVERY only through governed v
 });
 
 describe('RG7 · the v1–v3 route RE-POINTED; no approval while withdrawn; foreign scope', () => {
-  it('a withdrawal through the v1–v3 rights route IS the lifecycle\'s (the ledger via rights_route, the announcement); the route cannot lift it (withdrawn); no new version of the source is approved; the lifecycle restoration lifts it', async () => {
+  it('the v1–v3 rights route keeps its recorded behaviour and IS the lifecycle: its withdrawal is the lifecycle\'s (the ledger via rights_route, the announcement, its own suspension event once); a repeat is idempotent; no new version is approved while withdrawn; its confirmation is the lifecycle\'s restoration (never a reactivation)', async () => {
     const u2 = await h.uploadSource('internal', 'b40rg-route');
     const t0 = await mark();
     await setRightsRoute(dvorak, u2, 1, 'withdrawn');
-    expect(await one(sql`select via, operation from observation.source_rights_changes where source_id = ${u2}::uuid`)).toEqual({ via: 'rights_route', operation: 'withdraw' });
+    expect(await rows(sql`select via, operation from observation.source_rights_changes where source_id = ${u2}::uuid`)).toEqual([{ via: 'rights_route', operation: 'withdraw' }]);
     expect((await healthEvents(u2, t0)).map((e) => (e['payload'] as Row)['cause'])).toEqual(['rights']);
-    await refused(setRightsRoute(dvorak, u2, 1, 'confirmed'), /^rights change rejected \(withdrawn\)/, 409);
+    expect((await rows(sql`select details ->> 'kind' k from observation.source_contract_events where source_id = ${u2}::uuid and event = 'contract.suspended'`)).map((e) => e['k'])).toEqual(['rights_update']);
+    await setRightsRoute(dvorak, u2, 1, 'withdrawn');   // the route's recorded idempotence: no second lifecycle withdrawal
+    expect(await rows(sql`select 1 from observation.source_rights_changes where source_id = ${u2}::uuid`)).toHaveLength(1);
     const key = String((await one(sql`select source_key k from observation.source_contracts_current where source_id = ${u2}::uuid`))['k']);
     const v2c = { ...uploadContract(key), lifecycle: { contract_version: 2, effective_from: '2024-01-01T00:00:00Z', effective_to: null, supersedes_version: 1 } };
     await register(hoffmann, v2c, u2);
     await refused(approveSrc(dvorak, u2, 2), /^source approval rejected \(rights_withdrawn\)/, 409);
-    await rights(dvorak, u2, { contractVersion: 2, operation: 'restore', reason: 'The licence stands after all (SYNTHETIC)', evidence: 'The licence confirmation (SYNTHETIC)' });
+    await setRightsRoute(dvorak, u2, 1, 'confirmed');
+    expect((await rows(sql`select via, operation from observation.source_rights_changes where source_id = ${u2}::uuid order by recorded_at`)).map((x) => `${x['operation']}:${x['via']}`)).toEqual(['withdraw:rights_route', 'restore:rights_route']);
+    expect(await one(sql`select rights_state, lifecycle_state from observation.source_contracts_current where source_id = ${u2}::uuid and contract_version = 1`)).toEqual({ rights_state: 'confirmed', lifecycle_state: 'suspended' });
     await approveSrc(dvorak, u2, 2);
     await settle();
   }, 120_000);

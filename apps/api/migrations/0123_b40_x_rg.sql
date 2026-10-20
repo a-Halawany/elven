@@ -475,9 +475,12 @@ BEGIN
             jsonb_build_object('operation', 'withdraw', 'change_id', p_change, 'from', r.rights_state, 'to', 'withdrawn', 'reason', btrim(p_reason), 'evidence', p_evidence, 'via', p_via,
                                'kind', 'rights_update', 'rights_state', 'withdrawn'), p_correlation);
     IF r.lifecycle_state = 'active' THEN
-      INSERT INTO observation.source_contract_events (event_id, scope, tenant_id, domain_id, source_id, contract_version, event, actor_principal_id, details, correlation_id)
-      VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, r.source_id, r.contract_version, 'contract.suspended', p_actor,
-              jsonb_build_object('from', 'active', 'to', 'suspended', 'reason', 'rights withdrawn: ' || btrim(p_reason), 'kind', 'rights_withdrawal', 'change_id', p_change), p_correlation);
+      -- the v1–v3 route writes its own recorded suspension event (set_rights_state, unchanged); the lifecycle writes this one
+      IF p_via <> 'rights_route' THEN
+        INSERT INTO observation.source_contract_events (event_id, scope, tenant_id, domain_id, source_id, contract_version, event, actor_principal_id, details, correlation_id)
+        VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, r.source_id, r.contract_version, 'contract.suspended', p_actor,
+                jsonb_build_object('from', 'active', 'to', 'suspended', 'reason', 'rights withdrawn: ' || btrim(p_reason), 'kind', 'rights_withdrawal', 'change_id', p_change), p_correlation);
+      END IF;
       v_suspended := r.contract_version;
     END IF;
     v_affected := v_affected || jsonb_build_object('contract_version', r.contract_version, 'prior_rights', r.rights_state, 'prior_lifecycle', r.lifecycle_state,
@@ -787,6 +790,71 @@ END $$ LANGUAGE plpgsql;
 REVOKE ALL ON FUNCTION observation.approve_source(uuid,int,uuid,uuid,text,text,uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION observation.approve_source(uuid,int,uuid,uuid,text,text,uuid,uuid) TO eye_commit;
 
+/* THE RESTORATION (DESIGN D4) — shared by observation.change_rights (p_resume true) and the v1–v3 route (observation.set_rights_state,
+   p_resume false: that route never reactivated a contract, and still does not): the OUTSTANDING withdrawal reversed — each version it
+   withdrew returns to the rights it had (a version whose rights moved otherwise since is left as it is, said so), each with its
+   contract.rights_changed event; with p_resume, the version it suspended RESUMES when nothing moved on it since (still suspended, no other
+   version active, its rights confirmed or its mode replay, its approver recorded — otherwise the reactivation is the collection manager's
+   transition, said so); the withdrawal's rights incident resolved; the retention action it opened is NOT withdrawn here (the retention
+   authority decides it). The caller has checked the authority, the scope, the person, the request and that a withdrawal stands. */
+CREATE OR REPLACE FUNCTION observation._rg_restore(p_change uuid, p_request_id uuid, p_tenant uuid, p_domain uuid, p_source uuid, p_named_version int,
+                                                   p_reason text, p_evidence text, p_actor uuid, p_via text, p_resume boolean, p_correlation uuid) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = observation, pg_catalog, pg_temp AS $$
+DECLARE w observation.source_rights_changes%ROWTYPE; ch observation.source_rights_changes%ROWTYPE; a jsonb; r observation.source_contracts_current%ROWTYPE;
+        v_affected jsonb := '[]'::jsonb; v_reactivated int; v_note text; v_impact jsonb;
+BEGIN
+  w := observation._rg_outstanding_withdrawal(p_tenant, p_domain, p_source);
+  FOR a IN SELECT x FROM jsonb_array_elements(w.affected) x WHERE (x ->> 'changed')::boolean LOOP
+    SELECT * INTO r FROM observation.source_contracts_current x WHERE x.source_id = p_source AND x.contract_version = (a ->> 'contract_version')::int FOR UPDATE;
+    IF NOT FOUND OR r.rights_state <> 'withdrawn' THEN
+      v_affected := v_affected || jsonb_build_object('contract_version', (a ->> 'contract_version')::int, 'restored_to', NULL, 'changed', false, 'note', 'its rights were changed otherwise since the withdrawal');
+      CONTINUE;
+    END IF;
+    UPDATE observation.source_contracts_current SET rights_state = a ->> 'prior_rights', updated_at = clock_timestamp() WHERE source_id = r.source_id AND contract_version = r.contract_version;
+    INSERT INTO observation.source_contract_events (event_id, scope, tenant_id, domain_id, source_id, contract_version, event, actor_principal_id, details, correlation_id)
+    VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, r.source_id, r.contract_version, 'contract.rights_changed', p_actor,
+            jsonb_build_object('operation', 'restore', 'change_id', p_change, 'reverses', w.change_id, 'from', 'withdrawn', 'to', a ->> 'prior_rights', 'reason', btrim(p_reason), 'evidence', p_evidence,
+                               'via', p_via, 'kind', 'rights_update', 'rights_state', a ->> 'prior_rights'), p_correlation);
+    v_affected := v_affected || jsonb_build_object('contract_version', r.contract_version, 'restored_to', a ->> 'prior_rights', 'changed', true);
+  END LOOP;
+  IF w.suspended_version IS NOT NULL AND p_resume THEN
+    SELECT * INTO r FROM observation.source_contracts_current x WHERE x.source_id = p_source AND x.contract_version = w.suspended_version FOR UPDATE;
+    IF FOUND AND r.lifecycle_state = 'suspended' AND r.approver_principal_id IS NOT NULL AND (r.rights_state = 'confirmed' OR r.acquisition_mode = 'replay')
+       AND NOT EXISTS (SELECT 1 FROM observation.source_contracts_current o WHERE o.source_id = p_source AND o.lifecycle_state = 'active')
+       AND NOT EXISTS (SELECT 1 FROM observation.source_contract_events e WHERE e.source_id = p_source AND e.contract_version = w.suspended_version AND e.occurred_at > w.recorded_at
+                         AND e.event NOT IN ('contract.rights_changed', 'contract.evaluated', 'contract.stewardship_changed', 'contract.customer_approved')) THEN
+      UPDATE observation.source_contracts_current SET lifecycle_state = 'active', updated_at = clock_timestamp() WHERE source_id = p_source AND contract_version = w.suspended_version;
+      INSERT INTO observation.source_contract_events (event_id, scope, tenant_id, domain_id, source_id, contract_version, event, actor_principal_id, details, correlation_id)
+      VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, p_source, w.suspended_version, 'contract.reactivated', p_actor,
+              jsonb_build_object('from', 'suspended', 'to', 'active', 'reason', 'rights restored: ' || btrim(p_reason), 'kind', 'rights_restoration', 'change_id', p_change), p_correlation);
+      v_reactivated := w.suspended_version;
+    ELSE
+      v_note := format('contract version %s was not resumed (it is %s, or something moved on it since the withdrawal): its reactivation is the collection manager''s transition', w.suspended_version, coalesce(r.lifecycle_state, 'not recorded'));
+    END IF;
+  ELSIF w.suspended_version IS NOT NULL THEN
+    v_note := format('contract version %s stays suspended: the source rights route never reactivates a contract (the collection manager''s transition does)', w.suspended_version);
+  END IF;
+  IF w.incident_id IS NOT NULL THEN
+    UPDATE observation.source_incidents SET state = 'resolved', resolved_by = p_actor, resolved_at = clock_timestamp(), resolution = left('Rights restored: ' || btrim(p_reason), 2000)
+     WHERE incident_id = w.incident_id AND state = 'open';
+    IF FOUND THEN
+      INSERT INTO observation.source_incident_events (event_id, scope, tenant_id, domain_id, incident_id, event, actor, details, correlation_id)
+      VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, w.incident_id, 'incident.resolved', p_actor, jsonb_build_object('rights_change_id', p_change, 'reverses', w.change_id), p_correlation);
+    END IF;
+  END IF;
+  v_impact := observation._rg_impact(p_tenant, p_domain, p_source);
+  INSERT INTO observation.source_rights_changes (change_id, scope, tenant_id, domain_id, source_id, contract_version, operation, via, reason, evidence, affected, reactivated_version, reverses, impact,
+                                                 actor, request_id, correlation_id)
+  VALUES (p_change, 'DOMAIN', p_tenant, p_domain, p_source, p_named_version, 'restore', p_via, btrim(p_reason), nullif(btrim(coalesce(p_evidence, '')), ''), v_affected, v_reactivated, w.change_id, v_impact,
+          p_actor, p_request_id, p_correlation)
+  RETURNING * INTO ch;
+  RETURN to_jsonb(ch) || jsonb_build_object('replayed', false, 'reactivated', v_reactivated IS NOT NULL, 'note', v_note,
+    'retention_action_id', w.retention_action_id,
+    'retention_statement', CASE WHEN w.retention_action_id IS NULL THEN NULL ELSE 'the retention action the withdrawal opened is not withdrawn here: the retention authority decides it' END,
+    'statement', 'the contract rights are restored; a rights-terms record withdrawn separately is restored only by a new terms version (and a terms restoration never lifts a contract withdrawal)');
+END $$;
+REVOKE ALL ON FUNCTION observation._rg_restore(uuid, uuid, uuid, uuid, uuid, int, text, text, uuid, text, boolean, uuid) FROM PUBLIC;
+
 -- THE RIGHTS LIFECYCLE — observation.change_rights (DESIGN D4; L1-C01, FEX-02, R-09) ──────────────────────────────────────────────────────
 /* A named COLLECTION MANAGER (never an agent) narrows the purposes of the source's latest contract version, WITHDRAWS the source's rights
    (observation._rg_withdraw), or RESTORES them — a restoration reverses the outstanding withdrawal: each version it withdrew returns to the
@@ -862,71 +930,24 @@ BEGIN
     RETURN to_jsonb(ch) || jsonb_build_object('replayed', false, 'statement', 'collection under a dropped purpose is refused at the revalidation from now on; the evidence already held keeps its record');
   END IF;
 
-  -- RESTORE: the outstanding withdrawal reversed, with evidence
-  w := observation._rg_outstanding_withdrawal(p_tenant, p_domain, p_source_id);
-  IF w.change_id IS NULL THEN
+  -- RESTORE: the outstanding withdrawal reversed, with evidence (observation._rg_restore; the suspended version resumed when nothing moved)
+  IF (observation._rg_outstanding_withdrawal(p_tenant, p_domain, p_source_id)).change_id IS NULL THEN
     RAISE EXCEPTION 'rights change rejected (state): the rights of source % stand no withdrawal of the rights lifecycle; there is nothing to restore', p_source_id USING ERRCODE = '23514';
   END IF;
   IF p_evidence IS NULL OR length(btrim(p_evidence)) NOT BETWEEN 8 AND 4000 THEN
     RAISE EXCEPTION 'rights change rejected (evidence): a restoration cites its evidence — the renewed licence, the publisher''s confirmation (8 to 4000 characters)' USING ERRCODE = '22023';
   END IF;
-  FOR a IN SELECT x FROM jsonb_array_elements(w.affected) x WHERE (x ->> 'changed')::boolean LOOP
-    SELECT * INTO r FROM observation.source_contracts_current x WHERE x.source_id = p_source_id AND x.contract_version = (a ->> 'contract_version')::int FOR UPDATE;
-    IF NOT FOUND OR r.rights_state <> 'withdrawn' THEN
-      v_affected := v_affected || jsonb_build_object('contract_version', (a ->> 'contract_version')::int, 'restored_to', NULL, 'changed', false, 'note', 'its rights were changed otherwise since the withdrawal');
-      CONTINUE;
-    END IF;
-    UPDATE observation.source_contracts_current SET rights_state = a ->> 'prior_rights', updated_at = clock_timestamp() WHERE source_id = r.source_id AND contract_version = r.contract_version;
-    INSERT INTO observation.source_contract_events (event_id, scope, tenant_id, domain_id, source_id, contract_version, event, actor_principal_id, details, correlation_id)
-    VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, r.source_id, r.contract_version, 'contract.rights_changed', v_actor,
-            jsonb_build_object('operation', 'restore', 'change_id', v_change, 'reverses', w.change_id, 'from', 'withdrawn', 'to', a ->> 'prior_rights', 'reason', btrim(p_reason), 'evidence', btrim(p_evidence),
-                               'kind', 'rights_update', 'rights_state', a ->> 'prior_rights'), p_correlation);
-    v_affected := v_affected || jsonb_build_object('contract_version', r.contract_version, 'restored_to', a ->> 'prior_rights', 'changed', true);
-  END LOOP;
-  -- the suspended version resumed when nothing moved on it since the withdrawal
-  IF w.suspended_version IS NOT NULL THEN
-    SELECT * INTO r FROM observation.source_contracts_current x WHERE x.source_id = p_source_id AND x.contract_version = w.suspended_version FOR UPDATE;
-    IF FOUND AND r.lifecycle_state = 'suspended' AND r.approver_principal_id IS NOT NULL AND (r.rights_state = 'confirmed' OR r.acquisition_mode = 'replay')
-       AND NOT EXISTS (SELECT 1 FROM observation.source_contracts_current o WHERE o.source_id = p_source_id AND o.lifecycle_state = 'active')
-       AND NOT EXISTS (SELECT 1 FROM observation.source_contract_events e WHERE e.source_id = p_source_id AND e.contract_version = w.suspended_version AND e.occurred_at > w.recorded_at
-                         AND e.event NOT IN ('contract.rights_changed', 'contract.evaluated', 'contract.stewardship_changed', 'contract.customer_approved')) THEN
-      UPDATE observation.source_contracts_current SET lifecycle_state = 'active', updated_at = clock_timestamp() WHERE source_id = p_source_id AND contract_version = w.suspended_version;
-      INSERT INTO observation.source_contract_events (event_id, scope, tenant_id, domain_id, source_id, contract_version, event, actor_principal_id, details, correlation_id)
-      VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, p_source_id, w.suspended_version, 'contract.reactivated', v_actor,
-              jsonb_build_object('from', 'suspended', 'to', 'active', 'reason', 'rights restored: ' || btrim(p_reason), 'kind', 'rights_restoration', 'change_id', v_change), p_correlation);
-      v_reactivated := w.suspended_version;
-    ELSE
-      v_note := format('contract version %s was not resumed (it is %s, or something moved on it since the withdrawal): its reactivation is the collection manager''s transition', w.suspended_version, coalesce(r.lifecycle_state, 'not recorded'));
-    END IF;
-  END IF;
-  -- the rights incident of the withdrawal, resolved
-  IF w.incident_id IS NOT NULL THEN
-    UPDATE observation.source_incidents SET state = 'resolved', resolved_by = v_actor, resolved_at = clock_timestamp(), resolution = left('Rights restored: ' || btrim(p_reason), 2000)
-     WHERE incident_id = w.incident_id AND state = 'open';
-    IF FOUND THEN
-      INSERT INTO observation.source_incident_events (event_id, scope, tenant_id, domain_id, incident_id, event, actor, details, correlation_id)
-      VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, w.incident_id, 'incident.resolved', v_actor, jsonb_build_object('rights_change_id', v_change, 'reverses', w.change_id), p_correlation);
-    END IF;
-  END IF;
-  v_impact := observation._rg_impact(p_tenant, p_domain, p_source_id);
-  INSERT INTO observation.source_rights_changes (change_id, scope, tenant_id, domain_id, source_id, contract_version, operation, via, reason, evidence, affected, reactivated_version, reverses, impact,
-                                                 actor, request_id, correlation_id)
-  VALUES (v_change, 'DOMAIN', p_tenant, p_domain, p_source_id, v_latest, 'restore', 'rights_lifecycle', btrim(p_reason), btrim(p_evidence), v_affected, v_reactivated, w.change_id, v_impact,
-          v_actor, p_request_id, p_correlation)
-  RETURNING * INTO ch;
-  RETURN to_jsonb(ch) || jsonb_build_object('replayed', false, 'reactivated', v_reactivated IS NOT NULL, 'note', v_note,
-    'retention_action_id', w.retention_action_id,
-    'retention_statement', CASE WHEN w.retention_action_id IS NULL THEN NULL ELSE 'the retention action the withdrawal opened is not withdrawn here: the retention authority decides it' END,
-    'statement', 'the contract rights are restored; a rights-terms record withdrawn separately is restored only by a new terms version (and a terms restoration never lifts a contract withdrawal)');
+  RETURN observation._rg_restore(v_change, p_request_id, p_tenant, p_domain, p_source_id, v_latest, p_reason, p_evidence, v_actor, 'rights_lifecycle', true, p_correlation);
 END $$;
 REVOKE ALL ON FUNCTION observation.change_rights(uuid, uuid, uuid, uuid, int, text, jsonb, text, text, text, uuid, uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION observation.change_rights(uuid, uuid, uuid, uuid, int, text, jsonb, text, text, text, uuid, uuid) TO eye_commit;
 
 -- observation.set_rights_state — 0022:956, its LAST definition, copied WHOLE (signature, security, search path, grants); the v1–v3 rights
--- route RE-POINTED to the rights lifecycle (marked `-- B40 rg`): a WITHDRAWAL through it is the lifecycle's withdrawal (every version, the
--- suspension, the schedule removed, the impact, the owners, the incident — observation._rg_withdraw, via 'rights_route', by a collection
--- manager); a version whose rights stand withdrawn by the lifecycle is not confirmed or set pending through it (the restoration lifts a
--- withdrawal, with its evidence). Every other call behaves exactly as before (the mislabelled 'contract.registered' of a confirmation kept).
+-- route RE-POINTED to the rights lifecycle (marked `-- B40 rg`), by a collection manager: a WITHDRAWAL through it is the lifecycle's
+-- withdrawal when none stands (every version, the suspension, the schedule removed, the impact, the owners, the incident —
+-- observation._rg_withdraw, via 'rights_route'); a CONFIRMATION (or pending) of a version the lifecycle withdrew is the lifecycle's
+-- restoration (observation._rg_restore, via 'rights_route' — without the reactivation, which this route never made). Then the route's own
+-- recorded effect, exactly as before: the named version's update and its event (the mislabelled 'contract.registered' of a confirmation kept).
 CREATE OR REPLACE FUNCTION observation.set_rights_state(
   p_source_id uuid, p_contract_version int, p_tenant uuid, p_domain uuid,
   p_rights_state text, p_evidence text, p_event_id uuid, p_correlation uuid
@@ -939,22 +960,26 @@ BEGIN
   IF p_rights_state NOT IN ('confirmed', 'pending', 'withdrawn') THEN
     RAISE EXCEPTION 'rights update rejected: unknown rights state %', p_rights_state USING ERRCODE = '22023';
   END IF;
-  -- B40 rg: a withdrawal through this route IS the rights lifecycle's (D4)
-  IF p_rights_state = 'withdrawn' THEN                                                                                                 -- B40 rg
-    IF NOT EXISTS (SELECT 1 FROM observation.source_contracts_current x WHERE x.source_id = p_source_id AND x.contract_version = p_contract_version AND x.tenant_id = p_tenant AND x.domain_id = p_domain) THEN  -- B40 rg
-      RAISE EXCEPTION 'rights update rejected: no such source contract version' USING ERRCODE = '23503';                             -- B40 rg
-    END IF;                                                                                                                            -- B40 rg
-    PERFORM governance.assert_approver('rights change', v_actor, p_tenant, p_domain, ARRAY['collection_manager'], NULL, NULL, 'withdrawing a source''s rights');  -- B40 rg
+  -- B40 rg: the route RE-POINTED to the rights lifecycle (D4) — a withdrawal through it IS the lifecycle's (when none stands), a           -- B40 rg
+  -- confirmation or pending of a version the lifecycle withdrew IS the lifecycle's restoration (never a reactivation); then the route's      -- B40 rg
+  -- own recorded effect below, exactly as before (its update and its event)                                                                  -- B40 rg
+  IF NOT EXISTS (SELECT 1 FROM observation.source_contracts_current x WHERE x.source_id = p_source_id AND x.contract_version = p_contract_version AND x.tenant_id = p_tenant AND x.domain_id = p_domain) THEN  -- B40 rg
+    RAISE EXCEPTION 'rights update rejected: no such source contract version' USING ERRCODE = '23503';                               -- B40 rg
+  END IF;                                                                                                                              -- B40 rg
+  IF p_rights_state = 'withdrawn' OR ((SELECT x.rights_state FROM observation.source_contracts_current x WHERE x.source_id = p_source_id AND x.contract_version = p_contract_version) = 'withdrawn'
+                                      AND (observation._rg_outstanding_withdrawal(p_tenant, p_domain, p_source_id)).change_id IS NOT NULL) THEN   -- B40 rg
+    PERFORM governance.assert_approver('rights change', v_actor, p_tenant, p_domain, ARRAY['collection_manager'], NULL, NULL, 'changing a source''s rights');  -- B40 rg
     PERFORM pg_advisory_xact_lock(hashtextextended('observation.source_rights:' || p_tenant || ':' || p_domain || ':' || p_source_id, 0));  -- B40 rg
     SELECT max(x.contract_version) INTO v_latest FROM observation.source_contracts_current x WHERE x.source_id = p_source_id AND x.tenant_id = p_tenant AND x.domain_id = p_domain;  -- B40 rg
-    PERFORM observation._rg_withdraw(p_event_id, gen_random_uuid(), p_tenant, p_domain, p_source_id, v_latest,                       -- B40 rg
-      'rights withdrawn through the source rights route', nullif(btrim(coalesce(p_evidence, '')), ''), NULL, v_actor, 'rights_route', p_correlation);  -- B40 rg
-    RETURN;                                                                                                                            -- B40 rg
-  END IF;                                                                                                                              -- B40 rg
-  IF EXISTS (SELECT 1 FROM observation.source_contracts_current x WHERE x.source_id = p_source_id AND x.contract_version = p_contract_version AND x.rights_state = 'withdrawn')  -- B40 rg
-     AND (observation._rg_outstanding_withdrawal(p_tenant, p_domain, p_source_id)).change_id IS NOT NULL THEN                         -- B40 rg
-    RAISE EXCEPTION 'rights change rejected (withdrawn): the rights of source % stand withdrawn through the rights lifecycle; a restoration (with its evidence) lifts the withdrawal, this route does not',
-      p_source_id USING ERRCODE = '23514';                                                                                             -- B40 rg
+    IF p_rights_state = 'withdrawn' THEN                                                                                               -- B40 rg
+      IF (observation._rg_outstanding_withdrawal(p_tenant, p_domain, p_source_id)).change_id IS NULL THEN                             -- B40 rg
+        PERFORM observation._rg_withdraw(gen_random_uuid(), gen_random_uuid(), p_tenant, p_domain, p_source_id, v_latest,             -- B40 rg
+          'rights withdrawn through the source rights route', nullif(btrim(coalesce(p_evidence, '')), ''), NULL, v_actor, 'rights_route', p_correlation);  -- B40 rg
+      END IF;                                                                                                                          -- B40 rg
+    ELSE                                                                                                                               -- B40 rg
+      PERFORM observation._rg_restore(gen_random_uuid(), gen_random_uuid(), p_tenant, p_domain, p_source_id, v_latest,               -- B40 rg
+        'rights ' || p_rights_state || ' through the source rights route', nullif(btrim(coalesce(p_evidence, '')), ''), v_actor, 'rights_route', false, p_correlation);  -- B40 rg
+    END IF;                                                                                                                            -- B40 rg
   END IF;                                                                                                                              -- B40 rg
   UPDATE observation.source_contracts_current
      SET rights_state = p_rights_state,
