@@ -2106,9 +2106,13 @@
       },
       "public_contract": {
         "controllers": [
+          "AcquisitionPolicyController",
+          "AuthenticityController",
           "ConnectorCellController",
           "EvidenceB82Controller",
+          "IntakeB40Controller",
           "ObservationController",
+          "RegistryB40Controller",
           "UploadController"
         ],
         "module": "ObservationModule",

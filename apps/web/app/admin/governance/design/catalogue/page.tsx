@@ -34,6 +34,12 @@ import { PX_RENDERED, PxCatalogue } from './px-fixtures';
 /* B82 sc */
 import { SC_RENDERED, ScCatalogue } from './sc-fixtures';
 /* end B82 sc */
+/* B40 va */
+import { VA_RENDERED, VaCatalogue } from './va-fixtures';
+/* end B40 va */
+/* B40 in */
+import { IN_RENDERED, InCatalogue } from './in-fixtures';
+/* end B40 in */
 
 /** The library exports each folded part renders here (a part adds its names with its section). */
 const RENDERED = new Set<string>([
@@ -45,6 +51,8 @@ const RENDERED = new Set<string>([
   /* B82 cf */ ...CF_RENDERED, /* end B82 cf */
   /* B82 px */ ...PX_RENDERED, /* end B82 px */
   /* B82 sc */ ...SC_RENDERED, /* end B82 sc */
+  /* B40 va */ ...VA_RENDERED, /* end B40 va */
+  /* B40 in */ ...IN_RENDERED, /* end B40 in */
 ]);
 
 export default function CataloguePage() {
@@ -88,6 +96,12 @@ export default function CataloguePage() {
       {/* B82 sc */}
       <ScCatalogue />
       {/* end B82 sc */}
+      {/* B40 va */}
+      <VaCatalogue />
+      {/* end B40 va */}
+      {/* B40 in */}
+      <InCatalogue />
+      {/* end B40 in */}
     </>
   );
 }
