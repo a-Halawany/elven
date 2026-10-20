@@ -366,6 +366,16 @@ export interface AcquisitionWrites extends ObservationReads {
   /** The run (runId), an operator (runId null, under observation.stream.interrupt) or the sweeper (the reconciled run). */
   interruptStream(a: StreamInterruptArgs): Promise<StreamAnswer>;
   /* end B23 stream */
+  /* B40 §0: the intake stages' record ports (called from their stage's `record` inside the admission / quarantine transaction) — one
+     reserved block per part; a part declares here and implements in its block of ObservationCapabilityImpl below */
+  /* B40 va */
+  /* end B40 va */
+  /* B40 in */
+  /* end B40 in */
+  /* B40 ap */
+  /* end B40 ap */
+  /* B40 cr */
+  /* end B40 cr */
 }
 
 /* B23 (0084) stream */
@@ -1040,6 +1050,15 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
     return rows[0]?.r as StreamAnswer;
   }
   /* end B23 stream */
+  /* B40 §0: the parts' record ports (reserved blocks, matching AcquisitionWrites above) */
+  /* B40 va */
+  /* end B40 va */
+  /* B40 in */
+  /* end B40 in */
+  /* B40 ap */
+  /* end B40 ap */
+  /* B40 cr */
+  /* end B40 cr */
 }
 
 /**

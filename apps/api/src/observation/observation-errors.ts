@@ -473,7 +473,7 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
      (held)` and `export rejected (held)` → 409. Placed at the head: the B36 publication 422 row and the unclassed `^export rejected` 422
      row below would shadow them. No earlier row raises these texts. */
   { match: /^object use rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
-  { match: /^object use rejected \((incomplete_header|unfit|integrity_failed|inaccessible|rights_expired)\)|^(publication|export) rejected \(held\)/i, status: 409, code: 'EYE_STA_002' }, // B82 §EV: integrity_failed, inaccessible, rights_expired
+  { match: /^object use rejected \((incomplete_header|unfit|integrity_failed|inaccessible|rights_expired|rights_withdrawn|authenticity_failed)\)|^(publication|export) rejected \(held\)/i, status: 409, code: 'EYE_STA_002' }, // B82 §EV: integrity_failed, inaccessible, rights_expired // B40 §0: rights_withdrawn (§RG, D4), authenticity_failed (§VA, D6)
   { match: /^object use rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B50 §0 */
   /* B50 (0120 §HD, §LC, §PV, §CI) — the parts' nouns, centrally, in the CLASS form `<noun> rejected (<class>): …` (anchored; ahead of the

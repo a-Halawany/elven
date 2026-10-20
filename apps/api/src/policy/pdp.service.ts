@@ -1523,6 +1523,19 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'observation.rights.terms.read', exact: true, requiredAnyRole: [{ role: 'data_steward', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }],
     obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B82-F rt */
+  /* B40 §0 (0123): the parts' EXACT rules go in their own block below, each placed BEFORE the `observation.` collection prefix rule (which
+     would otherwise match them first and admit a domain analyst or the collection agent) — DESIGN D15; no role (D14), nothing widened.
+     Reserved empty by the prelude; §AC adds no rule. */
+  /* B40 rg */
+  /* end B40 rg */
+  /* B40 va */
+  /* end B40 va */
+  /* B40 in */
+  /* end B40 in */
+  /* B40 ap */
+  /* end B40 ap */
+  /* B40 cr */
+  /* end B40 cr */
   {
     // The COLLECTION surface: run lifecycle, admission, quarantine, checkpoints,
     // coverage measurement and sweeper reconciliation. Held by the agent role and
