@@ -14,7 +14,8 @@
 import type { EgressPolicy } from './http-client.js';
 import type { TimeValue } from '@eye/contracts'; // B50 hd
 
-export type ConnectorKind = 'upload' | 'rss' | 'rest';
+/** B40 §0: `adapter` — a custom adapter package run in §CR's connector cell (SRC@v4 only); no connector of this kind exists until §CR builds the cell. */
+export type ConnectorKind = 'upload' | 'rss' | 'rest' | 'adapter';
 
 /** The budgets a run may not exceed (§11). Breach stops the run and escalates. */
 export interface RunBudgets {
@@ -215,6 +216,12 @@ export interface AcquisitionContext {
   replayRoot: string;
   /** B11: the resolved credential for this run's requests (header name and value) — present only when the binding names one. */
   credential?: { header: string; value: string };
+  /**
+   * B40 §0: the per-request THROTTLE (§AP's stage, through the lifecycle). A connector awaits it before every request it makes, next to
+   * the budget meter; it resolves when the request may go and THROWS (IntakeStageRefused) to refuse it. Absent = no throttle (a caller
+   * outside the lifecycle, a unit test); pass-through until §AP fills its stage.
+   */
+  throttle?: (request: { endpoint: string }) => Promise<void>;
 }
 
 export class BudgetExceeded extends Error {
@@ -309,7 +316,8 @@ export interface StreamPullRequest {
 }
 /** An incomplete page: the stream moves past it and the range is declared explicitly incomplete — never silently skipped. */
 export interface SegmentGap {
-  reasonClass: 'publisher_gap' | 'refused';
+  /* B40 §0: + rate_limited, window_closed, robots_disallowed, residency_refused (§AP's classes; 0123 §0 widened the ledger's vocabulary) */
+  reasonClass: 'publisher_gap' | 'refused' | 'rate_limited' | 'window_closed' | 'robots_disallowed' | 'residency_refused';
   detail: string;
 }
 /**

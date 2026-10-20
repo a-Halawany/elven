@@ -30,6 +30,7 @@ import { AcquisitionLifecycle } from './acquisition/lifecycle.service.js';
 import { CollectionOrchestrator } from './acquisition/orchestrator.service.js';
 import { ObservationExceptionFilter } from './observation.filter.js';
 /* B82 ev */ import { EvidenceB82Controller } from './evidence-b82/evidence-b82.controller.js'; /* end B82 ev */
+/* B40 §0 */ import { INTAKE_STAGE_PROVIDERS } from './acquisition/intake-stages.js'; /* end B40 §0 */
 
 @Module({
   imports: [PipelineModule, IdentityModule],
@@ -50,6 +51,9 @@ import { ObservationExceptionFilter } from './observation.filter.js';
     SweeperService,
     AcquisitionLifecycle,
     CollectionOrchestrator,
+    /* B40 §0: the intake seam — the composition and the four parts' stages (authorize-ap, throttle-ap, inspect-in, authenticate-va) */
+    ...INTAKE_STAGE_PROVIDERS,
+    /* end B40 §0 */
     // Registered AFTER the Phase 0 filter so it is consulted first for these
     // routes; a refusal a governed port raised deliberately answers as the rule
     // it is, and everything else falls through unchanged.

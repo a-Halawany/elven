@@ -139,6 +139,7 @@ export class RestConnector implements Connector {
     const revalidated: NonNullable<AcquisitionOutput['revalidated']> = [];
     for (const endpoint of binding.endpoints) {
       ctx.budget.spendRequest();
+      await ctx.throttle?.({ endpoint }); // B40 §0 throttle (§AP): resolves when the request may go, throws to refuse it
       requestsMade += 1;
 
       if (replay !== null) {
@@ -265,6 +266,7 @@ export class RestConnector implements Connector {
     while (!progress.done && requests < budget) {
       const step = nextRequest(decl, progress);
       ctx.budget.spendRequest();
+      await ctx.throttle?.({ endpoint: step.url }); // B40 §0 throttle (§AP)
       requests += 1;
       const res = await this.egress({ url: step.url, headers: {}, ...credentialsOf(ctx), policy: binding.egress });
       if (res.status < 200 || res.status >= 300) {
@@ -392,6 +394,7 @@ export class RestConnector implements Connector {
           yield { ...base, items: [], gap: { reasonClass: 'publisher_gap', detail: page.gap ?? 'the replay set declares no page for this window' }, requests: 1, bytes: 0 };
           continue;
         }
+        await ctx.throttle?.({ endpoint: page.url }); // B40 §0 throttle (§AP)
         const got = await replay.fetch(binding.replaySet, page.url);
         if (got === null || got.entry.status < 200 || got.entry.status >= 300) {
           yield { ...base, items: [], gap: { reasonClass: 'publisher_gap', detail: got === null ? 'the replay set holds no recorded response for this page' : `the recorded page answered ${got.entry.status}` }, requests: 1, bytes: 0 };
@@ -431,6 +434,7 @@ export class RestConnector implements Connector {
       const before: StreamCursor = { position: progress.cursor, through };
       const segFrom = decl.strategy === 'period-range' ? step.windowStart : `${req.rangeFrom}#${pad(step.offset)}`;
       ctx.budget.spendRequest();
+      await ctx.throttle?.({ endpoint: step.url }); // B40 §0 throttle (§AP)
       let res: EgressResult | null = null;
       let gap: SegmentGap | null = null;
       try {
