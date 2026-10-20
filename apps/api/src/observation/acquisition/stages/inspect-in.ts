@@ -1,6 +1,6 @@
 /**
  * CP-6 B40 — the INSPECT stage (§IN, F-P1-03). OWNED BY §IN: this file's body is replaced by the part; the class name, the `inspect` and
- * `record` signatures and the registration (intake-stages.ts) are the prelude's.
+ * `record` signatures and the registration (intake-stages.ts; the types in intake-stage-types.ts) are the prelude's.
  *
  * §0 PRELUDE: PASS-THROUGH — every item passes with no finding and nothing is recorded, exactly as before B40 (the heuristic verdict of
  * content-controls.ts still decides, as today). §IN builds here the inspection engine port (versioned engines; engine 1 the content
@@ -14,7 +14,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import type { AcquisitionWrites } from '../../observation.capabilities.js';
-import type { InspectDecision, InspectInput, InspectStage, IntakeRecordPoint, IntakeStageContext } from '../intake-stages.js';
+import type { InspectDecision, InspectInput, InspectStage, IntakeRecordPoint, IntakeStageContext } from '../intake-stage-types.js';
 
 @Injectable()
 export class InspectStageIn implements InspectStage {

@@ -1,6 +1,6 @@
 /**
  * CP-6 B40 — the AUTHENTICATE stage (§VA, F-P1-02). OWNED BY §VA: this file's body is replaced by the part; the class name, the
- * `authenticate` and `record` signatures and the registration (intake-stages.ts) are the prelude's.
+ * `authenticate` and `record` signatures and the registration (intake-stages.ts; the types in intake-stage-types.ts) are the prelude's.
  *
  * §0 PRELUDE: `not_evaluated` for every item — the evidence payload's content_authenticity stays `unknown`, exactly as before B40, and
  * nothing is recorded. §VA builds here the verification against the publisher keys in force (SRC@v4 authenticity: ed25519_detached /
@@ -11,7 +11,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import type { AcquisitionWrites } from '../../observation.capabilities.js';
-import type { AuthenticateInput, AuthenticateStage, AuthenticityDecision, IntakeRecordPoint, IntakeStageContext } from '../intake-stages.js';
+import type { AuthenticateInput, AuthenticateStage, AuthenticityDecision, IntakeRecordPoint, IntakeStageContext } from '../intake-stage-types.js';
 
 @Injectable()
 export class AuthenticateStageVa implements AuthenticateStage {
