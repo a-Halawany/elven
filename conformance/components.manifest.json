@@ -2106,6 +2106,7 @@
       },
       "public_contract": {
         "controllers": [
+          "ConnectorCellController",
           "EvidenceB82Controller",
           "ObservationController",
           "UploadController"
@@ -2924,6 +2925,60 @@
         "reproducible_from": "the tracked source + pnpm-lock.yaml"
       },
       "component_ids": [
+        "INF-PF-12",
+        "L1-C02"
+      ],
+      "controls": [
+        "DP-14-003",
+        "V03-T-440"
+      ],
+      "dependencies": [],
+      "deployment_targets": [
+        "local-dev"
+      ],
+      "kind": "package",
+      "layers": [],
+      "mapped": true,
+      "owner": "founding-engineer",
+      "path": "packages/connector-sdk",
+      "plane_boundaries": {
+        "audit": "every governed act through the pipeline (POL + AUD)",
+        "failure": "process:api",
+        "policy": "PDP exact rules for its actions",
+        "resource": "its database role (eye_commit ports / eye_app reads) and its queue names",
+        "state": "none owned",
+        "telemetry": "the audit chain partition (platform | tenant) and the module logger"
+      },
+      "public_contract": {
+        "controllers": [],
+        "module": null,
+        "ports": []
+      },
+      "quality_obligations": [
+        "the declared targets of its components (B64 computes)"
+      ],
+      "release_path": "build-test → browser-regression → supply-chain (ci.yml); a release candidate record (B65 substituted) — never a release",
+      "semantic_authority": "host",
+      "state_boundary": {
+        "access": "no owned state",
+        "schemas": []
+      },
+      "tests": {
+        "selector": "the suites named",
+        "suites": [
+          "packages/*/test"
+        ],
+        "verification": "H2 (independent)"
+      },
+      "unit_id": "package.connector-sdk"
+    },
+    {
+      "build": {
+        "artifact": "a workspace package (tsc → dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
+      "component_ids": [
         "CP-OBJ-00"
       ],
       "controls": [
@@ -3729,8 +3784,10 @@
     {
       "catalogue_entry": "Platform Runtime Connector runtime Runtime Connector cell Execute isolated source and enterprise connectors.",
       "component_id": "INF-PF-12",
-      "deployed_by": [],
-      "disposition": "catalogued — no deployable realization declared in this repository (local-dev profile only)",
+      "deployed_by": [
+        "package.connector-sdk"
+      ],
+      "disposition": "hosted by a declared unit (its requirement row states its status)",
       "group": "PF"
     },
     {
@@ -4385,7 +4442,8 @@
       ],
       "dependencies": {
         "deployed_by": [
-          "api.observation"
+          "api.observation",
+          "package.connector-sdk"
         ],
         "layers": []
       },
@@ -11480,7 +11538,7 @@
   "summary": {
     "ai_planes": 5,
     "data_components": 104,
-    "deployable_units": 32,
+    "deployable_units": 33,
     "infrastructure_components": 92,
     "layers": 10,
     "logical_components": 92,
