@@ -9,6 +9,7 @@
  */
 import { HttpException } from '@nestjs/common';
 import { createHash, createPrivateKey, createPublicKey, sign as cryptoSign, verify as cryptoVerify, type KeyObject } from 'node:crypto';
+import { retiredVerifyKeyPem } from '../../executive/signatures/retired-verify-keys.js';
 import { errorBody } from '@eye/contracts';
 import { DEFAULT_EXECUTIVE_SIGNING_KEY_REF, EXECUTIVE_SIGNING_KEY_REF } from '../../executive/signatures/signature.service.js';
 
@@ -48,8 +49,10 @@ export class PlatformSigner {
   verify(row: { key_id: string; signature: string; subject_digest: string }): boolean {
     try {
       const k = this.publicKey();
-      if (k === null || k.keyId !== row.key_id || !/^[A-Za-z0-9+/]{86}==$/.test(row.signature)) return false;
-      return cryptoVerify(null, Buffer.from(row.subject_digest, 'utf8'), createPublicKey({ key: k.publicKeyPem, format: 'pem' }), Buffer.from(row.signature, 'base64'));
+      // The bound key when the row names it; otherwise a RETIRED key kept for verification only (rotation-safe; signing is unchanged).
+      const pem = k !== null && k.keyId === row.key_id ? k.publicKeyPem : retiredVerifyKeyPem(String(row.key_id));
+      if (pem === null || !/^[A-Za-z0-9+/]{86}==$/.test(row.signature)) return false;
+      return cryptoVerify(null, Buffer.from(row.subject_digest, 'utf8'), createPublicKey({ key: pem, format: 'pem' }), Buffer.from(row.signature, 'base64'));
     } catch { return false; }
   }
 }

@@ -13,6 +13,7 @@
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import { createHash, createPrivateKey, createPublicKey, sign as cryptoSign, verify as cryptoVerify, type KeyObject } from 'node:crypto';
+import { retiredVerifyKeyPem } from './retired-verify-keys.js';
 import { sql } from 'kysely';
 import { errorBody } from '@eye/contracts';
 import { newId } from '../../shared/ids.js';
@@ -94,7 +95,8 @@ export class SignatureService {
   verifyOutcome(row: Pick<SignatureRow, 'key_id' | 'signature' | 'subject_digest'>, publicKeyPem?: string): { outcome: 'verified' | 'failed' | 'unavailable'; reason: string } {
     let pem: string | null;
     try {
-      pem = publicKeyPem ?? (() => { const k = this.publicKey(); return k !== null && k.keyId === row.key_id ? k.publicKeyPem : null; })();
+      // The bound key when the row names it; otherwise a RETIRED key kept for verification only (retired-verify-keys.ts — rotation-safe).
+      pem = publicKeyPem ?? (() => { const k = this.publicKey(); return k !== null && k.keyId === row.key_id ? k.publicKeyPem : retiredVerifyKeyPem(String(row.key_id)); })();
     } catch { return { outcome: 'unavailable', reason: 'the verifier could not read the key on file' }; }
     if (pem === null) return { outcome: 'unavailable', reason: `no key is on file for ${String(row.key_id)} in this deployment; the signature was neither verified nor refuted` };
     if (typeof row.signature !== 'string' || !/^[A-Za-z0-9+/]{86}==$/.test(row.signature)) return { outcome: 'failed', reason: 'the recorded signature is not an Ed25519 signature (64 bytes, base64)' };
