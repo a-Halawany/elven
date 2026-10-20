@@ -11,6 +11,7 @@ import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { newId } from '../../shared/ids.js';
 import { DPR_SCHEMA } from '../products.service.js';
 import type { LifecycleWrites } from './consumers.capabilities.js';
+import { buildHeader } from '../../objects/header-builder.js';
 
 type Row = Record<string, unknown>;
 type Scope = { tenantId: string; domainId: string };
@@ -96,20 +97,20 @@ export class ConsumersService {
     const ref = `DPR:${String(prior['object_id'])}@${String(prior['object_version'])}`;
     const clock = String(prior['source_clock_quality'] ?? 'trusted');
     const priorTruth = String(prior['truth_state'] ?? 'asserted');
-    return {
-      object_id: String(prior['object_id']), object_type: 'DPR', tenant_id: String(prior['tenant_id']), domain_id: String(prior['domain_id']), scope: 'DOMAIN', object_version: String(a.objectVersion), lifecycle_state: a.lifecycle,
-      owning_component: String(prior['owning_component'] ?? 'CP-DAT-01'), accountable_owner: String(prior['accountable_owner'] ?? `principal:${a.actor}`), source_object_ids: strArr(prior['source_object_ids']),
-      event_time: iso(prior['event_time']), observation_time: iso(prior['observation_time']), valid_from: iso(prior['valid_from']), valid_to: iso(prior['valid_to']), recorded_at: a.now,
-      time_precision: String(prior['time_precision'] ?? 'exact'), source_clock_quality: (clock === 'trusted' || clock === 'degraded' ? clock : 'unknown') as CanonicalHeader['source_clock_quality'],
-      truth_state: a.lifecycle === 'withdrawn' ? 'withdrawn' : (priorTruth === 'withdrawn' ? 'withdrawn' : 'asserted'), synthetic_state: prior['synthetic_state'] === true, confidence: null, uncertainty: null,
-      evidence_refs: strArr(prior['evidence_refs']), provenance_ref: `principal:${a.actor}`, method_ref: a.lifecycle === 'withdrawn' ? 'products.withdraw/1' : 'products.retire/1',
-      contradiction_refs: [], corroboration_refs: [], human_refs: [`principal:${a.actor}`],
-      classification: String(prior['classification'] ?? 'internal'), purpose_scope: a.purpose, rights_profile: (prior['rights_profile'] as string | null) ?? null, residency_profile: (prior['residency_profile'] as string | null) ?? null,
-      retention_profile: (prior['retention_profile'] as string | null) ?? null, access_policy_ref: null, quality_profile: null,
-      quality_state: { last_valid_version: Number((prior['payload'] as Row | null)?.['version'] ?? 0), declaration_digest: String((prior['payload'] as Row | null)?.['declaration_digest'] ?? '') }, freshness_state: null,
-      schema_ref: String(prior['schema_ref'] ?? DPR_SCHEMA), ontology_ref: null, correction_of: a.lifecycle === 'withdrawn' ? ref : null, supersedes: ref,
-      withdrawal_reason: a.lifecycle === 'withdrawn' ? a.reason : ((prior['withdrawal_reason'] as string | null) ?? null), audit_correlation_id: a.correlationId, content_ref: (prior['content_ref'] as string | null) ?? null,
-    } as CanonicalHeader;
+    return buildHeader({
+      objectId: String(prior['object_id']), objectType: 'DPR', tenantId: String(prior['tenant_id']), domainId: String(prior['domain_id']), scope: 'DOMAIN', objectVersion: String(a.objectVersion), lifecycleState: a.lifecycle,
+      owningComponent: String(prior['owning_component'] ?? 'CP-DAT-01'), accountableOwner: String(prior['accountable_owner'] ?? `principal:${a.actor}`), sourceObjectIds: strArr(prior['source_object_ids']),
+      eventTime: iso(prior['event_time']), observationTime: iso(prior['observation_time']), validFrom: iso(prior['valid_from']), validTo: iso(prior['valid_to']), recordedAt: a.now,
+      timePrecision: String(prior['time_precision'] ?? 'exact'), sourceClockQuality: (clock === 'trusted' || clock === 'degraded' ? clock : 'unknown') as CanonicalHeader['source_clock_quality'],
+      truthState: a.lifecycle === 'withdrawn' ? 'withdrawn' : (priorTruth === 'withdrawn' ? 'withdrawn' : 'asserted'), syntheticState: prior['synthetic_state'] === true, confidence: null, uncertainty: null,
+      evidenceRefs: strArr(prior['evidence_refs']), provenanceRef: `principal:${a.actor}`, methodRef: a.lifecycle === 'withdrawn' ? 'products.withdraw/1' : 'products.retire/1',
+      contradictionRefs: [], corroborationRefs: [], humanRefs: [`principal:${a.actor}`],
+      classification: String(prior['classification'] ?? 'internal'), purposeScope: a.purpose, rightsProfile: (prior['rights_profile'] as string | null) ?? null, residencyProfile: (prior['residency_profile'] as string | null) ?? null,
+      retentionProfile: (prior['retention_profile'] as string | null) ?? null, accessPolicyRef: null, qualityProfile: null,
+      qualityState: { last_valid_version: Number((prior['payload'] as Row | null)?.['version'] ?? 0), declaration_digest: String((prior['payload'] as Row | null)?.['declaration_digest'] ?? '') }, freshnessState: null,
+      schemaRef: String(prior['schema_ref'] ?? DPR_SCHEMA), ontologyRef: null, correctionOf: a.lifecycle === 'withdrawn' ? ref : null, supersedes: ref,
+      withdrawalReason: a.lifecycle === 'withdrawn' ? a.reason : ((prior['withdrawal_reason'] as string | null) ?? null), auditCorrelationId: a.correlationId, contentRef: (prior['content_ref'] as string | null) ?? null,
+    });
   }
 
   private async admit(cap: LifecycleWrites, header: CanonicalHeader, payload: Row, correlationId: string): Promise<{ contentDigest: string }> {

@@ -201,7 +201,9 @@ describe('DG3 · the source by the clock (PAT-32)', () => {
     expect(String(det['refresh_path'])).toMatch(/a new upload under source contract v1/);
     expect(Number(c['elapsed_seconds'])).toBeGreaterThan(43_200);
     // the unavailable functions in force: what the web disables (PAT-30)
-    expect((s['unavailable_functions'] as Row[]).map((f) => f['action']).sort()).toEqual(['decision.package.commit', 'prediction.forecast.run']);
+    // B50 (0120 §LC): the platform's audit-journal contract (objects.lifecycle.*, objects.work_object.author) is declared by
+    // phase6-lifecycle-b50 on a shared database and is in force whenever an audit incident is open there — this source's functions are read
+    expect((s['unavailable_functions'] as Row[]).filter((f) => (f['dependency'] as Row)['kind'] === 'source').map((f) => f['action']).sort()).toEqual(['decision.package.commit', 'prediction.forecast.run']);
     expect(s['degraded']).toBe(true);
     // nothing was written by evaluating: the live read is still fresh
     const live = find((await state(owner, { kind: 'source', key: SOURCE_KEY })).degraded, 'source', SOURCE_KEY)!;

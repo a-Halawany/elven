@@ -126,6 +126,35 @@ export class ObjectsController {
     return { objects: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
   }
 
+  /* B50 hd (0120 §HD): the header's side, the header profiles and the layer contracts — reads under objects.read */
+  @Post('/header-profiles')
+  async headerProfiles(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, {
+      scope: 'DOMAIN', tenantId, domainId, action: 'objects.read', objectType: null, objectId: null,
+    }, ObjectsCapability.read, async (tx) => this.objects.headerProfiles(tx));
+    return { profiles: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
+  }
+
+  @Post('/layer-contracts')
+  async layerContracts(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, {
+      scope: 'DOMAIN', tenantId, domainId, action: 'objects.read', objectType: null, objectId: null,
+    }, ObjectsCapability.read, async (tx) => this.objects.layerContracts(tx));
+    return { layers: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
+  }
+
+  @Post('/:objectId/header')
+  async header(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('objectId') objectId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, {
+      scope: 'DOMAIN', tenantId, domainId, action: 'objects.read', objectType: null, objectId,
+    }, ObjectsCapability.read, async (tx) => this.objects.headerOf(tx, objectId, envelope.correlation_id));
+    return { header: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
+  }
+  /* end B50 hd */
+
   @Post('/:objectId/get')
   async get(
     @Req() req: EyeRequest,

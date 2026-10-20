@@ -1520,6 +1520,36 @@ const BUNDLE_V1: Rule[] = [
     // (C3+) cannot be authorized, so it fails closed exactly as `objects.` does.
     maxConsequence: 'C2',
   },
+  /* B50 lc */
+  /* B50 §LC (0120_b50_x_lc; F-P3-02: PR-06-001/003/005, ADR-006). EXACT rules, placed BEFORE the `objects.read` and `objects.` prefix rules
+     (which would otherwise match them first and admit a domain_admin without a gate). READING a lifecycle (profiles, a type's work objects,
+     one object's history, its replay, the reconciliation, the export and its verification) — every human role of the domain, the tenant's
+     administrator and auditor, the platform administrator; audited. AUTHORING a work object — the roles that author an assessment (the domain
+     specialist, the analyst, the knowledge owner, the risk / strategy / forecast owners, the executive), human-gated. TRANSITIONING one —
+     the domain's human roles reach the route, human-gated; the PORT admits only the accountable owner, or the profile's reviewer / approver
+     roles, with the separation of duties (reviewer ≠ author, approver ≠ author or reviewer). PROPOSING — the same human roles AND the agent
+     roles (the extraction, collection and forecast agents): a proposal is never authoritative, so it is not human-gated. DECIDING a proposal
+     — the domain's human roles reach the route, human-gated; the PORT admits only the accountable owner. */
+  ...((): Rule[] => {
+    const domainPeople = ['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'executive_operator',
+      'board_member', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner',
+      'record_authority', 'retention_steward', 'ontology_steward', 'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward',
+      'data_steward', 'domain_specialist', 'privacy_officer']
+      .map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const readers = [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }, { role: 'auditor', atScope: 'TENANT' as Scope }, ...domainPeople];
+    const authors = ['domain_specialist', 'domain_analyst', 'knowledge_owner', 'risk_owner', 'strategy_owner', 'forecast_owner', 'executive']
+      .map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const agents = ['extraction_agent', 'collection_agent', 'forecast_agent'].map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    return [
+      { actionPrefix: 'objects.lifecycle.read', exact: true, requiredAnyRole: readers, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'objects.work_object.author', exact: true, requiredAnyRole: authors, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'objects.lifecycle.transition', exact: true, requiredAnyRole: domainPeople, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'objects.lifecycle.propose', exact: true, requiredAnyRole: [...domainPeople, ...agents], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'objects.lifecycle.proposal.decide', exact: true, requiredAnyRole: domainPeople, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B50 lc */
   {
     actionPrefix: 'objects.read',
     requiredAnyRole: [
@@ -3260,6 +3290,129 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B81 si */
+  /* B50 pv */
+  /* B50 §PV (0120_b50_x_pv; F-P3-03 + HX-14). EXACT rules — no earlier rule is a prefix of graph.provenance.* (the graph rules are
+     graph.read, graph.entity.*, graph.resolution.*, graph.edge.*, graph.strategy.*, graph.propagation.*, graph.impact.*, graph.subscription.*,
+     graph.revision.commit …; none is a prefix of `graph.provenance`). THE READS (`graph.provenance.read`: explain, the two diffs, the fitness,
+     the alignment, the challenges, the agent's registry) by graph.read's roles and the decision and data roles, audited. THE MARK
+     (`graph.provenance.fitness.mark`): the knowledge owner, the data steward, the domain administrator — human-gated; the port re-checks the
+     role (governance.assert_approver) and computes the verdict itself. THE CONTEST (`graph.provenance.challenge.*`): opening, evidence,
+     withdrawal and escalation by any domain person (the port decides who is a party, the owner never challenges its own product); review and
+     decision by the knowledge owner, data steward or domain administrator — human-gated; the port re-checks reviewer ≠ opener ≠ owner. THE
+     AGENT: registration as every agent's (the tenant / platform administrator; its principal stays identity.principal.create), revocation
+     also the domain administrator's; the TRIGGER a person's (knowledge owner, data steward, domain administrator); the CONSTRUCTION the
+     provenance agent's alone — its ONE decision. */
+  ...((): Rule[] => {
+    const d = (role: string) => ({ role, atScope: 'DOMAIN' as Scope });
+    const readers = [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }, { role: 'auditor', atScope: 'TENANT' as Scope },
+      { role: 'retention_authority', atScope: 'TENANT' as Scope },
+      ...['domain_admin', 'domain_analyst', 'collection_manager', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator',
+        'knowledge_owner', 'record_authority', 'retention_steward', 'ontology_steward', 'data_steward', 'method_steward', 'decision_owner', 'decision_approver', 'decision_authority',
+        'executive', 'executive_operator', 'risk_owner', 'privacy_officer'].map(d)];
+    const people = ['domain_admin', 'domain_analyst', 'collection_manager', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner',
+      'simulation_operator', 'knowledge_owner', 'record_authority', 'ontology_steward', 'data_steward', 'method_steward', 'decision_owner', 'decision_approver', 'decision_authority',
+      'executive', 'risk_owner', 'domain_specialist'].map(d);
+    const stewards = ['knowledge_owner', 'data_steward', 'domain_admin'].map(d);
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    return [
+      { actionPrefix: 'graph.provenance.read', exact: true, requiredAnyRole: readers, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.fitness.mark', exact: true, requiredAnyRole: stewards, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.challenge.open', exact: true, requiredAnyRole: people, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.challenge.evidence', exact: true, requiredAnyRole: people, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.challenge.withdraw', exact: true, requiredAnyRole: people, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.challenge.escalate', exact: true, requiredAnyRole: people, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.challenge.review', exact: true, requiredAnyRole: stewards, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.challenge.decide', exact: true, requiredAnyRole: stewards, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.agent.register', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.agent.revoke', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }, d('domain_admin')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.agent.trigger', exact: true, requiredAnyRole: stewards, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.construct', exact: true, requiredAnyRole: [d('provenance_agent')], requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B50 pv */
+  /* B50 ci */
+  /* B50 §CI (0120_b50_x_ci; V03-T-304, AI-29-005). EXACT rules — no earlier rule is a prefix of graph.impact.trigger.* (the earlier
+     `graph.impact.propagate` prefix names only its own action). THE SEVEN TRIGGERS (`graph.impact.trigger.<kind>`): the kind's steward —
+     human-gated; the PORT re-checks the role at the domain, the human and the acting principal (graph._trigger_preflight). The walk that
+     follows is the PROPAGATION AGENT's under graph.impact.propagate (unchanged). THE CLOSE of a human challenge (`graph.impact.trigger.close`):
+     a knowledge owner or the domain administrator — human-gated; the port refuses the challenge's opener. THE RE-DRIVE (`graph.impact.trigger
+     .reconcile`): the people who hold graph.impact.propagate (the walk is still the agent's). No agent role appears here; the reads are
+     graph.read's. */
+  ...((): Rule[] => {
+    const at = (roles: string[]) => roles.map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const kinds: Array<[string, string[]]> = [
+      ['legal_request', ['privacy_officer', 'record_authority']],
+      ['model_incident', ['method_steward']],
+      ['ontology_correction', ['ontology_steward']],
+      ['data_quality_finding', ['data_steward']],
+      ['rights_change', ['data_steward', 'privacy_officer', 'record_authority', 'collection_manager']],
+      ['integrity_failure', ['record_authority', 'data_steward']],
+      ['human_challenge', ['domain_admin', 'domain_analyst', 'domain_specialist', 'knowledge_owner', 'forecast_owner', 'risk_owner', 'decision_owner', 'strategy_owner', 'data_steward',
+        'method_steward', 'ontology_steward', 'executive', 'collection_manager', 'extraction_manager', 'resolution_manager', 'record_authority', 'privacy_officer']],
+    ];
+    return [
+      ...kinds.map(([k, roles]): Rule => ({ actionPrefix: `graph.impact.trigger.${k}`, exact: true, requiredAnyRole: at(roles), obligations: gate, requiresPurpose: true, maxConsequence: 'C2' })),
+      { actionPrefix: 'graph.impact.trigger.close', exact: true, requiredAnyRole: at(['knowledge_owner', 'domain_admin']), obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.impact.trigger.reconcile', exact: true,
+        requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, ...at(['domain_admin', 'strategy_owner', 'resolution_manager', 'collection_manager'])], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B50 ci */
+  /* B50 cl */
+  /* B50 §CL (0120_b50_x_cl; F-P3-05's closure). EXACT rules — no earlier rule is a prefix of graph.closure.* (the graph prefix rules are
+     graph.read, graph.entity.*, graph.resolution.*, graph.edge.*, graph.strategy.*, graph.propagation.*, graph.impact.propagate,
+     graph.subscription.*; none is a prefix of `graph.closure`). The reads are graph.read's. THE CONTRACT (`graph.closure.contract.declare`):
+     the domain administrator — human-gated; the port re-checks the role. THE CONSUMERS' ACTS (`graph.closure.acknowledge`, `.except`): any
+     domain person who may own a product (the PORT decides: the product's accountable owner, else a knowledge owner or the domain
+     administrator; a human review never by the correction authority who applied the case; an exception under a legal hold owned by a
+     record authority) — human-gated. THE FREEZE (`graph.closure.freeze`): the domain administrator, the collection manager, a knowledge
+     owner, a data steward — human-gated; THE LIFT (`graph.closure.freeze.lift`), THE CLOSE (`graph.closure.close`) and THE ADOPTION
+     (`graph.closure.adopt`): the correction authority (collection manager) or the domain administrator — human-gated. THE SWEEP
+     (`graph.closure.sweep`): the same two, a person's route (audited); the scheduled sweep is the attention agent's tick step under
+     executive.attention.tick (its existing rule). No agent role appears here. */
+  ...((): Rule[] => {
+    const at = (roles: string[]) => roles.map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const owners = at(['domain_admin', 'domain_analyst', 'domain_specialist', 'collection_manager', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner',
+      'twin_owner', 'simulation_operator', 'knowledge_owner', 'record_authority', 'ontology_steward', 'data_steward', 'method_steward', 'decision_owner', 'decision_approver',
+      'decision_authority', 'executive', 'executive_operator', 'risk_owner', 'privacy_officer']);
+    const authority = at(['collection_manager', 'domain_admin']);
+    return [
+      { actionPrefix: 'graph.closure.contract.declare', exact: true, requiredAnyRole: at(['domain_admin']), obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.closure.acknowledge', exact: true, requiredAnyRole: owners, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.closure.except', exact: true, requiredAnyRole: owners, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.closure.freeze', exact: true, requiredAnyRole: at(['domain_admin', 'collection_manager', 'knowledge_owner', 'data_steward']), obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.closure.freeze.lift', exact: true, requiredAnyRole: authority, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.closure.close', exact: true, requiredAnyRole: authority, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.closure.adopt', exact: true, requiredAnyRole: authority, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.closure.sweep', exact: true, requiredAnyRole: authority, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B50 cl */
+  /* B50 tl */
+  /* B50 §TL (0120_b50_x_tl; F-P3-04: PR-22-001/002/003/005, CAP-UM-10). EXACT rules — no earlier rule is a prefix of graph.timeline.* (the
+     graph rules are graph.read, graph.entity.*, graph.resolution.*, graph.edge.*, graph.strategy.*, graph.propagation.*, graph.impact.*,
+     graph.subscription.*, graph.provenance.*, graph.revision.commit …; none is a prefix of `graph.timeline`). THE READS (`graph.timeline.read`:
+     the timeline and as-of explorer, the trace, the governed scopes) by §PV's readers, audited — the timeline and the trace are SECURITY
+     INVOKER (the caller's RLS) and the route hands the reader's clearance, so what a reader may not see is counted, never shown. THE
+     RECONCILIATION (`graph.timeline.reconcile`): routing an incomplete trace to its owner — a person (the product's owner, a knowledge
+     owner, a data steward, a record authority, an analyst, a domain administrator), human-gated; the port re-checks the role and that the
+     trace IS incomplete. */
+  ...((): Rule[] => {
+    const d = (role: string) => ({ role, atScope: 'DOMAIN' as Scope });
+    const readers = [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }, { role: 'auditor', atScope: 'TENANT' as Scope },
+      { role: 'retention_authority', atScope: 'TENANT' as Scope },
+      ...['domain_admin', 'domain_analyst', 'collection_manager', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator',
+        'knowledge_owner', 'record_authority', 'retention_steward', 'ontology_steward', 'data_steward', 'method_steward', 'decision_owner', 'decision_approver', 'decision_authority',
+        'executive', 'executive_operator', 'risk_owner', 'privacy_officer', 'domain_specialist'].map(d)];
+    const reconcilers = ['knowledge_owner', 'data_steward', 'record_authority', 'domain_analyst', 'domain_admin', 'forecast_owner', 'decision_owner', 'strategy_owner', 'risk_owner'].map(d);
+    return [
+      { actionPrefix: 'graph.timeline.read', exact: true, requiredAnyRole: readers, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.timeline.reconcile', exact: true, requiredAnyRole: reconcilers, obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B50 tl */
 ];
 
 /* B107 conformance */

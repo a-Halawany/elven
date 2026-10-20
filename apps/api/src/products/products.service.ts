@@ -11,6 +11,7 @@ import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader 
 import type { AuthenticatedPrincipal } from '../shared/auth-types.js';
 import { newId } from '../shared/ids.js';
 import type { ProductWrites } from './products.capabilities.js';
+import { buildHeader } from '../objects/header-builder.js';
 
 type Row = Record<string, unknown>;
 type Scope = { tenantId: string; domainId: string };
@@ -105,18 +106,18 @@ export class ProductsService {
       version, state: 'released', declaration: v['declaration'], declaration_digest: String(v['digest']), reviews, degraded_reason: null, withdrawal_reason: null,
     };
     const priorRef = prior === null ? null : `DPR:${productId}@${prior}`;
-    const header: CanonicalHeader = {
-      object_id: productId, object_type: 'DPR', tenant_id: scope.tenantId, domain_id: scope.domainId, scope: 'DOMAIN', object_version: String(version), lifecycle_state: 'active',
-      owning_component: 'CP-DAT-01', accountable_owner: `principal:${String(p['owner_principal_id'])}`,
-      source_object_ids: [],
-      event_time: null, observation_time: null, valid_from: null, valid_to: null, recorded_at: new Date().toISOString(), time_precision: 'exact', source_clock_quality: 'trusted',
-      truth_state: 'asserted', synthetic_state: false, confidence: null, uncertainty: null,
-      evidence_refs: [], provenance_ref: `principal:${principal.principalId}`, method_ref: 'products.release/1',
-      contradiction_refs: [], corroboration_refs: [], human_refs: [...new Set([`principal:${String(p['owner_principal_id'])}`, `principal:${principal.principalId}`])],
-      classification: 'internal', purpose_scope: purpose, rights_profile: null, residency_profile: null, retention_profile: null, access_policy_ref: null,
-      quality_profile: null, quality_state: { declaration_digest: String(v['digest']) }, freshness_state: null, schema_ref: DPR_SCHEMA, ontology_ref: null,
-      correction_of: null, supersedes: priorRef, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
-    } as CanonicalHeader;
+    const header: CanonicalHeader = buildHeader({
+      objectId: productId, objectType: 'DPR', tenantId: scope.tenantId, domainId: scope.domainId, scope: 'DOMAIN', objectVersion: String(version), lifecycleState: 'active',
+      owningComponent: 'CP-DAT-01', accountableOwner: `principal:${String(p['owner_principal_id'])}`,
+      sourceObjectIds: [],
+      eventTime: null, observationTime: null, validFrom: null, validTo: null, recordedAt: new Date().toISOString(), timePrecision: 'exact', sourceClockQuality: 'trusted',
+      truthState: 'asserted', syntheticState: false, confidence: null, uncertainty: null,
+      evidenceRefs: [], provenanceRef: `principal:${principal.principalId}`, methodRef: 'products.release/1',
+      contradictionRefs: [], corroborationRefs: [], humanRefs: [...new Set([`principal:${String(p['owner_principal_id'])}`, `principal:${principal.principalId}`])],
+      classification: 'internal', purposeScope: purpose, rightsProfile: null, residencyProfile: null, retentionProfile: null, accessPolicyRef: null,
+      qualityProfile: null, qualityState: { declaration_digest: String(v['digest']) }, freshnessState: null, schemaRef: DPR_SCHEMA, ontologyRef: null,
+      correctionOf: null, supersedes: priorRef, withdrawalReason: null, auditCorrelationId: correlationId, contentRef: null,
+    });
     const check = validateHeader(header);
     if (!check.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `data product header invalid: ${(check.errors ?? []).join('; ')}`), 422);
     const headerDigest = canonicalHeaderDigest(header, payload);

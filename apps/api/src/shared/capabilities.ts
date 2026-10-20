@@ -125,11 +125,22 @@ export interface ObjectReads {
   readCanonicalObjects(): any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readSchemaRegistry(): any;
+  /* B50 hd (0120 §HD): the side ledgers and the header profiles (RLS reads), the identity declaration and the layer contracts (read ports) */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readVersionOperations(): any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readTimeQualifiers(): any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readHeaderProfiles(): any;
+  identityDeclaration(objectType: string, objectId: string): Promise<Record<string, unknown>>;
+  layerContracts(): Promise<Array<Record<string, unknown>>>;
+  /* end B50 hd */
 }
 
 /** What an objects WRITE route may do — reads PLUS admission. No outbox. */
 export interface ObjectWrites extends ObjectReads {
-  admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
+  /* B50 hd: the optional version declaration (stated time values) goes to objects.admit_version's 4-argument form (0120 §HD.4) */
+  admitObject(header: unknown, payload: unknown, digest: string, declaration?: Record<string, unknown>): Promise<{ contentDigest: string }>;
 }
 
 export class ObjectsCapability extends CapabilityCore implements ObjectWrites {
@@ -151,15 +162,44 @@ export class ObjectsCapability extends CapabilityCore implements ObjectWrites {
   readSchemaRegistry(): any {
     return this.from('objects.schema_registry');
   }
-  async admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }> {
-    const rows = await this.call<{ content_digest: string }>(
-      sql`select content_digest from objects.admit_version(
+  async admitObject(header: unknown, payload: unknown, digest: string, declaration?: Record<string, unknown>): Promise<{ contentDigest: string }> {
+    /* B50 hd: a declaration takes the 4-argument admission; without one, the call is exactly as before */
+    const rows = declaration === undefined
+      ? await this.call<{ content_digest: string }>(
+        sql`select content_digest from objects.admit_version(
         ${JSON.stringify(header)}::jsonb, ${JSON.stringify(payload)}::jsonb, ${digest})`,
-    );
+      )
+      : await this.call<{ content_digest: string }>(
+        sql`select content_digest from objects.admit_version(
+        ${JSON.stringify(header)}::jsonb, ${JSON.stringify(payload)}::jsonb, ${digest}, ${JSON.stringify(declaration)}::jsonb)`,
+      );
+    /* end B50 hd */
     const r = rows[0];
     if (r === undefined) throw new Error('admission returned no row');
     return { contentDigest: r.content_digest };
   }
+  /* B50 hd (0120 §HD) */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readVersionOperations(): any {
+    return this.from('objects.version_operations');
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readTimeQualifiers(): any {
+    return this.from('objects.time_qualifiers');
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readHeaderProfiles(): any {
+    return this.from('objects.header_profiles');
+  }
+  async identityDeclaration(objectType: string, objectId: string): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ d: Record<string, unknown> }>(sql`select objects.identity_declaration(${objectType}, ${objectId}::uuid) as d`);
+    return rows[0]?.d ?? {};
+  }
+  async layerContracts(): Promise<Array<Record<string, unknown>>> {
+    const rows = await this.call<{ l: Array<Record<string, unknown>> }>(sql`select objects.layer_contracts() as l`);
+    return rows[0]?.l ?? [];
+  }
+  /* end B50 hd */
 }
 
 // ───────────────────────── identity (principals) ─────────────────────────

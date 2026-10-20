@@ -1,0 +1,172 @@
+THE B50 ACT on eye_demo — 2026-10-19T07:19:37.208Z — API http://localhost:3401
+
+B50-0 THE STATE — 0120, the walker 1.1.0, the NORDWERK cast, the build identity
+  ✓ migration applied: 0120_b50_knowledge_core.sql
+  ✓ the domain's propagation agent is walker 1.1.0 (01a1…8bc8ad, ae33b90d2253…); earlier registrations: 1.0.0 revoked
+  ✓ d.ivanova holds domain_specialist at the DOMAIN
+  ✓ k.mueller holds knowledge_owner at the DOMAIN
+  ✓ r.adler holds record_authority at the DOMAIN
+  ✓ r.okafor holds extraction_agent at the DOMAIN
+  ✓ a.hoffmann holds domain_analyst at the DOMAIN
+  ✓ m.dvorak holds collection_manager at the DOMAIN
+  ✓ n.eriksen holds forecast_owner at the DOMAIN
+  ✓ c.brenner holds risk_owner at the DOMAIN
+  ✓ c.brenner holds decision_owner at the DOMAIN
+  ✓ f.aydin holds data_steward at the DOMAIN
+  ✓ t.richter holds domain_admin at the DOMAIN
+  ✓ chief.of.staff holds executive_operator at the DOMAIN
+  ✓ s.okafor holds decision_approver at the DOMAIN
+  ✓ l.brandt holds decision_owner at the DOMAIN
+  ✓ l.haddad holds design_system_authority at the PLATFORM
+  ✓ s.iversen holds design_system_authority at the PLATFORM
+  ✓ p.castellano holds conformance_steward at the PLATFORM
+  ✓ h.achterberg holds independent_assurance at the PLATFORM
+  ✓ w.zielinska holds customer_sponsor at the TENANT
+  · the API declares its build: head f9b022205962… (from env), policy bundle bundle-v1 e688c7287d20…
+
+B50-1 THE HEADER STATED (F-P3-01) — the "late August" ETA uploaded with its stated time; the new versions' headers (absences declared, controls inherited, the side ledgers); a version recorded before B50 says so; a decision-active use refused naming the fields
+  · the PortWatch chokepoint days with extracted claims (the corridor's lineage): 21 (2023-12-28 … 2024-01-17); corrected already: 2024-01-15, 2024-01-16, 2024-01-17
+  ✓ A. Hoffmann uploads it with a backwards bound (latest before earliest) REFUSED — 400 EYE-REQ-001 — the document time of inbound-records-nordbearing-eta-late-august-2026.csv is not a valid time value: a bounded time's latest is after its earliest
+  ✓ A. Hoffmann (domain analyst) UPLOADED "inbound-records-nordbearing-eta-late-august-2026.csv" (SYNTHETIC, 272 bytes) to nordwerk-inbound-records with its DOCUMENT TIME stated as the publisher wrote it — "late August 2026" = bounded [2026-08-21, 2026-09-01) Europe/Berlin, precision part_of_month, source "publisher text": run finished, 1 admitted → evidence 01a1…b41475@1
+  ✓ THE EVIDENCE HEADER — STATED: event time bounded [2026-08-20T22:00:00Z, 2026-08-31T22:00:00Z) part_of_month, zone Europe/Berlin, source "publisher text", clock unknown, declared true; the other axes observation derived, recorded derived; operation observation.item.admit · idempotency authority_context · trace correlation
+  ✓ THE CONTROLS INHERITED with their basis: rights internal (from source_contract SRC:01a1224e-3ed0-75b2-a486-40108a2717bc@1); access_policy none (from none); residency EU (from source_contract SRC:01a1224e-3ed0-75b2-a486-40108a2717bc@1); retention 24 months (from source_contract SRC:01a1224e-3ed0-75b2-a486-40108a2717bc@1)
+  · the limitations the header states: synthetic content — not a real-world record; the source clock is unknown; its time is stated to part of month precision; ontology ontology:none; the declared absences {"confidence":"not_applicable","uncertainty":"not_applicable","quality_state":"not_assessed"}
+  · the EVD row: time_precision part_of_month, event_time 2026-08-20T22:00:00Z, confidence {"state":"not_applicable","reason":"an observation records what was received; confidence attaches to the claims extracted from it"}, uncertainty {"state":"not_applicable","reason":"an observation states no estimate, so it carries no uncertainty"}, provenance SRC:01a1224e-3ed0-75b2-a486-40108a2717bc@1, ontology ontology:none, quality profile quality:EVD@1
+  ✓ the OBSERVATION 01a1…b19cfb carries the same stated event time (bounded part_of_month Europe/Berlin) — header stated
+  ✓ a PortWatch evidence version recorded before B50 (2023-12-28, 01a0…c9b260@1): "recorded before B50 — not populated" — no operation, no time qualifiers; the identity declaration names CP-OBS-01 (recorded before B50)
+  ✓ N. Eriksen's corridor forecast 01a0…c3c8d7@1 (the B24 decision's): UNCERTAINTY q10 1.1044 · q50 1.1372 · q90 1.1923 (seasonal-naive@1); CONFIDENCE — recorded before B50 on this version (null); the FCT@1 profile states it for every new version: not_applicable — "a quantile forecast states its uncertainty (q10 / q50 / q90), not a confidence"; mandatory for a decision option: accountable_owner, owning_component, classification, purpose_scope, schema_ref, truth_state, recorded_at, uncertainty, method_ref, valid_from, valid_to
+  ✓ A. Hoffmann RECORDED a generic claim 01a1…bdba8a ("SYN-BKG-7104 (B50 act)" eta "late August 2026") through the generic create: its header STATES confidence {"state":"not_assessed","reason":"CP-OBJ-01 does not assess confidence for CLM"}, method none — POL 01a15307-d15e… · audit seq 660320
+  ✓ C. Brenner (decision owner) derives an option on "Mitigate the corridor closure — Regensburg line" v2 citing that claim REFUSED — 409 EYE-STA-002 — object use rejected (incomplete_header): CLM 01a15307-d15e-7c01-ade9-56d2e4bdba8a v1 lacks confidence (declared not_assessed: CP-OBJ-01 does not assess confidence for CLM), method_ref for decision_option (header profile CLM@1)
+
+B50-2 THE GOVERNED LIFECYCLE (F-P3-02) — the Red Sea assessment: authored by D. Ivanova, reviewed by K. Müller, approved by R. Adler, published by its owner (a stale second tab rejected and kept), a proposal declined, retired; replayed at every recorded instant
+  ✓ D. Ivanova (domain specialist, human gate) AUTHORED "Red Sea corridor assessment — Bab el-Mandeb, January 2024 (SYNTHETIC)" 01a1…d534ee: ∅ → DRAFT v1, she is its accountable owner (author) — POL 01a15307-d404… · audit seq 660322
+  ✓ D. Ivanova reviews her own draft REFUSED — 403 EYE-AUT-001 — lifecycle transition rejected (separation_of_duties): review is never done by the author of the work object (0042's rule)
+  ✓ K. Müller (knowledge owner — never the author) REVIEWED it: draft → REVIEWED v2, the findings and 3 evidence reference(s) recorded on the version — POL 01a15307-d421… · audit seq 660324
+  ✓ K. Müller (the reviewer, not the owner) publishes it REFUSED — 403 EYE-AUT-001 — lifecycle transition rejected (authority): publish is the accountable owner's act (principal:01a1224e-1984-769b-b36f-c6295e20dc64); you may propose it
+  · the refused attempt is KEPT in the ledger: outcome rejected, not_owner, the authoritative version stays v2
+  ✓ K. Müller (this cycle's reviewer) approves what she reviewed REFUSED — 403 EYE-AUT-001 — lifecycle transition rejected (separation_of_duties): approve is never done by the reviewer of this version
+  ✓ R. Adler (record authority — neither the author nor the reviewer) APPROVED v2: → APPROVED v3 — POL 01a15307-d441… · audit seq 660327
+  ✓ R. Okafor (the extraction agent role) publishes it REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ R. Okafor PROPOSED "publish" on v3 (human, via view) — never authoritative — POL 01a15307-d458… · audit seq 660329
+  ✓ K. Müller decides the proposal (not the owner) REFUSED — 403 EYE-AUT-001 — lifecycle proposal rejected (authority): only the accountable owner (principal:01a1224e-1984-769b-b36f-c6295e20dc64) decides a proposal on this object
+  ✓ D. Ivanova (the owner) DECLINED the proposal with her reason: declined, no transition (none) — POL 01a15307-d46a… · audit seq 660331
+  ✓ D. Ivanova (the accountable owner, human gate) PUBLISHED it: approved → PUBLISHED v4 — POL 01a15307-d471… · audit seq 660332
+  ✓ D. Ivanova's SECOND TAB publishes over the version it read REFUSED — 409 EYE-STA-002 — lifecycle transition rejected (stale): the command expected version 3; the authoritative version is 4 (published) — re-read the object and decide again
+  · the stale attempt is KEPT: stale_version, the authoritative version v4
+  ✓ the first tab's command REPEATED (the same key) answers the first result: repeated true, v4
+  ✓ D. Ivanova RETIRED it with her reason: published → RETIRED v5 — POL 01a15307-d48a… · audit seq 660335
+  · the ledger (9 attempts, oldest first): create · review✗(separation) · review · publish✗(not_owner) · approve✗(separation) · approve · publish · publish✗(stale_version) · retire; agreement agrees; proposals 1 (declined)
+  ✓ REPLAY at each recorded instant reads draft → reviewed → approved → published → retired (each agreeing with the ledger)
+  ✓ the REJECTED attempts are kept beside the accepted ones: separation, not_owner, separation, stale_version
+  ✓ the lifecycle EXPORT (eye-lifecycle-export/1, 5 versions, digest 4efc093ed4a6…) re-imported and VERIFIED: valid true, replay draft → reviewed → approved → published → retired
+
+B50-3 THE CORRECTION (F-P3-03 + F-P3-05, one case for both — D6) — the closure contract declared; the day chosen by the read-only preview; the restatement received and applied; the walker 1.1.0 walks it; the revision diff, the backward explanation, the forward impact classed
+  ✓ THE DAY CHOSEN by the read-only preview (nothing written): 2023-12-28 (01a0…c9b260@1) — its walk would reach reachedClaims 3, forecasts 5, warnings 2, briefings 17, commitments 10; also decisionPackages 17, publications 3, exportPackages 0, evaluationDatasets 14
+  ✓ M. Dvořák (collection manager) declares the closure contract REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ T. Richter declares a 3-minute window NOT marked synthetic REFUSED — 422 EYE-REQ-001 — correction closure rejected (synthetic): a window under an hour (180 s) is a demonstration contract — declare it synthetic
+  ✓ T. Richter (domain administrator, human gate) DECLARED the closure contract v1 — SYNTHETIC: every consumer class within 180 s, a bounded exception at most 30 days (digest e1d1753d37d7…) — POL 01a15307-da38… · audit seq 660349
+  ✓ A. Hoffmann (domain analyst) RECEIVED the publisher's restatement of 2023-12-28: case 01a1…235fbd received — POL 01a15307-da42… · audit seq 660350
+  ✓ M. Dvořák (collection manager — the correction authority) APPLIED it: 01a0…c9b260 v1 → v2 — nobody calls /impact/propagate — POL 01a15307-da55… · audit seq 660353
+  ✓ THE AUTOMATIC WALK: attempt complete by the propagation agent 01a1…8bc8ad (walker 1.1.0), 1 root(s) walked (read 2 s after)
+  ✓ the case reads propagation complete
+  ✓ THE REVISION DIFF of EVD 01a0…c9b260 v1 → v2: header accountable_owner, audit_correlation_id, confidence, content_digest, correction_of, evidence_refs, freshness_state, human_refs, lifecycle_state, method_ref, ontology_ref, quality_profile, quality_state, recorded_at, supersedes, uncertainty; payload 0 change(s) (the restatement re-records the same bytes under the correction — said, not invented); the chain v2 corrected; impact recorded since v1: 1 invalidation(s)
+  ✓ the explanation of the CORRECTED evidence v1: ok 19, denied 1, corrected 3 — a later version 2 is corrected · impact recorded: evidence_correction (assessed); forward: 1 invalidation(s), 0 option(s)
+  ✓ THE FORWARD IMPACT CLASSED (affected-class@1): 127 product(s) — stale 34, human_review 46, recompute 39, withdrawn 7, challenged 1; by bucket: claims 4, forecasts 5, warnings 2, briefings 17, commitments 10, decision packages 17, publications 3, export packages 0, evaluation datasets 14
+  ✓ the corridor forecast 01a0…c3c8d7 is classed recompute (its path EVD → CLM → ENT → ASU → FCT); a package is human_review, a briefing stale, a claim stale
+  ✓ A. Hoffmann (domain analyst) marks the forecast's fitness REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ THE BACKWARD EXPLANATION of FCT 01a0…c3c8d7 v1 (b50-pv-explain-1): 139 node(s) — ok 136, denied 2, failed 1; complete (0 gap(s)); e.g. [DENIED] denied: graph.provenance.fitness.mark — no qualifying role binding for action in resolved  · [FAILED] fitness unfit (data_shift) under 1 · [DENIED] denied: observation.source.approve — no qualifying role binding for action in resolved sco; the tool boundary carried (B70 — the tool gateway (F-P7A-05))
+
+B50-4 THE CONTEST PATH, UNFIT MARKING AND THE TRIGGERS (F-P3-03) — N. Eriksen challenges a claim of the corrected day; K. Müller reviews and upholds; the claim marked UNFIT and refused at a package option (a version recorded before B50, refused with its reason); F. Aydın's data-quality finding walked
+  · the claim 01a0…a20b8e@1 of the corrected day 2023-12-28 (owner the extraction agent — no human owner; recorded before B50)
+  ✓ N. Eriksen (forecast owner — neither the claim's owner nor a reviewer) OPENED a knowledge challenge 01a1…00e9f1 on CLM v1: open, review by 2026-10-26T07:19:53Z — POL 01a15307-f7bb… · audit seq 660397
+  ✓ N. Eriksen (the opener) reviews his own challenge REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ K. Müller (knowledge owner) STARTED the review: under_review, reviewer K. Müller — POL 01a15307-f7cb… · audit seq 660399
+  ✓ N. Eriksen SUBMITTED the corrected evidence EVD v2 (digest 7f52cf4268e6…) as a party to the challenge
+  ✓ K. Müller DECIDED it UPHELD — the product's fitness evaluation now reads unsupported_claim; a knowledge owner records the mark (graph.provenance.fitness.mark), which routes it to a recompute or an adjudication — POL 01a15307-f7de… · audit seq 660401
+  · the fitness evaluation of the claim: unfit (unsupported_claim)
+  ✓ K. Müller RECORDED the evaluation's verdict: UNFIT (unsupported_claim), routed to adjudication (—); refuses use true — POL 01a15307-f7fa… · audit seq 660403
+  ✓ C. Brenner derives an option citing the UNFIT claim (CLM v1, recorded before B50) REFUSED — 409 EYE-STA-002 — object use rejected (unfit): CLM 01a084f5-9f71-75e3-9144-6a6ff1a20b8e v1 is marked unfit (unsupported_claim) by mark 77d2dc52-86a7-4b4e-875c-16a70a705d86 at 2026-10-19T07:19:53Z; it is not used for decision_option; the mark routed it to adjudication
+  · an overdue challenge escalates to the subject's owner as a knowledge_challenge_overdue attention item (D21) — its review is due in days, not minutes: harness-proven (phase6-provenance-b50), not staged
+  · an UNFIT evidence version refuses an export build (the retention execute path) — the harness plants the broken custody it needs; not staged here
+  ✓ F. Aydın (data steward, human gate) RECORDED a data-quality finding on 2023-12-29: trigger 01a1…3635b1 — walked by the domain's propagation agent at once: walked, assessment 01a1…0bb13f (walker 1.1.0) — POL 01a15307-f824… · audit seq 660406
+  · the finding's walk classed 127 product(s): stale 34, human_review 46, recompute 39, withdrawn 7, challenged 1 — no correction case (a finding is not a correction)
+  · the legal-request, model-incident and ontology-correction triggers are harness-only (phase6-impact-b50) — no fourth demonstration case
+
+B50-5 THE CLOSURE (F-P3-05) — the consumers past the window on the DATABASE clock; the stall swept, its products FROZEN, the owners told; a publication refused at approval while the warning stays visible; acknowledgements, a bounded exception, PR-24-003; the case closed with its record; the freeze lifted; MET-010 to closure
+  · the closure is tracked (opened applied at 2026-10-19T07:19:46Z; state open); contract v1; 135 consumer(s), 135 material (human_review 46, stale 34, challenged 1, recompute 39, withdrawn 7, null 8)
+  ✓ the chief of staff (executive operator) DRAFTED "B50 — the corridor briefing for the supervisory board (SYNTHETIC)" 01a1…e1de0e (classified restricted, as its source) from the briefing 01a0…7f7c99 that rests on the corridor warning (path EVD → CLM → BRF) — POL 01a15307-fe07… · audit seq 660430
+  · the first deadline is 2026-10-19T07:22:47Z; the database clock reads 2026-10-19T07:19:55Z — waiting on it (nothing moved)
+  ✓ PAST THE WINDOW on the database clock (177 s waited): 127 consumer(s) overdue
+  ✓ M. Dvořák (the correction authority) SWEPT the open corrections: case 01a1…235fbd STALLED (stalled) — 120 product(s) frozen now, 0 failed deliveries recorded, 127 attention item(s) (0 repeated) — the attention agent's tick sweeps the same way
+  ✓ THE STALL: the case is STALLED (stalled at 2026-10-19T07:22:52Z); 127 LIVE freeze(s) (withdrawn_active, stall); 127 attention item(s) to 01a0…3fd0f3, —, L. Brandt, C. Brenner, N. Eriksen, 01a0…85ba1d, K. Müller, the chief of staff
+  · the stall items (correction_propagation_stall): 127 — C. Brenner told, N. Eriksen told; e.g. "Correction 01a15307: control run on twin version 23 is not closed (past its acknowledgement window)"
+  ✓ M. Dvořák (executive) approves the draft publication v1 REFUSED — 409 EYE-STA-002 — publication rejected (held): its source briefing 01a0ad2e-8bba-7606-bee0-19ecba7f7c99 v1 is frozen by correction case 01a15307-da43-7fef-a63d-afa50b235fbd; it is approved once the case closes or the freeze is lifted
+  ✓ the corridor WARNING 01a0…248b3f stays VISIBLE (read by N. Eriksen: acknowledged) — its consumer row on the case carries the FROZEN marker (true) and the case link; never hidden, never suppressed
+  ✓ M. Dvořák (who APPLIED the case) acknowledges DEC:01a0e792-2771-739b-b85a-20cd6449ca29@1 — a human review owned by C. Brenner REFUSED — 403 EYE-AUT-001 — correction closure rejected (separation_of_duties): DEC:01a0e792-2771-739b-b85a-20cd6449ca29@1 is a human review — its owner decides whether the prior decision needs review; the correction authority who applied case 01a15307-da43-7fef-a63d-afa50b235fbd never acknowledges it
+  ✓ THE CONSUMERS CLOSED by their own owners: 123 acknowledged (18 by K. Müller — no active human owner), 4 under a BOUNDED EXCEPTION (N. Eriksen's 4 forecast(s), expiring 2026-11-02T07:22:52Z), 0 refused; C. Brenner acknowledged 8 human review(s) herself
+  · "recomputed" (a recompute naming its later re-run record) is not staged: a corridor forecast re-issue reads the full PortWatch series (minutes); harness-proven (phase6-closure-b50 "the recompute names a real later record")
+  ✓ THE READINESS before the close: READY (projections reconciled)
+  ✓ M. Dvořák CLOSED the case: closure 68eb…398a56 — 135 consumer(s), 0 failed deliveries, 4 residual exposure(s), 127 act(s); 127 freeze(s) lifted, 127 item(s) closed; audit digest b078bc534032… — POL 01a1530a-b843… · audit seq 661173
+  ✓ THE CLOSURE RECORD (eye.correction-closure/1): closed 2026-10-19T07:22:53Z by M. Dvořák; 135 consumer(s) listed; failed deliveries 0; residual exposure FCT:01a084f5… recompute, FCT:01a084f5… recompute, FCT:01a0d96b… recompute, FCT:01a0f00b… recompute; 127 acknowledgement(s); projections reconciled; the freezes: 127 recorded, 0 live
+  · THE CORRECTION IMPACT NOTICE (HX-18, eye.correction-impact-notice/1) on the case page: the original named, the correction named, 127 affected product(s), 30 decision(s), the required review stated, the closure recorded
+  ✓ the freeze lifted: M. Dvořák APPROVED the publication v1 by its digest — SIGNED (PUB@1 admitted); it is not delivered here
+  ✓ J. Satō (product analyst) COMPUTED MET-010 for 2026-Q4: indeterminate — value null seconds over n 1 (computation v2) — POL 01a1530a-b8e8… · audit seq 661177
+  ✓ MET-010 v2 counts THIS case to its consumer closure: included, 187.877 s (accepted 2026-10-19T07:19:46Z → closed 2026-10-19T07:22:53Z; material consumer closure (the closure record)); 0 case(s) excluded (censored: open)
+  ✓ D9 — the older open case LISTED, NOT adopted: 01a0…221922 (supersession, received 2026-09-10T22:42:27Z, 38.4 days since its apply, propagation pending, 0 material product(s)); adopting it is the owner's decision
+  ✓ T. Richter RETIRED the demonstration window: the closure contract v2 — ordinary windows (stale 3 d, withdrawn 1 d, recompute 7 d, human review 5 d), not synthetic — POL 01a1530a-b914… · audit seq 661180
+
+B50-6 THE TIMELINE, AS-OF AND TRACE (F-P3-04) — S. Okafor on the governed scope "The Red Sea corridor (Bab el-Mandeb)" as known on 2026-09-25 (the B24 decision's day): what was known then, what was corrected later, every disclosure; the trace of the decision; the upload's unknown clock stated as a limitation
+  · the scope red-sea-corridor v1 (0 entities, 1 objectives); the B24 sourcing decision was committed 2026-09-25T16:34:47Z
+  ✓ THE SCOPE AS KNOWN ON 2026-09-25 (b50-tl-timeline-1, clearance confidential): 3 version(s) (OBJ 1, ASU 1, DEC 1), 0 ledger event(s); the scope places objects by its 0 entit(ies) and 1 objective(s) — UNMATCHED and said: series portwatch:chokepoint4:n_total, geographies BAB-EL-MANDEB
+  ✓ THE DISCLOSURES: missing intervals 0 (); WITHHELD by his clearance 0 ({"audience":0,"classification":0}); clock flags 0 (unknown 0, conflict 0, degraded 0, observation_after_record 0); broken lineage 0; untimed 0; bounds {"limit":500,"listed":3,"matched":3,"truncated":false}; incomplete false
+  · the live read beside it: 17 version(s), 2 corrected later — the as-of read never folds in what came after
+  ✓ the evidence of 2024-01-15 as known on 2026-09-25: v1 superseded by then, v2 believed then — its restatement (v2, recorded 2026-09-09T06:58:08Z) was ALREADY KNOWN on 2026-09-25 (known at the as-of: true)
+  ✓ the evidence of 2023-12-28 as known on 2026-09-25: 1 version(s) shown, v1 marked "CORRECTED LATER (2026-10-19T07:19:46Z)" — today's restatement, never folded into the past
+  ✓ THE TRACE of the B24 decision (DPK 01a0…0cc6b5 v1, b50-tl-timeline-1): source 62 → evidence 60 → claim 0 → product 5 → decision 2; INCOMPLETE — missing_interval 3, continuity_degraded 2; unresolved edges 0; limitations clock_unknown 51; decision snapshots 0
+  ✓ THE UPLOAD'S UNKNOWN CLOCK is a STATED LIMITATION of its trace (D20), never a reason it is incomplete: limitations clock_unknown 2; reasons none; complete
+
+B50-7 THE LIBRARY AND THE ACCEPTANCE DEMONSTRATION RECORDS — knowledge.tsx's components in the inventory, approved with ONE owner; a B50 baseline; a design acceptance per chapter (ch6, ch22, ch24) — claim demonstration
+  ✓ P. Castellano (conformance steward) re-read the inventory from the repository: 14 new asset(s) registered (14 of knowledge.tsx: acknowledgement-list, affected-class-badge, affected-product-list, closure-record-view, declared-absence-text, explain-path, fitness-note, freeze-marker, lifecycle-history, time-value-text, timeline-disclosure-note, timeline-scrubber, trace-view, transition-outcome-note), 102 unchanged; DRIFT STATED: pattern.governed-action, pattern.truth-state, tokens.semantic, web.actions.button, web.forms.field, web.layers.dialog, web.layers.drawer, web.layers.panel, web.layers.popover, web.layers.surface, web.layout.density-switch, web.observation.governed-button, web.shell.app-shell, web.shell.command-palette, web.shell.history-navigator, web.ui.lifecycle-badge, web.ui.truth-badge
+  ✓ L. Haddad (Design System Authority, human gate) APPROVED 14 knowledge component(s): 14 components of knowledge.tsx, each with ONE accountable owner — S. Iversen
+  ✓ P. Castellano PROPOSED the B50 design baseline 01a1…fb90d3 v1: 14 members (knowledge.tsx), design system @eye/tokens@0.1.0
+  ✓ L. Haddad ATTESTED and SIGNED the B50 design baseline v1 (attested)
+  ✓ the design acceptance DEMONSTRATION records per B50 chapter (ch6 F-P3-02, ch22 F-P3-04, ch24 F-P3-05), each attested by L. Haddad (design), H. Achterberg (assurance) and W. Zielińska (customer): ch6 ACCEPTED, ch22 ACCEPTED, ch24 ACCEPTED — 3 records, claim demonstration; the signed scope-specific records are B111 → R2
+
+B50-8 THE STATE, the env lines for the walks, THE LIMITS
+  · as recorded: stated_versions 15, time_qualifiers 41, lifecycle_attempts 9, challenges 1, fitness_marks 1, impact_triggers 1, closures 1, live_freezes 0, closure_contract_versions 2
+  ✓ no design acceptance claims more than a DEMONSTRATION (0 beyond it)
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B50_UPLOAD_EVD=01a15307-c7fb-7db7-8506-19efb7b41475
+  EYE_B50_UPLOAD_OBS=01a15307-c7fb-7db7-8506-19ee0eb19cfb
+  EYE_B50_PRE_B50_EVD=01a084f5-82da-7aa1-92be-0c2e34c9b260
+  EYE_B50_FORECAST=01a0d96b-4d5c-712f-9dff-b3a7a0c3c8d7
+  EYE_B50_FORECAST_VERSION=1
+  EYE_B50_GENERIC_CLAIM=01a15307-d15e-7c01-ade9-56d2e4bdba8a
+  EYE_B50_ASSESSMENT=01a15307-d404-701e-b36a-4d26d9d534ee
+  EYE_B50_ASSESSMENT_PUBLISHED_AT=2026-10-19T07:19:44.498Z
+  EYE_B50_CASE=01a15307-da43-7fef-a63d-afa50b235fbd
+  EYE_B50_CORRECTED_EVD=01a084f5-82da-7aa1-92be-0c2e34c9b260
+  EYE_B50_CORRECTED_EVD_VERSION=2
+  EYE_B50_WALKED_FORECAST=01a0d96b-4d5c-712f-9dff-b3a7a0c3c8d7
+  EYE_B50_WALKED_FORECAST_VERSION=1
+  EYE_B50_CLAIM=01a084f5-9f71-75e3-9144-6a6ff1a20b8e
+  EYE_B50_CLAIM_VERSION=1
+  EYE_B50_TRIGGER=01a15307-f824-74e7-91ac-d7d8063635b1
+  EYE_B50_CASE_STATE=closed
+  EYE_B50_PUBLICATION=01a15307-fe09-71fc-8fe6-abdb94e1de0e
+  EYE_B50_WARNING=01a084f5-d010-7ee1-a50d-5329e7248b3f
+  EYE_B50_SCOPE=red-sea-corridor
+  EYE_B50_AS_OF=2026-09-25T23:59:59Z
+  EYE_B50_TIMELINE_SUBJECT=01a084f5-82da-7aa1-92be-0c2e34c9b260
+  EYE_B50_DECISION_PACKAGE=01a0d96b-5251-7101-b91a-5629120cc6b5
+  EYE_B50_DECISION_PACKAGE_VERSION=1
+  EYE_B50_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B50_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B50_ANALYST=a.hoffmann
+  EYE_B50_AUTHOR=d.ivanova
+  EYE_B50_KNOWLEDGE_OWNER=k.mueller
+  EYE_B50_CORRECTION_AUTHORITY=m.dvorak
+  EYE_B50_EXECUTIVE=s.okafor
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — 0120 and its harnesses (phase6-{prelude,header,lifecycle,impact,provenance,closure,timeline,schema-conformance}-b50), the web unit models, the walks. (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: the booking's "late August" ETA uploaded with its stated time, the stated headers (absences, inherited controls, side ledgers) beside a version recorded before B50, a decision-active use refused naming the fields; the Red Sea assessment authored, reviewed, approved, published, retired — the reviewer's publish, the extraction role's publish and the stale second tab refused and KEPT, a proposal declined by the owner, the replay at every instant, the export verified; one PortWatch restatement (D6) received and applied, walked by walker 1.1.0, its diff, its explanation (a denied and a corrected node), its classed impact; a challenge opened, reviewed and upheld by another person, the claim marked UNFIT and refused at a package option; a data-quality finding walked; the closure under a SYNTHETIC short contract (D8) — the stall on the database clock, its freezes, the publication refused at approval while the warning stayed visible, PR-24-003, the owners' acknowledgements, the bounded exceptions, the close and its record, the freeze lifted, MET-010 v2, the demonstration window retired; the 2026-09-10 supersession case LISTED and NOT adopted (D9); the scope as known on 2026-09-25 with every disclosure, the decision's trace, the upload's unknown clock stated as a limitation (D20); knowledge.tsx's components owned and a design acceptance per chapter (ch6, ch22, ch24) — every acceptance `claim = demonstration`. (3) REAL ACCEPTANCE — the signed scope-specific records PR-06/22/24-006 and AT-06/22/24 — NEVER claimed: the non-demonstration recording path is B111, then R2. NOT STAGED (harness-proven): an AGENT principal refused at the lifecycle's human gate (R. Okafor is a human-kind login holding the extraction role here — refused by the PDP); a recompute naming its re-run record; an unfit evidence refusing an export; an overdue challenge escalated (D21); the legal-request, model-incident and ontology-correction triggers; a delivery failure as an immediate stall.
+
+ALL SCENES HELD · 3.7 min

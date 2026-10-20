@@ -12,6 +12,7 @@
  * rather than as silently different data.
  */
 import type { EgressPolicy } from './http-client.js';
+import type { TimeValue } from '@eye/contracts'; // B50 hd
 
 export type ConnectorKind = 'upload' | 'rss' | 'rest';
 
@@ -136,6 +137,10 @@ export interface AcquiredItem {
   filename: string;
   /** The publisher's own time for the item, when it publishes one. Never invented. */
   publisherTime: string | null;
+  /* B50 hd (ES-26-004): the publisher's time STATED as a time value (bounded, approximate, unknown …) when the operator gives one; then
+     publisherTime is its header instant (the lower bound / centre / instant — headerInstantOf) and the value is recorded whole. */
+  publisherTimeValue?: TimeValue | null;
+  /* end B50 hd */
   transport: TransportEvidence;
   /** For per-item framing of a parent payload (§10.1). */
   parentItemKey?: string | null;

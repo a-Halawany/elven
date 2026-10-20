@@ -48,6 +48,7 @@ import {
   COMBINATION_RULES, DISAGREEMENT_RULE, ENSEMBLE_RULES, combine, combinePaths, divergence, fmt, legacyMethodOf, precisionBreaches, splittingAssumptions, weightsFor,
   type CombinationRule, type Divergence, type Quantiles, type Weighting,
 } from './ensemble-math.js';
+import { buildHeader } from '../../objects/header-builder.js';
 
 type Row = Record<string, unknown>;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -581,22 +582,22 @@ export class EnsemblesService {
       ...(grounding === null ? {} : { information_set: grounding }),
       ...f.payloadExtra,
     };
-    const header: CanonicalHeader = {
-      object_id: f.forecastId, object_type: 'FCT', tenant_id: scope.tenantId, domain_id: scope.domainId, scope: 'DOMAIN',
-      object_version: '1', lifecycle_state: 'active', owning_component: 'CP-PRD-01', accountable_owner: `principal:${actor}`,
-      source_object_ids: assembled.evidence.slice(0, 64).map((e) => `EVD:${e.evidence_object_id}@${e.evidence_version}`),
-      event_time: `${f.targetAt}T00:00:00.000Z`, observation_time: now, valid_from: `${f.originAt}T00:00:00.000Z`, valid_to: `${f.targetAt}T00:00:00.000Z`,
-      recorded_at: now, time_precision: 'exact', source_clock_quality: 'trusted', truth_state: 'inferred', synthetic_state: controls.synthetic_state,
+    const header: CanonicalHeader = buildHeader({
+      objectId: f.forecastId, objectType: 'FCT', tenantId: scope.tenantId, domainId: scope.domainId, scope: 'DOMAIN',
+      objectVersion: '1', lifecycleState: 'active', owningComponent: 'CP-PRD-01', accountableOwner: `principal:${actor}`,
+      sourceObjectIds: assembled.evidence.slice(0, 64).map((e) => `EVD:${e.evidence_object_id}@${e.evidence_version}`),
+      eventTime: `${f.targetAt}T00:00:00.000Z`, observationTime: now, validFrom: `${f.originAt}T00:00:00.000Z`, validTo: `${f.targetAt}T00:00:00.000Z`,
+      recordedAt: now, timePrecision: 'exact', sourceClockQuality: 'trusted', truthState: 'inferred', syntheticState: controls.synthetic_state,
       confidence: null, uncertainty: { ...f.quantiles },
-      evidence_refs: assembled.evidence.slice(0, 64).map((e) => `EVD:${e.evidence_object_id}@${e.evidence_version}`),
-      provenance_ref: `series:${run.seriesKey}`, method_ref: `${f.method}@${f.methodVersion}`,
-      contradiction_refs: [], corroboration_refs: [], human_refs: [], classification: controls.classification,
-      purpose_scope: 'prediction', rights_profile: controls.rights_profile ?? assembled.attribution,
-      residency_profile: controls.residency_profile, retention_profile: controls.retention_profile, access_policy_ref: controls.access_policy_ref,
-      quality_profile: null, quality_state: { validation: f.validation.state },
-      freshness_state: { freshest_evidence_recorded_at: assembled.freshestRecordedAt, origin_at: f.originAt },
-      schema_ref: 'FCT@v2', ontology_ref: null, correction_of: null, supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
-    };
+      evidenceRefs: assembled.evidence.slice(0, 64).map((e) => `EVD:${e.evidence_object_id}@${e.evidence_version}`),
+      provenanceRef: `series:${run.seriesKey}`, methodRef: `${f.method}@${f.methodVersion}`,
+      contradictionRefs: [], corroborationRefs: [], humanRefs: [], classification: controls.classification,
+      purposeScope: 'prediction', rightsProfile: controls.rights_profile ?? assembled.attribution,
+      residencyProfile: controls.residency_profile, retentionProfile: controls.retention_profile, accessPolicyRef: controls.access_policy_ref,
+      qualityProfile: null, qualityState: { validation: f.validation.state },
+      freshnessState: { freshest_evidence_recorded_at: assembled.freshestRecordedAt, origin_at: f.originAt },
+      schemaRef: 'FCT@v2', ontologyRef: null, correctionOf: null, supersedes: null, withdrawalReason: null, auditCorrelationId: correlationId, contentRef: null,
+    });
     const v = validateHeader(header);
     if (!v.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `forecast header invalid: ${(v.errors ?? []).join('; ')}`), 422);
     await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));

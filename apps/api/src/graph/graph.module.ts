@@ -38,6 +38,10 @@ import { MemoryService } from './memory/memory.service.js';
 import { ProjectionsService } from './projections/projections.service.js';
 import { ProjectionsController } from './projections/projections.controller.js';
 import { ObservationExceptionFilter } from '../observation/observation.filter.js';
+/* B50 pv */ import { ProvenanceController } from './provenance/provenance.controller.js'; import { ProvenanceService } from './provenance/provenance.service.js'; /* end B50 pv */
+/* B50 ci */ import { ImpactTriggersService } from './impact/impact-triggers.service.js'; import { ImpactB50Controller } from './impact/impact-b50.controller.js'; /* end B50 ci */
+/* B50 cl */ import { ClosureB50Controller } from './closure/closure.controller.js'; import { ClosureService } from './closure/closure.service.js'; /* end B50 cl */
+/* B50 tl */ import { TimelineController } from './timeline/timeline.controller.js'; /* end B50 tl */
 
 /*
  * CP-6 B1 (0060): the propagation consumer lives here — it is the graph's walk, run by the
@@ -48,7 +52,7 @@ import { ObservationExceptionFilter } from '../observation/observation.filter.js
 @Module({
   imports: [PipelineModule, IdentityModule, ObservationModule, IntelligenceModule],
   // CP-6 B20 (0080): the projection partitions' two governed acts (withdraw, rebuild) on the same base path as the graph routes.
-  controllers: [GraphController, ProjectionsController],
+  controllers: [GraphController, ProjectionsController, /* B50 pv: provenance, explain, unfit, contest (0120_b50_x_pv) */ ProvenanceController /* end B50 pv */, /* B50 ci: the impact triggers and the classed products (0120 §CI) */ ImpactB50Controller /* end B50 ci */, /* B50 cl: correction-propagation closure (0120 §CL) */ ClosureB50Controller /* end B50 cl */, /* B50 tl: the timeline, the as-of explorer, the trace (0120 §TL) */ TimelineController /* end B50 tl */],
   providers: [
     GraphOrchestrator,
     ResolverService,
@@ -74,12 +78,15 @@ import { ObservationExceptionFilter } from '../observation/observation.filter.js
     RelationshipsConsumer,
     MemoryService,
     ProjectionsService,
+    /* B50 pv */ ProvenanceService, /* end B50 pv */
+    /* B50 ci */ ImpactTriggersService, /* end B50 ci */
+    /* B50 cl: the closure sweep's attention-tick step */ ClosureService, /* end B50 cl */
     // The same filter the observation and intelligence routes use. A deliberate
     // refusal from a graph port is a rule, not a crash, and answers as one.
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },
   ],
   exports: [GraphOrchestrator, ImpactService, EntitiesService, ResolutionService,
             EdgesService, StrategyService, SearchService, PropagationAgentsService, PropagationConsumerService,
-            SubscriptionDispatcherService, SubscriptionsService],
+            SubscriptionDispatcherService, SubscriptionsService, /* B50 ci */ ImpactTriggersService /* end B50 ci */],
 })
 export class GraphModule {}

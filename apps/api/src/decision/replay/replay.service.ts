@@ -29,6 +29,7 @@ import { assertClearance, assertPurpose, denyRead } from '../clearance.js';
 import { unfoldProfiles } from '../packages/package.service.js';
 import { versionControls } from '../approvals/approval.service.js';
 import type { ReplayWrites } from '../decision.capabilities.js';
+import { buildHeader } from '../../objects/header-builder.js';
 
 @Injectable()
 export class ReplayService {
@@ -70,18 +71,18 @@ export class ReplayService {
     ]));
     // the reader's clearance covers the COMPLETE replay (residual review R4e) — refused before anything is admitted
     assertClearance(reader, target, controls.classification, 'replay', correlationId);
-    const header: CanonicalHeader = {
-      object_id: replayId, object_type: 'RPL', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
-      object_version: '1', lifecycle_state: 'active', owning_component: 'CP-DEC-01', accountable_owner: `principal:${reader.principalId}`,
-      source_object_ids: [`DPK:${packageId}@${version}`, `CMT:${String(commitment['commitment_id'])}@1`],
-      event_time: null, observation_time: null, valid_from: null, valid_to: null, recorded_at: replayedAt, time_precision: 'exact', source_clock_quality: 'trusted',
-      truth_state: 'asserted', synthetic_state: controls.synthetic_state, confidence: null, uncertainty: null,
-      evidence_refs: [], provenance_ref: `principal:${reader.principalId}`, method_ref: 'decision-replay@1.0.0', contradiction_refs: [], corroboration_refs: [],
-      human_refs: [`principal:${reader.principalId}`], classification: controls.classification, purpose_scope: purpose,
-      rights_profile: controls.rights_profile, residency_profile: controls.residency_profile, retention_profile: controls.retention_profile, access_policy_ref: controls.access_policy_ref,
-      quality_profile: null, quality_state: { content_digest: contentDigest, unavailable: unavailable.length, excluded: (content['excluded'] as unknown[]).length, controls_inputs: controls.inputs }, freshness_state: null,
-      schema_ref: 'RPL@v1', ontology_ref: null, correction_of: null, supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
-    };
+    const header: CanonicalHeader = buildHeader({
+      objectId: replayId, objectType: 'RPL', tenantId: ctx.tenantId, domainId: ctx.domainId, scope: 'DOMAIN',
+      objectVersion: '1', lifecycleState: 'active', owningComponent: 'CP-DEC-01', accountableOwner: `principal:${reader.principalId}`,
+      sourceObjectIds: [`DPK:${packageId}@${version}`, `CMT:${String(commitment['commitment_id'])}@1`],
+      eventTime: null, observationTime: null, validFrom: null, validTo: null, recordedAt: replayedAt, timePrecision: 'exact', sourceClockQuality: 'trusted',
+      truthState: 'asserted', syntheticState: controls.synthetic_state, confidence: null, uncertainty: null,
+      evidenceRefs: [], provenanceRef: `principal:${reader.principalId}`, methodRef: 'decision-replay@1.0.0', contradictionRefs: [], corroborationRefs: [],
+      humanRefs: [`principal:${reader.principalId}`], classification: controls.classification, purposeScope: purpose,
+      rightsProfile: controls.rights_profile, residencyProfile: controls.residency_profile, retentionProfile: controls.retention_profile, accessPolicyRef: controls.access_policy_ref,
+      qualityProfile: null, qualityState: { content_digest: contentDigest, unavailable: unavailable.length, excluded: (content['excluded'] as unknown[]).length, controls_inputs: controls.inputs }, freshnessState: null,
+      schemaRef: 'RPL@v1', ontologyRef: null, correctionOf: null, supersedes: null, withdrawalReason: null, auditCorrelationId: correlationId, contentRef: null,
+    });
     const check = validateHeader(header);
     if (!check.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `replay header invalid: ${(check.errors ?? []).join('; ')}`), 422);
     const headerDigest = canonicalHeaderDigest(header, payload);

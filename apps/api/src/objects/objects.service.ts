@@ -21,11 +21,16 @@ import {
   isTruthState,
   validateHeader,
   type CanonicalHeader,
+  type TimeAxis,
+  type TimeValue,
   type TruthState,
 } from '@eye/contracts';
 import type { ObjectReads, ObjectWrites } from '../shared/capabilities.js';
 import { newId } from '../shared/ids.js';
 import type { ScopeContext } from '../shared/scope.js';
+/* B50 hd */
+import { buildHeader, HeaderBuildError, rebuildHeaderFromRow as rebuildFromRow, timeDeclaration } from './header-builder.js';
+/* end B50 hd */
 
 export interface CreateObjectInput {
   objectType: string;
@@ -45,6 +50,10 @@ export interface CreateObjectInput {
   purposeScope: string;
   schemaVersion?: string;
   payload: Record<string, unknown>;
+  /* B50 hd: a stated time per axis (ES-26-004) — its header instant and precision are placed, and the full value is recorded in
+     objects.time_qualifiers by the admission (0120 §HD.4). */
+  time?: Partial<Record<TimeAxis, TimeValue>>;
+  /* end B50 hd */
 }
 
 export interface ObjectRow {
@@ -174,6 +183,47 @@ export class ObjectsService {
       .execute()) as ObjectRow[]).map(servedRow);
   }
 
+  /* B50 hd (0120 §HD) — THE HEADER'S SIDE: per version, the operation and header basis (objects.version_operations) and the time
+     qualifiers (objects.time_qualifiers); a version without them was recorded before B50 and reads so; and the object's identity declaration. */
+  async headerOf(cap: ObjectReads, objectId: string, correlationId: string): Promise<Record<string, unknown>> {
+    const versions = (await cap.readCanonicalObjects().select(['object_id', 'object_type', 'object_version', 'recorded_at', 'lifecycle_state'])
+      .where('object_id' as never, '=', objectId as never).orderBy('object_version' as never).execute()) as Array<Record<string, unknown>>;
+    if (versions.length === 0) throw bad('EYE_STA_001', correlationId, 'no authorized object version matches', 404);
+    const ops = (await cap.readVersionOperations().selectAll().where('object_id' as never, '=', objectId as never).execute()) as Array<Record<string, unknown>>;
+    const tqs = (await cap.readTimeQualifiers().selectAll().where('object_id' as never, '=', objectId as never).orderBy('axis' as never).execute()) as Array<Record<string, unknown>>;
+    const type = String(versions[0]?.['object_type']);
+    return {
+      objectId, objectType: type,
+      identity: await cap.identityDeclaration(type, objectId),
+      versions: versions.map((v) => {
+        const n = Number(v['object_version']);
+        const op = ops.find((o) => Number(o['object_version']) === n) ?? null;
+        return {
+          version: n, recordedAt: v['recorded_at'], lifecycleState: v['lifecycle_state'],
+          header: op === null ? 'recorded before B50 — not populated' : 'stated',
+          operation: op === null ? null : {
+            operationId: op['operation_id'], boundAction: op['bound_action'], idempotencyKey: op['idempotency_key'], idempotencyBasis: op['idempotency_basis'],
+            traceId: op['trace_id'], traceSource: op['trace_source'], basis: op['header_basis'],
+          },
+          time: tqs.filter((t) => Number(t['object_version']) === n).map((t) => ({
+            axis: t['axis'], kind: t['kind'], instant: t['instant'], earliest: t['earliest'], latest: t['latest'], precision: t['time_precision'],
+            zone: t['zone'], source: t['source'], rule: t['rule'], conflicts: t['conflicts'], clockQuality: t['clock_quality'], declared: t['declared'],
+          })),
+        };
+      }),
+    };
+  }
+
+  async headerProfiles(cap: ObjectReads): Promise<Array<Record<string, unknown>>> {
+    return (await cap.readHeaderProfiles().selectAll().where('state' as never, '=', 'active' as never)
+      .orderBy('object_type' as never).orderBy('profile_version' as never, 'desc').execute()) as Array<Record<string, unknown>>;
+  }
+
+  async layerContracts(cap: ObjectReads): Promise<Array<Record<string, unknown>>> {
+    return cap.layerContracts();
+  }
+  /* end B50 hd */
+
   // ===== internals =====
 
   private async insertVersion(
@@ -237,51 +287,34 @@ export class ObjectsService {
 
     // The COMPLETE 43-field header (R5) — validated as a whole on every
     // production write, then digest-bound in its entirety.
-    const header: CanonicalHeader = {
-      object_id: v.objectId,
-      object_type: input.objectType,
-      tenant_id: ctx.tenantId,
-      domain_id: ctx.domainId,
-      scope: ctx.scope,
-      object_version: String(v.version),
-      lifecycle_state: v.lifecycle,
-      owning_component: 'CP-OBJ-01',
-      accountable_owner: actor,
-      source_object_ids: prov.source_object_ids,
-      event_time: iso(input.eventTime),
-      observation_time: iso(input.observationTime),
-      valid_from: iso(input.validFrom),
-      valid_to: iso(input.validTo),
-      recorded_at: recordedAt.toISOString(),
-      time_precision: input.timePrecision ?? 'exact',
-      source_clock_quality: input.sourceClockQuality ?? 'trusted',
-      truth_state: truthState,
-      synthetic_state: syntheticState,
-      confidence: null,
-      uncertainty: null,
-      evidence_refs: prov.evidence_refs,
-      provenance_ref: null,
-      method_ref: prov.method_ref,
-      contradiction_refs: [],
-      corroboration_refs: [],
-      human_refs: prov.human_refs,
-      classification: input.classification,
-      purpose_scope: input.purposeScope,
-      rights_profile: null,
-      residency_profile: null,
-      retention_profile: null,
-      access_policy_ref: null,
-      quality_profile: null,
-      quality_state: null,
-      freshness_state: null,
-      schema_ref: `${input.objectType}@${schemaVersion}`,
-      ontology_ref: null,
-      correction_of: v.correctionOf,
-      supersedes: v.correctionOf, // corrected version is superseded for current use
-      withdrawal_reason: null,
-      audit_correlation_id: correlationId,
-      content_ref: null,
-    };
+    // B50 hd: the shared header builder (header-builder.ts) — the complete 43-field header, with what the writer does not state STATED
+    // (declared absences, ontology:none, the type's quality profile); validated as a whole below, then digest-bound in its entirety.
+    let header: CanonicalHeader;
+    try {
+      header = buildHeader({
+        objectId: v.objectId, objectType: input.objectType, tenantId: ctx.tenantId, domainId: ctx.domainId, scope: ctx.scope,
+        objectVersion: String(v.version), lifecycleState: v.lifecycle, owningComponent: 'CP-OBJ-01', accountableOwner: actor,
+        sourceObjectIds: prov.source_object_ids,
+        ...(input.eventTime === undefined && input.time?.event !== undefined ? {} : { eventTime: iso(input.eventTime) }),
+        ...(input.observationTime === undefined && input.time?.observation !== undefined ? {} : { observationTime: iso(input.observationTime) }),
+        ...(input.validFrom === undefined && input.time?.valid_from !== undefined ? {} : { validFrom: iso(input.validFrom) }),
+        ...(input.validTo === undefined && input.time?.valid_to !== undefined ? {} : { validTo: iso(input.validTo) }),
+        recordedAt: recordedAt.toISOString(),
+        ...(input.timePrecision === undefined ? {} : { timePrecision: input.timePrecision }),
+        sourceClockQuality: input.sourceClockQuality ?? 'trusted',
+        truthState, syntheticState, confidence: null, uncertainty: null,
+        evidenceRefs: prov.evidence_refs, provenanceRef: null, methodRef: prov.method_ref, contradictionRefs: [], corroborationRefs: [], humanRefs: prov.human_refs,
+        classification: input.classification, purposeScope: input.purposeScope,
+        rightsProfile: null, residencyProfile: null, retentionProfile: null, accessPolicyRef: null,
+        qualityProfile: null, qualityState: null, freshnessState: null,
+        schemaRef: `${input.objectType}@${schemaVersion}`, ontologyRef: null,
+        correctionOf: v.correctionOf, supersedes: v.correctionOf, // corrected version is superseded for current use
+        withdrawalReason: null, auditCorrelationId: correlationId, contentRef: null,
+      }, input.time === undefined ? {} : { time: input.time });
+    } catch (e) {
+      if (e instanceof HeaderBuildError) throw bad('EYE_TMP_001', correlationId, e.message, 400);
+      throw e;
+    }
     const hv = validateHeader(header);
     if (!hv.ok) {
       throw bad('EYE_REQ_001', correlationId, `canonical header invalid: ${(hv.errors ?? []).join('; ')}`, 422);
@@ -292,7 +325,7 @@ export class ObjectsService {
     // the complete 40+3 field registry, RECOMPUTES the header+payload digest
     // inside the trusted boundary, and refuses a supplied digest that does not
     // bind them. No runtime role holds direct INSERT on canonical_objects.
-    await cap.admitObject(header, input.payload, digest);
+    await cap.admitObject(header, input.payload, digest, input.time === undefined ? undefined : timeDeclaration(input.time)); // B50 hd: the stated times
 
     const stored = (await cap
       .readCanonicalObjects()
@@ -331,55 +364,7 @@ export function servedRow(row: ObjectRow): ObjectRow {
   return { ...row, payload: null, content_withheld: { object_type: row.object_type, reason: rule } };
 }
 
-/** Rebuild the 43-field canonical header from a stored row (round-trip check). */
+/** Rebuild the 43-field canonical header from a stored row (round-trip check). B50 hd: the builder's (header-builder.ts), re-exported. */
 export function rebuildHeaderFromRow(row: ObjectRow): CanonicalHeader {
-  const isoOf = (v: unknown): string | null => (v == null ? null : new Date(v as string | Date).toISOString());
-  const arr = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : (JSON.parse(String(v)) as string[]));
-  const obj = (v: unknown): Record<string, unknown> | null =>
-    v == null ? null : typeof v === 'object' ? (v as Record<string, unknown>) : (JSON.parse(String(v)) as Record<string, unknown>);
-  return {
-    object_id: String(row.object_id),
-    object_type: String(row.object_type),
-    tenant_id: (row['tenant_id'] as string | null) ?? null,
-    domain_id: (row['domain_id'] as string | null) ?? null,
-    scope: row['scope'] as CanonicalHeader['scope'],
-    object_version: String(Number(row.object_version)),
-    lifecycle_state: String(row.lifecycle_state),
-    owning_component: String(row['owning_component']),
-    accountable_owner: String(row['accountable_owner']),
-    source_object_ids: arr(row['source_object_ids']),
-    event_time: isoOf(row['event_time']),
-    observation_time: isoOf(row['observation_time']),
-    valid_from: isoOf(row['valid_from']),
-    valid_to: isoOf(row['valid_to']),
-    recorded_at: isoOf(row.recorded_at) as string,
-    time_precision: String(row['time_precision']),
-    source_clock_quality: row['source_clock_quality'] as CanonicalHeader['source_clock_quality'],
-    truth_state: String(row.truth_state),
-    synthetic_state: Boolean(row['synthetic_state']),
-    confidence: obj(row['confidence']),
-    uncertainty: obj(row['uncertainty']),
-    evidence_refs: arr(row['evidence_refs']),
-    provenance_ref: (row['provenance_ref'] as string | null) ?? null,
-    method_ref: (row['method_ref'] as string | null) ?? null,
-    contradiction_refs: arr(row['contradiction_refs']),
-    corroboration_refs: arr(row['corroboration_refs']),
-    human_refs: arr(row['human_refs']),
-    classification: String(row['classification']),
-    purpose_scope: String(row['purpose_scope']),
-    rights_profile: (row['rights_profile'] as string | null) ?? null,
-    residency_profile: (row['residency_profile'] as string | null) ?? null,
-    retention_profile: (row['retention_profile'] as string | null) ?? null,
-    access_policy_ref: (row['access_policy_ref'] as string | null) ?? null,
-    quality_profile: (row['quality_profile'] as string | null) ?? null,
-    quality_state: obj(row['quality_state']),
-    freshness_state: obj(row['freshness_state']),
-    schema_ref: String(row['schema_ref']),
-    ontology_ref: (row['ontology_ref'] as string | null) ?? null,
-    correction_of: (row['correction_of'] as string | null) ?? null,
-    supersedes: (row['supersedes'] as string | null) ?? null,
-    withdrawal_reason: (row['withdrawal_reason'] as string | null) ?? null,
-    audit_correlation_id: String(row['audit_correlation_id']),
-    content_ref: (row['content_ref'] as string | null) ?? null,
-  };
+  return rebuildFromRow(row);
 }

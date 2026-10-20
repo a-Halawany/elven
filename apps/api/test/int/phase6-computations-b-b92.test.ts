@@ -178,8 +178,11 @@ describe('MCB0 · the registry and the contracts', () => {
     expect(mine.map((r) => r['computation_key']).sort()).toEqual(definitionsB.filter((d) => d.computationKey !== null).map((d) => d.computationKey).sort());
     for (const r of mine) {
       const cn = definitionsB.find((d) => d.computationKey === r['computation_key'])!;
-      expect(r['kind']).toBe(cn.kind); expect(r['dimensions']).toEqual(cn.dimensions); expect(String(r['scope_rule']).length).toBeGreaterThan(8);
-      expect(r['registered_in']).toBe(r['computation_key'] === 'met039_time_to_accepted_operation' ? '0114 §IM' : '0113 §MCB');   /* B94 implementation */
+      /* B50 (0120 §CL.6): MET-010 is re-registered as computation version 2 (to the closure record) with the cohort dimension
+         `correction_kind` — a dimension of the correction, never of a person; B92's approved definition (v1 contract) declares none */
+      const met010 = r['computation_key'] === 'met010_correction_propagation';
+      expect(r['kind']).toBe(cn.kind); expect(r['dimensions']).toEqual(met010 ? ['correction_kind'] : cn.dimensions); expect(String(r['scope_rule']).length).toBeGreaterThan(8);
+      expect(r['registered_in']).toBe(r['computation_key'] === 'met039_time_to_accepted_operation' ? '0114 §IM' : met010 ? '0120 §CL' : '0113 §MCB');   /* B94 implementation; B50 §CL */
     }
   });
   it('the twenty-three contracts plant APPROVED under the table\'s own checks; the eight unsupported are served `unsupported` with their carrier — visible, never a fake value', async () => {
@@ -401,6 +404,12 @@ describe('MCB5 · MET-010 correction propagation time (2026-05, 2026-06)', () =>
         values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${id}::uuid, 'complete', 1, 1, '[]'::jsonb, '[]'::jsonb, ${applied}::timestamptz, ${applied}::timestamptz,
           ${plus(applied, close.walkedAfter)}::timestamptz, ${uuidv7()}::uuid)`);
     }
+    /* B50 (0120 §CL.6): MET-010 v2 ends at the CLOSURE RECORD (opened by the apply trigger), not at the walk or the assessment — a closed
+       case of this fixture closes its record at the instant v1 measured to (the later of the two); an unclosed one stays open (censored) */
+    if (close !== null) {
+      await ex(sql`update graph.correction_closures set state = 'closed', closed_at = ${plus(applied, Math.max(close.assessedAfter ?? 0, close.walkedAfter ?? 0))}::timestamptz,
+        closed_by = ${owner.principalId}::uuid, audit_digest = ${hex()}, record = '{"synthetic":true}'::jsonb, projections_reconciled = true where case_id = ${id}::uuid`);
+    }
     return id;
   };
   beforeAll(async () => {
@@ -418,8 +427,9 @@ describe('MCB5 · MET-010 correction propagation time (2026-05, 2026-06)', () =>
     expect(r['distribution']).toMatchObject({ min: 60, max: 1200, n: 3 });
     const rd = await readResult(String(r['result_id']));
     expect(roles(rd)).toEqual({ included: 3, excluded: 1 });
-    expect(records(rd).map((x) => (x['detail'] as Row)['closure']).filter(Boolean)).toContain('propagation walk complete');
-    expect((r['quality'] as Row)).toMatchObject({ excluded_count: 1, composition: { by: 'closure', counts: { 'propagation walk complete': 2, 'dependency assessment': 1, censored: 1 } } });
+    // B50 (0120 §CL.6): v2's closure instant is the closure record's — one label for every closed case (v1 named the walk or the assessment)
+    expect(records(rd).map((x) => (x['detail'] as Row)['closure']).filter(Boolean)).toContain('material consumer closure (the closure record)');
+    expect((r['quality'] as Row)).toMatchObject({ excluded_count: 1, composition: { by: 'closure', counts: { 'material consumer closure (the closure record)': 3, censored: 1 } } });
     expect(new Date(String((r['quality'] as Row)['newest_record_at'])).toISOString()).toBe(new Date(at(5, 5)).toISOString());
   });
   it('the scope applied: for the corridor only s1\'s corrections (2 closed — below the floor 3, said)', async () => {
@@ -429,7 +439,7 @@ describe('MCB5 · MET-010 correction propagation time (2026-05, 2026-06)', () =>
   it('indeterminate, explained: June — 2 of 3 accepted corrections still propagating: the median would be survivor-biased', async () => {
     const r = await compute({ metricKey: 'MET-010', period: '2026-06' });
     expect(r).toMatchObject({ state: 'indeterminate', value: null });
-    expect(reasons(r)).toMatch(/2 of 3 accepted corrections are still propagating \(censored\)/);
+    expect(reasons(r)).toMatch(/2 of 3 accepted corrections are not closed \(censored\)/);   /* B50 (0120 §CL.6): v2's words — not closed, not "still propagating" */
   });
 });
 

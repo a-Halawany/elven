@@ -76,6 +76,10 @@ const stageDeps = (d, stage) => (table(join(d, 'delivery', 'STAGES.csv')).find((
   /* B81 (2026-10-19): the slice delivered at B81 — B82, B83, B84 and B85 depend on B81, none on B111 or B100; the six features complete later */
   for (const s of ['B82', 'B83', 'B84', 'B85']) check(`P1 ${s} depends on B81 (the delivered slice), not on B111 / B100`, deps(s).split(' ').includes('B81') && !deps(s).split(' ').includes('B111') && !deps(s).split(' ').includes('B100'), deps(s));
   for (const [f, s] of [['F-P7-E-02', 'B111'], ['F-P7-E-04', 'B111'], ['F-P7-E-06', 'B111'], ['F-P7-E-18', 'B111'], ['F-P7-E-19', 'B100'], ['F-P7-E-20', 'B111']]) check(`P1 ${f} completes at ${s} (its construction is not counted as delivered at B81)`, tracker.find((r) => r.feature_id === f)?.stage === s);
+  /* B50 (2026-10-19): F-P3-01 completes at B50; the others later — B51 and B54 depend on B50 (the slice), B26 and B111 not on B85 */
+  for (const s of ['B51', 'B54']) check(`P1 ${s} depends on B50 (the delivered slice)`, deps(s).split(' ').includes('B50'), deps(s));
+  for (const s of ['B26', 'B111']) check(`P1 ${s} does not wait on B85 (F-P3-03's later completion — the slice delivered at B50 is what it needs)`, !deps(s).split(' ').includes('B85'), deps(s));
+  for (const [f, s] of [['F-P3-01', 'B50'], ['F-P3-02', 'B111'], ['F-P3-03', 'B85'], ['F-P3-04', 'B111'], ['F-P3-05', 'B26']]) check(`P1 ${f} completes at ${s}`, tracker.find((r) => r.feature_id === f)?.stage === s);
 }
 // N1 — a slice naming no feature
 { const d = fixture(); setDeps(d, 'F-P7-E-04', 'F-P7-E-01@B80; F-P7-E-99@B80'); const r = run(d); check('N1 a slice naming no feature is refused', r.code === 1 && /names no feature/.test(r.out)); }

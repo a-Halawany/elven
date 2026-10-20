@@ -1,0 +1,16 @@
+
+=== CP-6 batch B1 · the CorrectionApplied consumer on the demonstration ===
+
+1. applied corrections whose propagation is not complete
+  · 1 outstanding; note: these corrections are applied and their downstream propagation is not complete — either nothing has walked them, or a walk was truncated or left corrected objects uncovered. Where a propagation agent is registered the walk runs automatically on CorrectionApplied and its state is shown under automatic; propagation can always be run by an operator through /impact/propagate.
+  · case 01a08d7c… (supersession, 2133 corrected object(s)) — pending; automatic: failed — budget: 2133 corrected object(s) exceed max_roots_per_event 64; operator-initiated propagation required
+
+2. the propagation agent
+  · the active agent 01a09213… is registered for walker 1.0.0 (4c400422af7b…); this API runs 1.1.0 (ae33b90d2253…) — the registry refuses its sessions
+  ✓ T. Richter (domain administrator) REVOKED the 1.0.0 agent 01a09213… with its reason — POL 01a15307-9cea… · audit seq 660273
+  ✓ registered: agent 01a15307…, principal 01a15307… (role propagation_agent), walker graph.propagation@1.1.0 ae33b90d2253…, budgets {"backlog_policy":"leave","max_elapsed_ms":600000,"max_roots_per_event":64}
+  · served at once: worker running true; 0 outstanding event(s) re-driven from the backlog
+  ✓ the domain queue graph.01a084f5-757f-7f03-9cf5-315d74426481.01a084f5-759a-751f-a1dd-38fbd7933057.propagation is served by this process (scheduler enabled: true)
+  ✓ the domain's active agent 01a15307… is walker 1.1.0 (ae33b90d2253…) — the walker this API runs
+  · 14 active subscription consumer(s) — unchanged by the re-registration
+  · backlog 'leave': 1 applied case(s) await propagation, each listed with its automatic state — none re-driven by this registration

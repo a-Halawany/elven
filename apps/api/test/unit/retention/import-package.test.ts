@@ -437,9 +437,11 @@ describe('importWithdrawalHeaderOf (B17, D12) — the version that withdraws an 
     expect(h.event_time).toBe(priorHeader.event_time); expect(h.observation_time).toBe(priorHeader.observation_time); expect(h.valid_from).toBe('2026-01-01T00:00:00.000Z'); expect(h.valid_to).toBe('2026-06-01T00:00:00.000Z');
     for (const k of ['time_precision', 'classification', 'rights_profile', 'residency_profile', 'retention_profile', 'schema_ref', 'provenance_ref', 'owning_component', 'synthetic_state', 'source_object_ids'] as const) expect(h[k]).toEqual(priorHeader[k]);
     expect(h.source_clock_quality).toBe('degraded');
-    // Cleared, as the corrections path clears them.
-    expect(h.confidence).toBeNull(); expect(h.uncertainty).toBeNull(); expect(h.quality_profile).toBeNull(); expect(h.quality_state).toBeNull(); expect(h.freshness_state).toBeNull();
-    expect(h.access_policy_ref).toBeNull(); expect(h.ontology_ref).toBeNull(); expect(h.contradiction_refs).toEqual([]); expect(h.corroboration_refs).toEqual([]);
+    // Cleared, as the corrections path clears them — and, since B50 §HD, STATED: the shared header builder declares each absence (no bare null on a new version).
+    expect(h.confidence).toEqual({ state: 'not_applicable', reason: 'a withdrawn version states no confidence; its predecessor\'s confidence stands in its history' });
+    expect(h.uncertainty).toEqual({ state: 'not_applicable', reason: 'a withdrawn version states no uncertainty; its predecessor\'s uncertainty stands in its history' });
+    expect(h.quality_profile).toBe(`quality:${h.object_type}@1`); expect(h.quality_state).toMatchObject({ state: 'not_assessed' }); expect(h.freshness_state).toMatchObject({ state: expect.stringMatching(/^(assessed|not_applicable)$/) });
+    expect(h.access_policy_ref).toBeNull(); expect(h.ontology_ref).toBe('ontology:none'); expect(h.contradiction_refs).toEqual([]); expect(h.corroboration_refs).toEqual([]);
     expect(h.content_ref).toBeNull();
     expect(Object.keys(h).length).toBe(43);
     expect(validateHeader(h).ok).toBe(true);

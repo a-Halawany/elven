@@ -206,6 +206,26 @@ export interface GraphReads {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readRevisionItems(): any;
   /* end B23 revision */
+  /* B50 ci */
+  /**
+   * B50 §CI (0120): the walk's NEW BUCKETS as one relation (graph.walk_product_citations, security_invoker) — one row per (product, what it
+   * cites): decision package versions, publication versions, export packages, information sets, backtests, method validations, lessons.
+   * Part of WalkReads (impact.service.ts), so a capability that carries the walk (retention's) carries this read too.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readProductCitations(): any;
+  /** B50 §CI: the classed products of every assessed walk (append-only), the stable per-case read §CL closes against, the rule, the triggers. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readAffectedProducts(): any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readCaseAffectedProducts(): any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readAffectedClassRules(): any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readImpactTriggers(): any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readImpactTriggerEvents(): any;
+  /* end B50 ci */
 }
 
 // ───────────────────────── resolver ─────────────────────────
@@ -354,6 +374,9 @@ export interface ImpactWrites extends GraphReads {
     /* B32 (0089) graph: the capabilities, initiatives, resources, measures, stakeholders and risks/opportunities the walk reached — recorded, nothing marked. */
     strategyNodes?: unknown[];
     /* end B32 graph */
+    /* B50 ci: the new buckets (scenarios, graph state, decision packages, publications, export packages, evaluation datasets, lessons) — every bucket CLASSED by the port. */
+    products?: unknown[];
+    /* end B50 ci */
     statement: string;
     /** A bounded walk that stopped early is recorded as partial, never as assessed. */
     truncated: boolean; unexplored: unknown[];
@@ -371,7 +394,22 @@ export interface ImpactWrites extends GraphReads {
    */
   propagationRootBegin(a: { eventId: string; tenantId: string; domainId: string; root: string }): Promise<boolean>;
   propagationRootDone(a: { eventId: string; tenantId: string; domainId: string; root: string; invalidationId: string; truncated: boolean }): Promise<void>;
+  /* B50 ci */
+  /** B50 §CI (0120 §CI.9): a recorded trigger's checkpoint inside the AGENT's walk — begin locks it (false: already walked), done binds the assessed walk. */
+  impactTriggerBegin(a: { triggerId: string; tenantId: string; domainId: string }): Promise<boolean>;
+  impactTriggerDone(a: { triggerId: string; tenantId: string; domainId: string; invalidationId: string }): Promise<void>;
+  /* end B50 ci */
 }
+
+/* B50 ci */
+/** B50 §CI (0120 §CI.8): the seven seeding ports (one per trigger kind, the steward's act) and the close of a human challenge. */
+export type ImpactTriggerKind = 'legal_request' | 'model_incident' | 'ontology_correction' | 'data_quality_finding' | 'rights_change' | 'integrity_failure' | 'human_challenge';
+export interface ImpactTriggerWrites extends GraphReads {
+  seedImpactTrigger(a: { kind: ImpactTriggerKind; triggerId: string; tenantId: string; domainId: string; objectType: string; objectId: string; reason: string;
+                         basis: Record<string, unknown>; actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
+  closeHumanChallenge(a: { triggerId: string; tenantId: string; domainId: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+/* end B50 ci */
 
 // ───────────────────────── subscriptions (CP-6 B6) ─────────────────────────
 
@@ -559,6 +597,7 @@ class GraphCapabilityImpl extends GraphCore
              EdgeRetractionWrites, StrategyWrites, MemoryWrites, OntologyWrites, ImpactWrites, PropagationAgentWrites, SubscriptionWrites, GraphSubscriberWrites, ProjectionWrites,
              MemoryContextReads,
              RevisionWrites,
+             /* B50 ci */ ImpactTriggerWrites, /* end B50 ci */
              /* B32 (0089) graph */ StrategyAlignmentWrites /* end B32 graph */, /* B36 (0094 §S) strategy */ StrategyRevocationWrites, StrategyDetectionWrites /* end B36 strategy */ {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
@@ -639,6 +678,14 @@ class GraphCapabilityImpl extends GraphCore
   readRevisions(): any { return this.from('graph.revisions'); }
   readRevisionItems(): any { return this.from('graph.revision_items'); }
   /* end B23 revision */
+  /* B50 ci */
+  readProductCitations(): any { return this.from('graph.walk_product_citations'); }
+  readAffectedProducts(): any { return this.from('graph.affected_products'); }
+  readCaseAffectedProducts(): any { return this.from('graph.case_affected_products'); }
+  readAffectedClassRules(): any { return this.from('graph.affected_class_rules'); }
+  readImpactTriggers(): any { return this.from('graph.impact_triggers'); }
+  readImpactTriggerEvents(): any { return this.from('graph.impact_trigger_events'); }
+  /* end B50 ci */
   /* eslint-enable @typescript-eslint/no-explicit-any */
   async projectionState(): Promise<Array<Record<string, unknown>>> { return this.call<Record<string, unknown>>(sql`select * from graph.projection_state()`); }
   /**
@@ -938,6 +985,7 @@ class GraphCapabilityImpl extends GraphCore
     /** 0065 §8: the warnings marked for attention and the briefings re-flagged by the assessment; 0066 §3: the memory items marked. */
     warnings?: unknown[]; briefings?: unknown[]; memoryItems?: unknown[];
     /* B32 (0089) graph */ strategyNodes?: unknown[]; /* end B32 graph */
+    /* B50 ci */ products?: unknown[]; /* end B50 ci */
   }): Promise<void> {
     await this.call(sql`select graph.record_impact(
       ${a.invalidationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid,
@@ -947,7 +995,7 @@ class GraphCapabilityImpl extends GraphCore
       ${a.statement}, ${a.truncated}, ${JSON.stringify(a.unexplored)}::jsonb,
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid,
       ${JSON.stringify(a.warnings ?? [])}::jsonb, ${JSON.stringify(a.briefings ?? [])}::jsonb, ${JSON.stringify(a.memoryItems ?? [])}::jsonb,
-      ${JSON.stringify(a.strategyNodes ?? [])}::jsonb)`); // B32 (0089): the twentieth argument, p_strategy_nodes
+      ${JSON.stringify(a.strategyNodes ?? [])}::jsonb, ${JSON.stringify(a.products ?? [])}::jsonb)`); // B32 (0089): the twentieth argument, p_strategy_nodes; B50 ci (0120 §CI.7): the twenty-first, p_products
   }
 
   async propagationRootBegin(a: { eventId: string; tenantId: string; domainId: string; root: string }): Promise<boolean> {
@@ -960,6 +1008,31 @@ class GraphCapabilityImpl extends GraphCore
     await this.call(sql`select graph.propagation_root_done(
       ${a.eventId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.root}::uuid, ${a.invalidationId}::uuid, ${a.truncated})`);
   }
+
+  /* B50 ci */
+  async impactTriggerBegin(a: { triggerId: string; tenantId: string; domainId: string }): Promise<boolean> {
+    const rows = await this.call<{ ok: boolean }>(sql`select graph.impact_trigger_begin(${a.triggerId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid) as ok`);
+    return rows[0]?.ok === true;
+  }
+  async impactTriggerDone(a: { triggerId: string; tenantId: string; domainId: string; invalidationId: string }): Promise<void> {
+    await this.call(sql`select graph.impact_trigger_done(${a.triggerId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.invalidationId}::uuid)`);
+  }
+  async seedImpactTrigger(a: Parameters<ImpactTriggerWrites['seedImpactTrigger']>[0]): Promise<Record<string, unknown>> {
+    // The kind names the port (one per kind); the set is closed in the type and re-checked here, never interpolated from a request unchecked.
+    const port = { legal_request: sql`graph.seed_legal_request`, model_incident: sql`graph.seed_model_incident`, ontology_correction: sql`graph.seed_ontology_correction`,
+                   data_quality_finding: sql`graph.seed_data_quality_finding`, rights_change: sql`graph.seed_rights_change`, integrity_failure: sql`graph.seed_integrity_failure`,
+                   human_challenge: sql`graph.seed_human_challenge` }[a.kind];
+    if (port === undefined) throw new Error(`${String(a.kind)} is not an impact trigger kind`);
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select ${port}(${a.triggerId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.objectType}, ${a.objectId}::uuid,
+      ${a.reason}, ${JSON.stringify(a.basis)}::jsonb, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async closeHumanChallenge(a: Parameters<ImpactTriggerWrites['closeHumanChallenge']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.close_human_challenge(${a.triggerId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason},
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  /* end B50 ci */
 
   async registerPropagationAgent(a: {
     agentId: string; tenantId: string; domainId: string; principalId: string; version: string; codeDigest: string;
@@ -1201,4 +1274,8 @@ export const GraphCapability = {
   /** B36 (0094 §S7/§S8): the raised detections and the plan links, under the alignment read action. */
   strategyCompletionRead(tx: Tx, action: string): StrategyCompletionReads { return new GraphCapabilityImpl(tx, action); },
   /* end B36 strategy */
+  /* B50 ci */
+  /** B50 §CI (0120 §CI.8): a steward's impact trigger (graph.impact.trigger.<kind>) and the close of a human challenge (graph.impact.trigger.close). */
+  impactTrigger(tx: Tx, action: string): ImpactTriggerWrites { return new GraphCapabilityImpl(tx, action); },
+  /* end B50 ci */
 };

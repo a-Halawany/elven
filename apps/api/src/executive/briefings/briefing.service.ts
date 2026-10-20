@@ -81,6 +81,7 @@ import { attentionSection } from './attention-section.js';
 import { DEFAULT_AUDIENCE, audienceProblem, defaultExpiry, isBoardAudience, omission, readerInAudience, suppressionOf, uncertaintyOf, urgentRetained,
          type Audience, type BriefingPolicy, type Omission, type Suppression, type Uncertainty } from './uncertainty.js';
 import type { BriefingPolicyWrites } from '../executive.capabilities.js';
+import { buildHeader } from '../../objects/header-builder.js';
 /** The v3 contract as the route sends it: `undefined` = the default (audience: every reader role, in-app, plain; expiry: the cadence, 7 days after known_at). */
 export interface BriefingV3Request { audience?: unknown; purpose?: string | null; expiresAt?: string | null; disputedNote?: string | null }
 /* end B36 briefing */
@@ -679,19 +680,19 @@ export class BriefingService {
     }
     const now = new Date().toISOString();
     const payload = { ...content, content_digest: digest, narrative, narrative_cites: cites, composed_via: via, agent_id: agentId };
-    const header: CanonicalHeader = {
-      object_id: briefingId, object_type: 'BRF', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN', object_version: '1', lifecycle_state: 'active',
-      owning_component: 'CP-EXE-01', accountable_owner: `principal:${room === null ? composer : String(room['owner_principal_id'])}`,
-      source_object_ids: sourceList.filter((s) => /^(EVD|CLM|DPK|SRC|run):/.test(s)).map((s) => s.replace(/^run:/, 'SIM:')).slice(0, 200),
-      event_time: null, observation_time: null, valid_from: null, valid_to: null, recorded_at: now, time_precision: 'exact', source_clock_quality: 'trusted',
-      truth_state: 'asserted', synthetic_state: controls.synthetic_state, confidence: null, uncertainty: null, evidence_refs: [],
-      provenance_ref: `principal:${composer}`, method_ref: `briefing-composer@1.2.0${via === 'agent' ? `/agent:${agentId}` : ''}` /* B36: 1.2.0 = BRF@v3 */, contradiction_refs: [], corroboration_refs: [],
-      human_refs: via === 'human' ? [`principal:${composer}`] : [`principal:${room === null ? composer : String(room['owner_principal_id'])}`],
-      classification: controls.classification, purpose_scope: purposeId, rights_profile: controls.rights_profile, residency_profile: controls.residency_profile, retention_profile: controls.retention_profile, access_policy_ref: controls.access_policy_ref,
-      quality_profile: null, quality_state: { degraded, items: items.length, windows: windows.length, narrative: narrative === null ? 'none' : 'labelled', controls_inputs: controls.inputs }, freshness_state: null,
-      /* B23 (0084) attention: BRF@v2; B36 (0094 §B): BRF@v3 */ schema_ref: 'BRF@v3' /* end B23 attention */, ontology_ref: null,
-      correction_of: null, supersedes: prior === null ? null : `BRF:${String(prior['briefing_id'])}@1`, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
-    };
+    const header: CanonicalHeader = buildHeader({
+      objectId: briefingId, objectType: 'BRF', tenantId: ctx.tenantId, domainId: ctx.domainId, scope: 'DOMAIN', objectVersion: '1', lifecycleState: 'active',
+      owningComponent: 'CP-EXE-01', accountableOwner: `principal:${room === null ? composer : String(room['owner_principal_id'])}`,
+      sourceObjectIds: sourceList.filter((s) => /^(EVD|CLM|DPK|SRC|run):/.test(s)).map((s) => s.replace(/^run:/, 'SIM:')).slice(0, 200),
+      eventTime: null, observationTime: null, validFrom: null, validTo: null, recordedAt: now, timePrecision: 'exact', sourceClockQuality: 'trusted',
+      truthState: 'asserted', syntheticState: controls.synthetic_state, confidence: null, uncertainty: null, evidenceRefs: [],
+      provenanceRef: `principal:${composer}`, methodRef: `briefing-composer@1.2.0${via === 'agent' ? `/agent:${agentId}` : ''}` /* B36: 1.2.0 = BRF@v3 */, contradictionRefs: [], corroborationRefs: [],
+      humanRefs: via === 'human' ? [`principal:${composer}`] : [`principal:${room === null ? composer : String(room['owner_principal_id'])}`],
+      classification: controls.classification, purposeScope: purposeId, rightsProfile: controls.rights_profile, residencyProfile: controls.residency_profile, retentionProfile: controls.retention_profile, accessPolicyRef: controls.access_policy_ref,
+      qualityProfile: null, qualityState: { degraded, items: items.length, windows: windows.length, narrative: narrative === null ? 'none' : 'labelled', controls_inputs: controls.inputs }, freshnessState: null,
+      /* B23 (0084) attention: BRF@v2; B36 (0094 §B): BRF@v3 */ schemaRef: 'BRF@v3' /* end B23 attention */, ontologyRef: null,
+      correctionOf: null, supersedes: prior === null ? null : `BRF:${String(prior['briefing_id'])}@1`, withdrawalReason: null, auditCorrelationId: correlationId, contentRef: null,
+    });
     const check = validateHeader(header);
     if (!check.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `briefing header invalid: ${(check.errors ?? []).join('; ')}`), 422);
     const headerDigest = canonicalHeaderDigest(header, payload);

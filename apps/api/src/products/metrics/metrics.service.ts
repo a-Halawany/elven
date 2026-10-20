@@ -16,6 +16,7 @@ import { newId } from '../../shared/ids.js';
 import { AttentionTickRegistry, type AttentionTickContext } from '../../executive/attention/tick.js';
 import { SignatureService } from '../../executive/signatures/signature.service.js';
 import { MetricCapability, type MetricWrites } from './metrics.capabilities.js';
+import { buildHeader } from '../../objects/header-builder.js';
 
 type Row = Record<string, unknown>;
 type Scope = { tenantId: string; domainId: string };
@@ -133,18 +134,18 @@ export class MetricsService implements OnModuleInit {
       certification: { certification_id: certificationId, certified_by: principal.principalId, expires_at: expiresAt, signature_id: signatureId },
       certification_ordinal: ordinal, state: 'certified',
     };
-    const header: CanonicalHeader = {
-      object_id: modelId, object_type: 'MET', tenant_id: scope.tenantId, domain_id: scope.domainId, scope: 'DOMAIN', object_version: String(ordinal), lifecycle_state: 'active',
-      owning_component: 'CP-DAT-01', accountable_owner: `principal:${String(m['owner_principal_id'])}`,
-      source_object_ids: [`DPR:${modelId}`],
-      event_time: null, observation_time: null, valid_from: String(v['effective_from']), valid_to: expiresAt, recorded_at: new Date().toISOString(), time_precision: 'exact', source_clock_quality: 'trusted',
-      truth_state: 'asserted', synthetic_state: false, confidence: null, uncertainty: null,
-      evidence_refs: [], provenance_ref: `principal:${principal.principalId}`, method_ref: 'products.metric.certify/1',
-      contradiction_refs: [], corroboration_refs: [], human_refs: [`principal:${principal.principalId}`],
-      classification: 'internal', purpose_scope: purpose, rights_profile: null, residency_profile: null, retention_profile: null, access_policy_ref: null,
-      quality_profile: null, quality_state: { definition_digest: digest, signature_id: signatureId }, freshness_state: null, schema_ref: MET_SCHEMA, ontology_ref: null,
-      correction_of: null, supersedes: prior === null ? null : `MET:${modelId}@${prior}`, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
-    } as CanonicalHeader;
+    const header: CanonicalHeader = buildHeader({
+      objectId: modelId, objectType: 'MET', tenantId: scope.tenantId, domainId: scope.domainId, scope: 'DOMAIN', objectVersion: String(ordinal), lifecycleState: 'active',
+      owningComponent: 'CP-DAT-01', accountableOwner: `principal:${String(m['owner_principal_id'])}`,
+      sourceObjectIds: [`DPR:${modelId}`],
+      eventTime: null, observationTime: null, validFrom: String(v['effective_from']), validTo: expiresAt, recordedAt: new Date().toISOString(), timePrecision: 'exact', sourceClockQuality: 'trusted',
+      truthState: 'asserted', syntheticState: false, confidence: null, uncertainty: null,
+      evidenceRefs: [], provenanceRef: `principal:${principal.principalId}`, methodRef: 'products.metric.certify/1',
+      contradictionRefs: [], corroborationRefs: [], humanRefs: [`principal:${principal.principalId}`],
+      classification: 'internal', purposeScope: purpose, rightsProfile: null, residencyProfile: null, retentionProfile: null, accessPolicyRef: null,
+      qualityProfile: null, qualityState: { definition_digest: digest, signature_id: signatureId }, freshnessState: null, schemaRef: MET_SCHEMA, ontologyRef: null,
+      correctionOf: null, supersedes: prior === null ? null : `MET:${modelId}@${prior}`, withdrawalReason: null, auditCorrelationId: correlationId, contentRef: null,
+    });
     const check = validateHeader(header);
     if (!check.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `metric certification header invalid: ${(check.errors ?? []).join('; ')}`), 422);
     const admitted = await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));

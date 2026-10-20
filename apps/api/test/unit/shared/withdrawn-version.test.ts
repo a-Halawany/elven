@@ -60,9 +60,11 @@ describe('B18 · withdrawnVersionHeaderOf — the withdrawn version of a canonic
     expect(h.schema_ref).toBe('FCT@v1'); expect(h.provenance_ref).toBe('series:ecb-eurusd'); expect(h.synthetic_state).toBe(false);
     // no evidence reference given: the prior's list, unchanged
     expect(h.evidence_refs).toEqual(prior['evidence_refs']);
-    // cleared, as the corrections path clears them
-    expect(h.confidence).toBeNull(); expect(h.uncertainty).toBeNull(); expect(h.quality_profile).toBeNull(); expect(h.quality_state).toBeNull(); expect(h.freshness_state).toBeNull();
-    expect(h.access_policy_ref).toBeNull(); expect(h.ontology_ref).toBeNull(); expect(h.contradiction_refs).toEqual([]); expect(h.corroboration_refs).toEqual([]);
+    // cleared, as the corrections path clears them — and, since B50 §HD, STATED: the shared header builder declares each absence (no bare null on a new version)
+    expect(h.confidence).toEqual({ state: 'not_applicable', reason: 'a withdrawn version states no confidence; its predecessor\'s confidence stands in its history' });
+    expect(h.uncertainty).toEqual({ state: 'not_applicable', reason: 'a withdrawn version states no uncertainty; its predecessor\'s uncertainty stands in its history' });
+    expect(h.quality_profile).toBe(`quality:${h.object_type}@1`); expect(h.quality_state).toMatchObject({ state: 'not_assessed' }); expect(h.freshness_state).toMatchObject({ state: expect.stringMatching(/^(assessed|not_applicable)$/) });
+    expect(h.access_policy_ref).toBeNull(); expect(h.ontology_ref).toBe('ontology:none'); expect(h.contradiction_refs).toEqual([]); expect(h.corroboration_refs).toEqual([]);
     expect(h.content_ref).toBeNull();
     // the 43 fields, validating and digesting with the prior payload verbatim
     expect(Object.keys(h).length).toBe(43);

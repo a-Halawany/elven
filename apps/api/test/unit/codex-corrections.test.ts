@@ -91,6 +91,8 @@ function graphCap(w: WorldRows) {
     readRuns: () => relation([]),
     readBriefings: () => relation([]),
     readMemoryItems: () => relation([]),
+    // B50 ci (walker 1.1.0): the product buckets the walk reads (graph.walk_product_citations); none in these worlds.
+    readProductCitations: () => relation([]),
     // CP-6 B6 (0063): no subscription is live in these worlds, so the emitter walks nothing and the event
     // is written unwalked; the contract (subscriptionsMatching is total) is modelled, not the SQL.
     subscriptionsMatching: async () => [],

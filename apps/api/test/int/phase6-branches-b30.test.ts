@@ -346,8 +346,10 @@ describe('BR3 · staleness by age and by dependency uncertainty', () => {
     expect(els.find((e) => e['key'] === 'shock.corridor_delay_days')).toMatchObject({ state: 'stale', max_age_days: 1, age_days: 5 });
     expect(els.find((e) => e['key'] === 'inventory.on_hand:SYN-PART-MAG')).toMatchObject({ state: 'unbounded' });
     // the commit recorded the freshness it was admitted with (V03-T-196)
+    // B50 (0120 §HD, DESIGN D3): a version admitted after B50 STATES its ontology — the domain's active version, or `ontology:none`
+    // when the domain has none (this one has none until BR6 plants it); before B50 the header left it null
     const hdr = await one(sql`select freshness_state, ontology_ref, schema_ref from objects.canonical_objects where object_id = ${C}::uuid and object_version = ${A5}::int`);
-    expect(hdr).toMatchObject({ schema_ref: 'TWN@v1', ontology_ref: null, freshness_state: { state: 'stale', age_days: 5, revisions: { freshness_policy: { version: 1, max_age_days: 2 }, ontology: null } } });
+    expect(hdr).toMatchObject({ schema_ref: 'TWN@v1', ontology_ref: 'ontology:none', freshness_state: { state: 'stale', age_days: 5, revisions: { freshness_policy: { version: 1, max_age_days: 2 }, ontology: null } } });
     // the tick step twin-freshness: once per (head, policy)
     const t1 = await tick(1);
     expect(t1).toMatchObject({ breaches: 1 });
