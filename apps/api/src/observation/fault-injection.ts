@@ -93,7 +93,11 @@ export type InjectionPoint =
   // policy columns (memory.expected_items — arrival 1 on every withdrawn read) and the absent rows' versions (arrival 2, only when the log
   // names a row the projection lacks). Fires on the first arrival, or on the nth when armed with armNth(): a caller answers by the
   // withdrawn rule — 503 EYE-DEG-001 for a read, a degraded memory source for a briefing — never a raw failure.
-  | 'b21.memory_fallback_content_unavailable';
+  | 'b21.memory_fallback_content_unavailable'
+  /* B40 va — F47 (DESIGN D17): the authenticate stage's check (stages/authenticate-va.ts) faults before it answers — the item is recorded
+     `unavailable` (never verified, never silently trusted: payload content_authenticity unknown, provenance PARTIAL) */
+  | 'f47.authenticity_check'
+  /* end B40 va */;
 
 /** Raised by an armed injection point. Distinguishable from a real failure. */
 export class InjectedFault extends Error {

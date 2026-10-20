@@ -32,11 +32,13 @@ import { ObservationExceptionFilter } from './observation.filter.js';
 /* B82 ev */ import { EvidenceB82Controller } from './evidence-b82/evidence-b82.controller.js'; /* end B82 ev */
 /* B40 §0 */ import { INTAKE_STAGE_PROVIDERS } from './acquisition/intake-stages.js'; /* end B40 §0 */
 /* B40 rg */ import { RegistryB40Controller } from './registry-b40/registry-b40.controller.js'; /* end B40 rg */
+/* B40 va */ import { AuthenticityController } from './authenticity-b40/authenticity.controller.js'; /* end B40 va */
 
 @Module({
   imports: [PipelineModule, IdentityModule],
   controllers: [ObservationController, UploadController, /* B82 ev: the cited evidence segment, the rights terms (0121 §EV) */ EvidenceB82Controller /* end B82 ev */,
-    /* B40 rg: the source registry, stewardship, the rights lifecycle and revocation impact (0123_b40_x_rg) */ RegistryB40Controller /* end B40 rg */],
+    /* B40 rg: the source registry, stewardship, the rights lifecycle and revocation impact (0123_b40_x_rg) */ RegistryB40Controller /* end B40 rg */,
+    /* B40 va: publisher keys, evidence authenticity + attributes, inheritance, transformation rules, the tenant retention register (0123_b40_x_va) */ AuthenticityController /* end B40 va */],
   providers: [
     SourcesService,
     SourceCredentialStore,

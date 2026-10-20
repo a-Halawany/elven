@@ -1564,6 +1564,41 @@ const BUNDLE_V1: Rule[] = [
     obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' })),
   /* end B40 rg */
   /* B40 va */
+  /* B40 §VA (0123_b40_x_va; F-P1-02: L1-C06, V00-T-033, ES-29-002, V02-T-038). EXACT rules, placed BEFORE the `observation.` collection prefix
+     rule and the `objects.read` / `objects.` rules (which would otherwise match them first and admit a domain analyst or the collection agent);
+     no earlier rule is a prefix of any of them (`observation.read` is not a prefix of `observation.authenticity.*`; `observation.evidence.retrieve`
+     not of `observation.evidence.attribute.set`; no earlier `objects.` or `retention.` prefix rule exists). DESIGN D14: no role; D15: nothing widened.
+       THE PUBLISHER KEYS (observation.authenticity.key.declare / .retire): a named DATA STEWARD or COLLECTION MANAGER — human-gated; the ports
+       re-check the person and the role (governance.assert_approver) and the acting principal; never an agent.
+       THE EVIDENCE ATTRIBUTE OVERRIDE (observation.evidence.attribute.set): a named DATA STEWARD — human-gated, re-checked in the port.
+       THE TRANSFORMATION RULES: PROPOSED by a data steward, DECIDED and RETIRED by the privacy officer — never the proposer (the port), never an
+       agent — human-gated.
+       THE READS — METADATA ONLY (D9: no evidence-content permission is widened; observation.evidence.retrieve is unchanged):
+         observation.authenticity.read (the key register, an evidence object's outcome and attributes) — observation.read's human readers plus the
+         data steward and the privacy officer; NOT the collection agent (the stage reads its keys through the intake read, not a route);
+         objects.obligations.read (inheritance, the rule register) — the readers of the graph's provenance among the data and decision roles;
+         retention.register.read (the per-tenant register) — TENANT readers only: the tenant administrator, the auditor, the retention authority. */
+  ...((): Rule[] => {
+    const d = (role: string) => ({ role, atScope: 'DOMAIN' as Scope });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const audit: Obligation[] = [{ type: 'audit_access' }];
+    const tenantReaders = [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }, { role: 'auditor', atScope: 'TENANT' as Scope }];
+    const authenticityReaders = [...tenantReaders, ...['domain_admin', 'domain_analyst', 'collection_manager', 'data_steward', 'privacy_officer'].map(d)];
+    const obligationReaders = [...tenantReaders, { role: 'retention_authority', atScope: 'TENANT' as Scope },
+      ...['domain_admin', 'domain_analyst', 'collection_manager', 'data_steward', 'privacy_officer', 'knowledge_owner', 'record_authority', 'retention_steward',
+          'risk_owner', 'decision_owner', 'decision_approver'].map(d)];
+    return [
+      { actionPrefix: 'observation.authenticity.key.declare', exact: true, requiredAnyRole: ['data_steward', 'collection_manager'].map(d), obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.authenticity.key.retire', exact: true, requiredAnyRole: ['data_steward', 'collection_manager'].map(d), obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.authenticity.read', exact: true, requiredAnyRole: authenticityReaders, obligations: audit, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.evidence.attribute.set', exact: true, requiredAnyRole: [d('data_steward')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'objects.transformation_rule.propose', exact: true, requiredAnyRole: [d('data_steward')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'objects.transformation_rule.decide', exact: true, requiredAnyRole: [d('privacy_officer')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'objects.transformation_rule.retire', exact: true, requiredAnyRole: [d('privacy_officer')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'objects.obligations.read', exact: true, requiredAnyRole: obligationReaders, obligations: audit, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'retention.register.read', exact: true, requiredAnyRole: [...tenantReaders, { role: 'retention_authority', atScope: 'TENANT' as Scope }], obligations: audit, requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
   /* end B40 va */
   /* B40 in */
   /* end B40 in */

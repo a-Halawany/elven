@@ -19,6 +19,7 @@ import type { EyeConfig } from '../../config/config.js';
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { AcquisitionWrites, MeasurementArgs, ObservationReads } from '../observation.capabilities.js';
+/* B40 va */ import type { AuthenticityMeasure } from '../observation.capabilities.js'; import { authenticityDimension } from '../authenticity-b40/coverage-dimension.js'; /* end B40 va */
 
 export const CALC_VERSION = 'coverage-calc@1.1.0';
 
@@ -104,6 +105,9 @@ export interface ObservedFacts {
   correctionCount: number;
   medianCorrectionLagSeconds: number | null;
   evidenceRefs: string[];
+  /* B40 va: the recorded content-authenticity outcomes of the window (observation.authenticity_measure; L1-C06) — absent / null: none recorded */
+  authenticity?: AuthenticityMeasure | null;
+  /* end B40 va */
 }
 
 export interface DimensionResult {
@@ -231,7 +235,7 @@ export class CoverageService {
      * mechanism, so the honest value is `unknown`. A green padlock here would be
      * the single most misleading thing this product could display.
      */
-    out.push(na('authenticity') ?? {
+    out.push(na('authenticity') ?? /* B40 va: MEASURED when outcomes are recorded (SRC@v4) */ authenticityDimension(facts.authenticity) ?? /* end B40 va */ {
       dimension: 'authenticity', state: 'unknown', valueNumeric: null,
       valueText: 'content authenticity: no publisher signature mechanism exists for this source. TLS and digests establish transport and byte integrity, not that the content genuinely originates from the claimed source.',
       denominator: null, naReason: null, errorClass: null, confidence: 'none',

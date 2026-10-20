@@ -75,6 +75,9 @@ export interface ObservationReads {
   readSchedulerEntries(): any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readCanonicalObjects(): any;
+  /* B40 va: authenticity as a measured coverage dimension (L1-C06) — the source's recorded outcomes in a window (0123_b40_x_va) */
+  authenticityMeasure(a: { tenantId: string | null; domainId: string | null; sourceId: string; from: string; to: string }): Promise<AuthenticityMeasure | null>;
+  /* end B40 va */
   /**
    * CP-6 B6 (0063): what is subscribed to a memory change at PUBLICATION — evidence the MemoryCorrected event
    * carries, never authority (the dispatcher re-resolves at delivery) — and the claims derived from corrected
@@ -369,6 +372,10 @@ export interface AcquisitionWrites extends ObservationReads {
   /* B40 §0: the intake stages' record ports (called from their stage's `record` inside the admission / quarantine transaction) — one
      reserved block per part; a part declares here and implements in its block of ObservationCapabilityImpl below */
   /* B40 va */
+  /** §VA (0123_b40_x_va): the authenticity outcome of one item — an admitted EVD version or a quarantine case — + custody.authenticity_recorded. */
+  recordEvidenceAuthenticity(a: { tenantId: string; domainId: string; record: Record<string, unknown>; correlationId: string }): Promise<string>;
+  /** §VA: the evidence attributes of an admitted EVD version from its SRC@v4 contract (none for v1–v3); the rows written. */
+  recordEvidenceAttributes(a: { tenantId: string; domainId: string; evdObjectId: string; evdVersion: number; correlationId: string }): Promise<number>;
   /* end B40 va */
   /* B40 in */
   /* end B40 in */
@@ -377,6 +384,13 @@ export interface AcquisitionWrites extends ObservationReads {
   /* B40 cr */
   /* end B40 cr */
 }
+
+/* B40 va */
+/** §VA: what observation.authenticity_measure answers for a source and window (counts of recorded outcomes; recorded = 0 → unknown). */
+export interface AuthenticityMeasure {
+  recorded: number; verified: number; failed: number; unsigned: number; unavailable: number; schemes: string[]; last_recorded_at: string | null;
+}
+/* end B40 va */
 
 /* B23 (0084) stream */
 /** What the stream ports answer: the stream as it now stands, plus the port's own facts (resumed, redelivered, requested, …). */
@@ -1052,6 +1066,24 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
   /* end B23 stream */
   /* B40 §0: the parts' record ports (reserved blocks, matching AcquisitionWrites above) */
   /* B40 va */
+  async recordEvidenceAuthenticity(a: { tenantId: string; domainId: string; record: Record<string, unknown>; correlationId: string }): Promise<string> {
+    const rows = await this.call<{ r: string }>(sql`select observation.record_evidence_authenticity(${a.tenantId}::uuid, ${a.domainId}::uuid,
+      ${JSON.stringify(a.record)}::jsonb, ${a.correlationId}::uuid) as r`);
+    return String(rows[0]?.r);
+  }
+
+  async recordEvidenceAttributes(a: { tenantId: string; domainId: string; evdObjectId: string; evdVersion: number; correlationId: string }): Promise<number> {
+    const rows = await this.call<{ r: number }>(sql`select observation.record_evidence_attributes(${a.tenantId}::uuid, ${a.domainId}::uuid,
+      ${a.evdObjectId}::uuid, ${a.evdVersion}::int, ${a.correlationId}::uuid) as r`);
+    return Number(rows[0]?.r ?? 0);
+  }
+
+  /** §VA (L1-C06): the source's recorded authenticity outcomes in a window — the coverage dimension's measurement (null outside the read scope). */
+  async authenticityMeasure(a: { tenantId: string | null; domainId: string | null; sourceId: string; from: string; to: string }): Promise<AuthenticityMeasure | null> {
+    const rows = await this.call<{ r: AuthenticityMeasure | null }>(sql`select observation.authenticity_measure(${a.tenantId}::uuid, ${a.domainId}::uuid,
+      ${a.sourceId}::uuid, ${a.from}::timestamptz, ${a.to}::timestamptz) as r`);
+    return rows[0]?.r ?? null;
+  }
   /* end B40 va */
   /* B40 in */
   /* end B40 in */

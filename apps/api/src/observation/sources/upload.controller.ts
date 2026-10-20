@@ -23,7 +23,7 @@ interface UploadPayload {
   sourceId?: string;
   contractVersion?: number;
   /* B50 hd: documentTime is an ISO instant as before, or a stated time value (ES-26-004) */
-  files?: Array<{ filename?: string; mediaType?: string | null; base64?: string; documentTime?: string | TimeValue | null }>;
+  files?: Array<{ filename?: string; mediaType?: string | null; base64?: string; documentTime?: string | TimeValue | null; /* B40 va */ signature?: string | null /* end B40 va */ }>;
 }
 
 /** A ceiling on the intake itself, applied before anything is decoded. */
@@ -86,6 +86,12 @@ export class UploadController {
         }
       }
       /* end B50 hd */
+      /* B40 va: a detached publisher signature, when the operator supplies one — bounded at the boundary, never interpreted here */
+      if (f.signature !== undefined && f.signature !== null && (typeof f.signature !== 'string' || f.signature.length < 8 || f.signature.length > 8192 || !/^[A-Za-z0-9+/=._-]+$/.test(f.signature))) {
+        await this.pipeline.rejectAuthenticatedRequest(
+          envelope, principal, route, 'EYE-REQ-001', `the signature of ${String(f.filename)} is a detached signature (base64, or a detached compact JWS) of 8 to 8192 characters`, 400);
+      }
+      /* end B40 va */
       const bytes = Buffer.from(f.base64 as string, 'base64');
       total += bytes.byteLength;
       if (total > MAX_UPLOAD_BYTES) {
@@ -103,6 +109,7 @@ export class UploadController {
         documentTime: typeof f.documentTime === 'string' ? f.documentTime : null,
         documentTimeValue: f.documentTime !== null && typeof f.documentTime === 'object' ? f.documentTime : null,
         /* end B50 hd */
+        /* B40 va */ signature: typeof f.signature === 'string' ? f.signature : null, /* end B40 va */
       });
     }
 

@@ -56,6 +56,12 @@ import {
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 /* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../components/forms';
+/* B40 va */
+import { TenantRetentionRegister } from '../../../components/authenticity';
+import { authenticityApi } from '../../../lib/authenticity-api-b40';
+import { toRetentionRegister } from '../../../lib/authenticity-b40';
+import { ErrorNote } from '../../../components/ui';
+/* end B40 va */
 
 type Row = Record<string, unknown>;
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
@@ -462,6 +468,31 @@ function ActionRecord({ d }: { d: RetentionActionDetail }) {
   );
 }
 
+/* B40 va */
+function TenantRegisterSection({ tenantId }: { tenantId: string }) {
+  const [view, setView] = useState<ReturnType<typeof toRetentionRegister> | null>(null);
+  const [problem, setProblem] = useState<{ code: string; message: string; correlationId: string } | null>(null);
+  const [receipt, setReceipt] = useState<ReceiptT>(null);
+  return (
+    <section aria-labelledby="tenant-register-h" style={cardStyle}>
+      <h2 id="tenant-register-h" className="eye-text-label">The tenant’s retention register</h2>
+      <p className="eye-ev-note">Every domain of this tenant: its schedules with the evidence under each, the overdue, the next expiry and the active holds; the profiles no
+        active schedule governs. A tenant-wide read for an auditor, the tenant administrator or the retention authority — a domain-bound reader sees the server’s refusal.</p>
+      <GovernedButton label="Read the tenant retention register" pendingLabel="Reading the tenant retention register" variant="quiet"
+        onRun={async () => {
+          setProblem(null);
+          const r = await authenticityApi.retentionRegister(tenantId);
+          if (!r.ok || r.data === undefined) { setProblem(r.error ?? { code: `HTTP ${r.status}`, message: 'The tenant register was not read.', correlationId: '' }); setView(null); throw new Error('refused'); }
+          setReceipt(r.data.receipt); setView(toRetentionRegister(r.data.register));
+        }} />
+      <ErrorNote error={problem} />
+      {view !== null && <TenantRetentionRegister domains={view.domains} asOf={view.asOf} />}
+      <Receipt receipt={receipt} />
+    </section>
+  );
+}
+/* end B40 va */
+
 export default function RetentionPage() {
   const { scope } = useShell();
   const [schedules, setSchedules] = useState<RetentionRow[] | null>(null);
@@ -690,6 +721,11 @@ export default function RetentionPage() {
         <strong>delivered</strong>, human-gated, to a declared <strong>destination</strong>, the exchange closing on the recipient's <strong>acknowledgement</strong>.
         Every count, digest and refusal below is the server's; no credential value is ever shown.
       </UnknownNote>
+
+      {/* B40 va — the TENANT's retention register (V02-T-038): every domain's schedules, the evidence under each, the overdue, the next expiry and
+          the holds; read at TENANT scope (an auditor, the tenant administrator, the retention authority) — a domain-bound reader sees the refusal */}
+      <TenantRegisterSection tenantId={scope.tenantId} />
+      {/* end B40 va */}
 
       <section aria-labelledby="sched-h" style={cardStyle}>
         <h2 id="sched-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Schedules ({schedules === null ? '…' : schedules.length})</h2>
