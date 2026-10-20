@@ -147,6 +147,8 @@ importers:
         specifier: 4.1.11
         version: 4.1.11(@types/node@26.1.2)(vite@8.2.0(@types/node@26.1.2)(yaml@2.9.0))
 
+  packages/connector-sdk: {}
+
   packages/contracts:
     dependencies:
       ajv:

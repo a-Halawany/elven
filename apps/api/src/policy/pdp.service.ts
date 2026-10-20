@@ -1630,6 +1630,37 @@ const BUNDLE_V1: Rule[] = [
     obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B40 ap */
   /* B40 cr */
+  /* B40 §CR (0123_b40_x_cr; F-P1-12 — DP-14-003, IA-28-001/-005, IA-47-005; DESIGN D12, D14, D15). EXACT rules, placed BEFORE the
+     `observation.` collection prefix rule (which would admit a domain analyst and the collection agent to every one of them). No role is
+     added, nothing is widened; every port re-checks the bound action, the scope, the acting principal and the person / role / separation.
+       REGISTERING an adapter package — a collection manager (human-gated); APPROVING / rejecting it — a domain admin or a collection manager
+       (human-gated; the port refuses the registrant, an agent and an external collaborator — the second person, D12).
+       THE RUN'S OWN ACTS — loading the package in force (`observation.adapter.load`, a read), recording the transfer receipts
+       (`observation.egress.record`) and suspending the connector for requalification (`observation.connector.suspend`) — the source's
+       COLLECTION AGENT only (its run acts as it; the ports re-check the agent registered for the source and the run holding the lease); the
+       managers may read the binding too.
+       REQUALIFICATION — submitted by a collection manager, approved by a domain admin or a collection manager ≠ the submitter (human-gated);
+       CREDENTIAL ROTATION — a collection manager (human-gated).
+       THE READS — the connectors register and the egress receipts: exactly `observation.read`'s human readers (metadata, digests and byte
+       counts — never bytes, D9), audited. */
+  ...((): Rule[] => {
+    const d = (role: string) => ({ role, atScope: 'DOMAIN' as Scope });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const humanReaders = [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }, { role: 'auditor', atScope: 'TENANT' as Scope },
+      d('domain_admin'), d('domain_analyst'), d('collection_manager')];
+    return [
+      { actionPrefix: 'observation.adapter.register', exact: true, requiredAnyRole: [d('collection_manager')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.adapter.approve', exact: true, requiredAnyRole: [d('domain_admin'), d('collection_manager')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.adapter.load', exact: true, requiredAnyRole: [d('collection_agent'), d('collection_manager')], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.egress.record', exact: true, requiredAnyRole: [d('collection_agent')], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.connector.suspend', exact: true, requiredAnyRole: [d('collection_agent')], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.connector.requalification.submit', exact: true, requiredAnyRole: [d('collection_manager')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.connector.requalification.approve', exact: true, requiredAnyRole: [d('domain_admin'), d('collection_manager')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.connector.credential.rotate', exact: true, requiredAnyRole: [d('collection_manager')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.connectors.read', exact: true, requiredAnyRole: humanReaders, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.egress.read', exact: true, requiredAnyRole: humanReaders, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
   /* end B40 cr */
   {
     // The COLLECTION surface: run lifecycle, admission, quarantine, checkpoints,

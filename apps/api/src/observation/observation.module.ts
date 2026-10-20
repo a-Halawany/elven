@@ -43,6 +43,7 @@ import { RunPolicyCache } from './acquisition-policy/run-policy.js';
 import { ContractBackoffAp } from './acquisition-policy/contract-backoff.service.js';
 import { IngressPolicyAp } from './acquisition-policy/ingress-ap.js';
 /* end B40 ap */
+/* B40 cr */ import { ConnectorCellController } from './connector-cell/connector-cell.controller.js'; import { ConnectorCellService } from './connector-cell/connector-cell.service.js'; /* end B40 cr */
 
 @Module({
   imports: [PipelineModule, IdentityModule],
@@ -50,7 +51,8 @@ import { IngressPolicyAp } from './acquisition-policy/ingress-ap.js';
     /* B40 rg: the source registry, stewardship, the rights lifecycle and revocation impact (0123_b40_x_rg) */ RegistryB40Controller /* end B40 rg */,
     /* B40 va: publisher keys, evidence authenticity + attributes, inheritance, transformation rules, the tenant retention register (0123_b40_x_va) */ AuthenticityController /* end B40 va */,
     /* B40 in: the intake review queue, the case's why, the verdicts, the upload approval (0123 §IN) */ IntakeB40Controller /* end B40 in */,
-    /* B40 ap: the acquisition policy read (0123 §AP.7) */ AcquisitionPolicyController /* end B40 ap */],
+    /* B40 ap: the acquisition policy read (0123 §AP.7) */ AcquisitionPolicyController /* end B40 ap */,
+    /* B40 cr: the connectors register, the egress receipts, the adapter packages, requalification, credential rotation (0123 §CR) */ ConnectorCellController /* end B40 cr */],
   providers: [
     SourcesService,
     SourceCredentialStore,
@@ -74,6 +76,7 @@ import { IngressPolicyAp } from './acquisition-policy/ingress-ap.js';
        run's cached authorization, the contract's retry, the ingress check the integrator folds into the inspect composition) */
     AcquisitionPolicyStore, RateBucket, RobotsService, RunPolicyCache, ContractBackoffAp, IngressPolicyAp,
     /* end B40 ap */
+    /* B40 cr: the connector cell (the adapter kind's connector, its egress gateway, the contract tests) */ ConnectorCellService, /* end B40 cr */
     // Registered AFTER the Phase 0 filter so it is consulted first for these
     // routes; a refusal a governed port raised deliberately answers as the rule
     // it is, and everything else falls through unchanged.

@@ -27,8 +27,9 @@
  *   adapter/nordwerk-logistics-consignments-1.0.0/  the customer-written adapter (it FOLLOWS the off-registry link — scene B40-5)
  *   adapter/nordwerk-logistics-consignments-1.0.1/  the requalified adapter (it follows only links on its declared destinations)
  *
- * The adapter's module speaks a PROVISIONAL cell protocol (`acquire(ctx)` with `ctx.gatewayFetch` and `ctx.emit`); §CR owns the SDK and
- * the cell protocol and may rebuild both packages from this script when it settles them (their digests are recorded, never hard-coded).
+ * The adapter's module speaks the cell protocol `eye-cell/1` (§CR settled it: packages/connector-sdk — `acquire(ctx)` with `ctx.gatewayFetch`,
+ * `ctx.emit`, `ctx.log`; the package digest is sha256 over "<file>\0<sha256>\n" for the files sorted by name). §CR rebuilt both packages
+ * from this script when it settled the protocol (their digests are recorded, never hard-coded).
  *
  * Deterministic: re-running writes byte-identical files and digests. Run: `node scripts/phase6/build-b40-fixtures.mjs`.
  */
@@ -249,11 +250,11 @@ function adapter(version, followsOffRegistry) {
     name: 'nordwerk-logistics-consignments', version, entry: 'index.mjs',
     author: 'R. Haddad\'s firm — partner logistics (SYNTHETIC, customer-written)',
     declared_destinations: destinations, purposes: ['corridor monitoring', 'supply assurance'], data_classes: ['consignment status (internal)'],
-    protocol: 'b40-cell-provisional-1', synthetic: true,
+    protocol: 'eye-cell/1', synthetic: true,
   });
   const code = `/**
  * nordwerk-logistics-consignments ${version} — a CUSTOMER-WRITTEN adapter (SYNTHETIC; CP-6 B40 scene 5). It runs only inside §CR's
- * connector cell; its only egress is ctx.gatewayFetch (the egress gateway), and it holds no credential. Protocol: b40-cell-provisional-1.
+ * connector cell; its only egress is ctx.gatewayFetch (the egress gateway), and it holds no credential. Protocol: eye-cell/1.
  */
 const START = 'https://consignments.partner-logistics.synthetic.example/v1/consignments?page=1';
 const REGISTERED = new Set(${JSON.stringify(destinations)});
@@ -280,10 +281,11 @@ export async function acquire(ctx) {
 }
 `;
   const files = [write(dir, 'adapter.json', descriptor), write(dir, 'index.mjs', code)];
-  const packageDigest = sha256(files.map((f) => `${f.file}\0${f.sha256}\n`).join(''));
+  // the SDK's package digest (@eye/connector-sdk packageDigest): the files sorted by name in byte order
+  const packageDigest = sha256([...files].sort((a, b) => Buffer.compare(Buffer.from(a.file), Buffer.from(b.file))).map((f) => `${f.file}\0${f.sha256}\n`).join(''));
   manifest(dir, {
     set: `nordwerk-logistics-consignments-${version}`,
-    note: `SYNTHETIC customer-written adapter package (CP-6 B40 scene 5). package_digest = sha256 over "<file>\\0<sha256>\\n" for the files in the order listed (§CR may define the package digest otherwise and rebuild this set).`,
+    note: `SYNTHETIC customer-written adapter package (CP-6 B40 scene 5). package_digest = sha256 over "<file>\\0<sha256>\\n" for the files sorted by name (the SDK's packageDigest; protocol eye-cell/1).`,
     files, package_digest: packageDigest,
     ...(followsOffRegistry ? { planted_defect: 'DEF-B40-05: follows tracking_detail_url to an unregistered host — the gateway blocks it, the run fails closed, the contract is suspended, requalification required' }
                            : { requalifies: '1.0.0', change: 'follows tracking links on declared destinations only' }),
