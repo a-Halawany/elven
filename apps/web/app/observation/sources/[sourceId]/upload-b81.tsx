@@ -10,6 +10,7 @@ import { useId, useState } from 'react';
 import { FileIntake, Field } from '../../../../components/forms';
 import { GovernedButton, LiveStatus } from '../../../../components/observation';
 import { contractCheck, runWords, uploadAvailability, uploadEvidence, uploadPayload, uploadScope } from '../../../../lib/upload-b81';
+/* B40 in */ import { intake, uploadOutcomeLines } from '../../../../lib/intake-b40'; /* end B40 in */
 
 type Err = { code: string; message: string; correlationId: string };
 
@@ -53,6 +54,13 @@ export function EvidenceUpload({ scope, sourceId, source, onError, onDone }: {
           const r = await uploadEvidence(scope, payload);
           if (!r.ok) { onError(r.error ?? null); throw new Error('refused'); }
           setOutcome(runWords(r.data?.run));
+          /* B40 in: a quarantined or held item said from the review queue's own record of it (its class; an approval awaited — SP-22) */
+          const run = r.data?.run;
+          if (run !== undefined && run.quarantined > 0) {
+            const q = await intake.queue(scope, 'open');
+            if (q.ok && q.data !== undefined) setOutcome(uploadOutcomeLines(run, payload.files.map((f) => f.filename), q.data.queue.cases.filter((c) => c.source_id === sourceId)).join(' · '));
+          }
+          /* end B40 in */
           setFiles([]);
           await onDone();
         }}
