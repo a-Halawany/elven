@@ -261,10 +261,18 @@ export class ObservationController {
         const r = await this.sources.setRights(
           cap, scope, envelope.correlation_id, sourceId,
           p?.contractVersion as number, p?.rightsState as string, p?.evidence ?? '');
+        /* B40 rg: the v1–v3 route RE-POINTED to the rights lifecycle (DESIGN D4) — a withdrawal through it is the lifecycle's withdrawal
+           (observation.set_rights_state → observation._rg_withdraw, 0123_b40_x_rg): the schedule leaves in the same operation and the
+           withdrawal is announced (SourceHealthChanged, cause rights — B22's consumer sets the markers). Every other call as before. */
+        const withdrawn = p?.rightsState === 'withdrawn';
+        if (withdrawn) await this.orchestrator.syncSchedule(cap, scope, sourceId, p?.contractVersion as number, 'suspended');
         return {
           result: r, targetType: 'SRC', targetId: sourceId,
-          targetVersion: String(p?.contractVersion), outboxEvent: null,
+          targetVersion: String(p?.contractVersion),
+          outboxEvent: withdrawn ? { eventType: 'SourceHealthChanged', payload: { schema_version: 'v1', source_id: sourceId, contract_version: p?.contractVersion,
+            state: 'suspended', reason: 'rights withdrawn through the source rights route', cause: 'rights' } } : null,
         };
+        /* end B40 rg */
       });
     return { source: out.result, receipt: receipt(out) };
   }

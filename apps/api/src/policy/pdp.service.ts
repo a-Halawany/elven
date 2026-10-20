@@ -1527,6 +1527,41 @@ const BUNDLE_V1: Rule[] = [
      would otherwise match them first and admit a domain analyst or the collection agent) — DESIGN D15; no role (D14), nothing widened.
      Reserved empty by the prelude; §AC adds no rule. */
   /* B40 rg */
+  /* B40 §RG (0123_b40_x_rg; F-P1-01, DESIGN D4/D5/D13). EXACT rules, before the `observation.` collection prefix rule (which would otherwise
+     match them first and admit the collection agent); no earlier prefix rule is a prefix of any of these names (`observation.source.rights`
+     is not a prefix of `observation.source.change_rights`; none starts `observation.read`). No role (D14); nothing widened; D9: none of these
+     reads returns evidence content (registry metadata, refs and owners only).
+       DISCOVERY      a domain analyst or collection manager proposes / declines a candidate (human-gated; the port re-checks the person, the
+                      role, the acting principal); the PROMOTION is the existing `observation.source.register` (unchanged).
+       EVALUATION     a collection manager (the port refuses the registrar of the version and an agent — D5), human-gated.
+       RIGHTS         the rights lifecycle (narrow / withdraw / restore) — a collection manager, human-gated (the port re-checks; D4).
+       CUSTOMER       the tenant's customer sponsor or tenant administrator (TENANT bindings), human-gated; never the registrar or approver (D13).
+       STEWARDSHIP    a data steward or collection manager, human-gated.
+       INCIDENTS      a collection manager or domain analyst opens (owned by a collection manager — PER-11), a collection manager resolves.
+       READS          the registry record and the candidates: `observation.read`'s readers WITHOUT the collection agent; the revocation impact
+                      and the change preview: `observation.source_impact.read`'s readers (B24) — audited reads. */
+  { actionPrefix: 'observation.source.discover', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.source.evaluate', exact: true, requiredAnyRole: [{ role: 'collection_manager', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.source.change_rights', exact: true, requiredAnyRole: [{ role: 'collection_manager', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.source.customer_approve', exact: true, requiredAnyRole: [{ role: 'customer_sponsor', atScope: 'TENANT' }, { role: 'tenant_admin', atScope: 'TENANT' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.source.stewardship', exact: true, requiredAnyRole: [{ role: 'data_steward', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.source.incident', exact: true, requiredAnyRole: [{ role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.registry.read', exact: true, requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'customer_sponsor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'data_steward', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  ...(['observation.rights.impact.read', 'observation.source.change_impact.read'] as const).map((actionPrefix): Rule => ({ actionPrefix, exact: true, requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' },
+      { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' })),
   /* end B40 rg */
   /* B40 va */
   /* end B40 va */

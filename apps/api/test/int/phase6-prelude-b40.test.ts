@@ -103,9 +103,12 @@ describe('§0.2 · the use-refusal stubs', () => {
     expect(String(lu['src'])).toMatch(/observation\._b40_use_refusal\(o\.tenant_id, o\.domain_id, ev\.id, ev\.version::int, st\)/);
     expect(String(lu['src'])).toMatch(/rights_expired/);   // B82's checks kept, before the B40 call
   });
-  it('the stubs answer NULL for any evidence (they never look)', async () => {
+  it('the stubs answer NULL for any evidence (they never look) — §RG\'s stub REPLACED (0123_b40_x_rg, D4): it answers NULL for rights in force and rights_withdrawn when either rights source is withdrawn', async () => {
     const id = uuidv7();
-    expect(await one(sql`select observation._rg_use_refusal(${h.fx.tenantId}::uuid, ${h.fx.domainId}::uuid, ${id}::uuid, 1, ${id}::uuid, 1, 'withdrawn', 'withdrawn') r`)).toEqual({ r: null });
+    /* B40 rg: §RG replaced its stub — this case asserted the stub's inertness; it now asserts §RG's answer on the same inputs */
+    expect(await one(sql`select observation._rg_use_refusal(${h.fx.tenantId}::uuid, ${h.fx.domainId}::uuid, ${id}::uuid, 1, ${id}::uuid, 1, 'confirmed', 'in_force') r`)).toEqual({ r: null });
+    expect((await one(sql`select observation._rg_use_refusal(${h.fx.tenantId}::uuid, ${h.fx.domainId}::uuid, ${id}::uuid, 1, ${id}::uuid, 1, 'withdrawn', 'withdrawn') r`))['r']).toMatchObject({ class: 'rights_withdrawn' });
+    /* end B40 rg */
     expect(await one(sql`select observation._va_use_refusal(${h.fx.tenantId}::uuid, ${h.fx.domainId}::uuid, ${id}::uuid, 1) r`)).toEqual({ r: null });
     expect(await one(sql`select observation._b40_use_refusal(${h.fx.tenantId}::uuid, ${h.fx.domainId}::uuid, ${id}::uuid, 1, '{}'::jsonb) r`)).toEqual({ r: null });
   });

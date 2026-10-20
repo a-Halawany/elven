@@ -193,6 +193,7 @@ export default function SourcesPage() {
       <div className="eye-src-head">
         <h1 className="eye-src-h1">Sources</h1>
         <Link href="/observation/sources/new" className="eye-src-link eye-src-register">Register a source</Link>
+        {/* B40 rg */}<Link href="/observation/sources/discovery" className="eye-src-link eye-src-register">Source discovery</Link>{/* end B40 rg */}
       </div>
       <ErrorNote error={error} />
 
