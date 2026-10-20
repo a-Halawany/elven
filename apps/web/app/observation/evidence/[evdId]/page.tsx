@@ -32,6 +32,12 @@ import { bytesVerification, evidenceDisclosure, type ContractRights, type Custod
 import type { CitationRef } from '../../../../lib/b82-seams';
 import { RightsTermsForm } from './rights-form';
 /* end B82 ev */
+/* B40 va */
+import { EvidenceAuthenticityPanel } from '../../../../components/authenticity';
+import { authenticityApi } from '../../../../lib/authenticity-api-b40';
+import { UNKNOWN_NOTE, contentAuthenticityNote, toEvidenceAuthenticity, type EvidenceVersionAuthenticity } from '../../../../lib/authenticity-b40';
+import { AttributeOverrideForm } from './attribute-form';
+/* end B40 va */
 
 const AUTHENTICITY_LABEL: Record<string, string> = {
   transport_endpoint: 'Transport endpoint',
@@ -69,6 +75,19 @@ export default function EvidenceDetailPage() {
   const [rev, setRev] = useState(0);
   const resolved = useCitationResolutions(scope, ownRef, rev);
   /* end B82 ev */
+  /* B40 va — the recorded publisher-signature outcome and the evidence attributes of each version (metadata only; observation.authenticity.read) */
+  const [authn, setAuthn] = useState<{ versions: EvidenceVersionAuthenticity[] } | { refused: { code: string; message: string; correlationId: string } } | null>(null);
+  const [authnRev, setAuthnRev] = useState(0);
+  useEffect(() => {
+    let live = true;
+    void authenticityApi.evidence(scope, evdId).then((r) => {
+      if (!live) return;
+      if (r.ok && r.data !== undefined) setAuthn({ versions: toEvidenceAuthenticity(r.data.authenticity) });
+      else setAuthn({ refused: r.error ?? { code: `HTTP ${r.status}`, message: 'The authenticity of this evidence was not read; reload the page to read it again.', correlationId: '' } });
+    });
+    return () => { live = false; };
+  }, [scope, evdId, authnRev]);
+  /* end B40 va */
 
   const load = useCallback(async (at: string | null) => {
     const r = await observation.getEvidence(scope, evdId, at);
@@ -191,17 +210,25 @@ export default function EvidenceDetailPage() {
             );
           })}
         </dl>
-        <UnknownNote>
-          Content authenticity is <strong>unknown</strong>, and that is the honest answer rather than a gap. This
-          publisher offers no signature mechanism; TLS establishes which endpoint we reached and the digest
-          establishes that the stored bytes are the bytes that arrived. Neither establishes that the content is
-          genuinely the publisher’s.
-        </UnknownNote>
+        {/* B40 va: the content-authenticity sentence — for an item with no recorded outcome EXACTLY the hosted journey 7's words (D8); a
+            recorded outcome (an SRC@v4 source) says what it is, FAILED included (admitted marked, readable, refused at decision-active use) */}
+        {(() => {
+          const v = authn !== null && 'versions' in authn ? authn.versions.find((x) => x.version === Number(evd['object_version'])) ?? null : null;
+          const note = contentAuthenticityNote(v);
+          return note.kind === 'unknown' && authenticity['content_authenticity'] !== 'verified'
+            ? <UnknownNote>{UNKNOWN_NOTE.lead} <strong>{UNKNOWN_NOTE.strong}</strong>{UNKNOWN_NOTE.rest}</UnknownNote>
+            : <UnknownNote>{note.kind === 'recorded' ? note.text : 'Content authenticity is verified: the publisher’s signature verified at admission.'}</UnknownNote>;
+        })()}
+        {authn !== null && 'refused' in authn ? <ErrorNote error={authn.refused} /> : null}
+        {authn !== null && 'versions' in authn ? <EvidenceAuthenticityPanel versions={authn.versions} /> : null}
+        <AttributeOverrideForm scope={scope} evdId={String(evd['object_id'] ?? evdId)} version={Number(evd['object_version'])} onChanged={() => setAuthnRev((n) => n + 1)} />
+        {/* end B40 va */}
       </section>
 
       {/* B82 ev — THE CITED SPAN, ITS VERIFICATION, ITS RIGHTS (CMP-025/028/031/032, UX-26-001/003/005): the resolution of this version (short of
           the bytes), the bytes read only when a person asks (the EXISTING evidence-read authority — D9), a fragment shown highlighted in its parent */}
-      <B82Evidence scope={scope} evd={evd} payload={payload} source={source} resolved={resolved} lastRead={lastRead} setLastRead={setLastRead} onChanged={() => setRev((n) => n + 1)} />
+      <B82Evidence scope={scope} evd={evd} payload={payload} source={source} resolved={resolved} lastRead={lastRead} setLastRead={setLastRead} onChanged={() => setRev((n) => n + 1)}
+        /* B40 va */ recorded={authn !== null && 'versions' in authn ? authn.versions.find((x) => x.version === Number(evd['object_version'])) ?? null : null} /* end B40 va */ />
       {/* end B82 ev */}
 
       {/* ── chain of custody ───────────────────────────────────────── */}
@@ -385,9 +412,10 @@ export default function EvidenceDetailPage() {
 
 /* B82 ev */
 /** The page's §EV section: the resolution of THIS version, the cited bytes (own; a fragment highlighted in its parent), verification, rights. */
-function B82Evidence({ scope, evd, payload, source, resolved, lastRead, setLastRead, onChanged }: {
+function B82Evidence({ scope, evd, payload, source, resolved, lastRead, setLastRead, onChanged, /* B40 va */ recorded /* end B40 va */ }: {
   scope: Scope; evd: Record<string, unknown>; payload: Record<string, unknown>; source: Record<string, unknown> | null; resolved: ResolutionState;
   lastRead: ViewerRead | null; setLastRead: (r: ViewerRead) => void; onChanged: () => void;
+  /* B40 va */ recorded: EvidenceVersionAuthenticity | null; /* end B40 va */
 }) {
   const [verifyError, setVerifyError] = useState<{ code: string; message: string; correlationId: string } | null>(null);
   const r = resolved.state === 'ready' ? [...resolved.byKey.values()][0] ?? null : null;
@@ -403,8 +431,12 @@ function B82Evidence({ scope, evd, payload, source, resolved, lastRead, setLastR
   const authenticity = (payload['authenticity'] ?? {}) as Record<string, string>;
   const facets: VerificationFacet[] = [
     bytesVerification(lastRead),
-    { facet: 'Publisher signature (content authenticity)', outcome: authenticity['content_authenticity'] === 'verified' ? 'verified' : 'unavailable',
-      detail: authenticity['content_authenticity'] === 'verified' ? 'the publisher’s signature verified at admission' : 'this publisher offers no signature mechanism; the content’s origin is neither verified nor refuted', checkedAt: null },
+    /* B40 va: the recorded outcome (a FAILED signature is a failed facet; no record keeps B82's words) */
+    { facet: 'Publisher signature (content authenticity)', outcome: authenticity['content_authenticity'] === 'verified' ? 'verified' : recorded?.outcome === 'failed' ? 'failed' : 'unavailable',
+      detail: authenticity['content_authenticity'] === 'verified' ? 'the publisher’s signature verified at admission'
+        : recorded !== null && recorded.outcome !== 'not_recorded' ? (recorded.statement ?? recorded.outcome) : 'this publisher offers no signature mechanism; the content’s origin is neither verified nor refuted',
+      checkedAt: recorded?.recordedAt ?? null },
+    /* end B40 va */
   ];
   const sourceId = leaf?.sourceId ?? (/^SRC:([0-9a-f-]{36})@/.exec(String(evd['provenance_ref'] ?? ''))?.[1] ?? null);
   const contractVersion = leaf?.contractVersion ?? (Number(/@(\d+)$/.exec(String(evd['provenance_ref'] ?? ''))?.[1]) || null);
