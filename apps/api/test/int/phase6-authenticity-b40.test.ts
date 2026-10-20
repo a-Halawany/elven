@@ -72,14 +72,21 @@ const classStatus = (message: string): number | null => {
 /* ───────────── the routes (in process) ───────────── */
 const req = (as: AuthenticatedPrincipal, action: string, type: string, id: string | null) => h.req(as, action, type, id, 'observation');
 const declareKey = (as: AuthenticatedPrincipal, payload: Row) => va.declareKey(req(as, 'observation.authenticity.key.declare', 'SRC', String(payload['sourceId'] ?? '')), T(), D(), { payload }) as Promise<{ key: Row }>;
-const retireKey = (as: AuthenticatedPrincipal, keyId: string, reason: string) => va.retireKey(req(as, 'observation.authenticity.key.retire', 'PBK', keyId), T(), D(), keyId, { payload: { reason } }) as Promise<{ key: Row }>;
+/** The retirement binds the fingerprint reviewed: by default the key's own, as the register reads it now. */
+const retireKey = async (as: AuthenticatedPrincipal, keyId: string, reason: string, fingerprint?: string) => {
+  const fp = fingerprint ?? String((await one(sql`select fingerprint f from observation.publisher_keys where key_id = ${keyId}::uuid`))['f']);
+  return va.retireKey(req(as, 'observation.authenticity.key.retire', 'PBK', keyId), T(), D(), keyId, { payload: { reason, fingerprint: fp } }) as Promise<{ key: Row }>;
+};
+const ruleDigest = async (ruleId: string) => String((await one(sql`select objects.tr_digest(r) d from objects.transformation_rules r where rule_id = ${ruleId}::uuid`))['d']);
 const readKeys = (as: AuthenticatedPrincipal, sourceId: string | null) => va.readKeys(req(as, 'observation.authenticity.read', sourceId === null ? 'PBK' : 'SRC', sourceId), T(), D(), { payload: { sourceId } }) as Promise<{ keys: Row & { sources: Row[] } }>;
 const readEvd = (as: AuthenticatedPrincipal, evdId: string) => va.readEvidence(req(as, 'observation.authenticity.read', 'EVD', evdId), T(), D(), evdId) as Promise<{ authenticity: Row & { versions: Row[] } }>;
 const setAttr = (as: AuthenticatedPrincipal, evdId: string, payload: Row) => va.setAttribute(req(as, 'observation.evidence.attribute.set', 'EVD', evdId), T(), D(), evdId, { payload }) as Promise<{ attribute: Row }>;
 const obligations = (as: AuthenticatedPrincipal, type: string, id: string, version: number) => va.readObligations(req(as, 'objects.obligations.read', type, id), T(), D(), { payload: { type, id, version } }) as Promise<{ obligations: Row & { obligations: Row[] } }>;
 const propose = (as: AuthenticatedPrincipal, payload: Row) => va.proposeRule(req(as, 'objects.transformation_rule.propose', 'TRR', null), T(), D(), { payload }) as Promise<{ rule: Row }>;
-const decide = (as: AuthenticatedPrincipal, ruleId: string, decision: string, reason: string) => va.decideRule(req(as, 'objects.transformation_rule.decide', 'TRR', ruleId), T(), D(), ruleId, { payload: { decision, reason } }) as Promise<{ rule: Row }>;
-const retireRule = (as: AuthenticatedPrincipal, ruleId: string, reason: string) => va.retireRule(req(as, 'objects.transformation_rule.retire', 'TRR', ruleId), T(), D(), ruleId, { payload: { reason } }) as Promise<{ rule: Row }>;
+const decide = async (as: AuthenticatedPrincipal, ruleId: string, decision: string, reason: string, digest?: string) =>
+  va.decideRule(req(as, 'objects.transformation_rule.decide', 'TRR', ruleId), T(), D(), ruleId, { payload: { decision, reason, digest: digest ?? await ruleDigest(ruleId) } }) as Promise<{ rule: Row }>;
+const retireRule = async (as: AuthenticatedPrincipal, ruleId: string, reason: string, digest?: string) =>
+  va.retireRule(req(as, 'objects.transformation_rule.retire', 'TRR', ruleId), T(), D(), ruleId, { payload: { reason, digest: digest ?? await ruleDigest(ruleId) } }) as Promise<{ rule: Row }>;
 const readRules = (as: AuthenticatedPrincipal) => va.readRules(req(as, 'objects.obligations.read', 'TRR', null), T(), D()) as Promise<{ rules: Row & { rules: Row[] } }>;
 const register = (as: AuthenticatedPrincipal) => va.readRegister({ eyeEnvelope: { ...h.env(as, 'retention.register.read', 'RET', null), scope: 'TENANT', domain_id: null }, eyePrincipal: as } as never, T()) as Promise<{ register: Row & { domains: Row[] } }>;
 const usable = (type: string, id: string, version: number, use: string) => sql`select objects.assert_usable(${type}, ${id}::uuid, ${version}::int, ${use})`.execute(h.su);
@@ -223,6 +230,8 @@ describe('VA1 · the publisher keys — declared and retired by a named data ste
     const wrong = await declareKey(aydin, { sourceId: customs, keyRef: 'djibouti-customs-2026', kind: 'signing_key', publicKeyPem: publisherKeyPair().publicKeyPem, reason: 'a key typed against the wrong source (SYNTHETIC)' });
     const ret = await retireKey(aydin, String(wrong.key['key_id']), 'mistyped — the key belongs to another publisher (SYNTHETIC)');
     expect(ret.key).toMatchObject({ state: 'retired', retired_by: aydin.principalId });
+    const stale = await refusal(retireKey(aydin, String(keyRow['key_id']), 'retiring the key I did not review', String(wrong.key['fingerprint'])));
+    expect(stale.message).toMatch(/^publisher key rejected \(stale\): the retirement names key .*; the key you reviewed is ed25519:/); expect(classStatus(stale.message)).toBe(409);
     const twice = await refusal(retireKey(aydin, String(wrong.key['key_id']), 'retired a second time'));
     expect(twice.message).toMatch(/^publisher key rejected \(state\): key .* was retired at/); expect(classStatus(twice.message)).toBe(409);
     const old = await declareKey(steward2, { sourceId: jwsSource, keyRef: 'jws-2025', kind: 'signing_key', publicKeyPem: publisherKeyPair().publicKeyPem, reason: 'the 2025 JWS key (SYNTHETIC)' });
@@ -437,6 +446,9 @@ describe('VA6 · most-restrictive inheritance and the transformation-rule regist
     ruleId = String(p.rule['rule_id']);
     expect(p.rule).toMatchObject({ state: 'proposed', proposed_by: dualRole.principalId });
     expect((await status('classification'))['status']).toBe('not_satisfied');
+    expect(p.rule['digest']).toMatch(/^[0-9a-f]{64}$/);
+    const stale = await refusal(decide(haas, ruleId, 'approve', 'approving another rule than the one I read', 'f'.repeat(64)));
+    expect(stale.message).toMatch(/^transformation rule rejected \(stale\): rule .* is recorded with digest [0-9a-f]{64}; the rule you reviewed is f{64}/);
     const self = await refusal(decide(dualRole, ruleId, 'approve', 'approving my own rule'));
     expect(self.message).toMatch(/^transformation rule rejected \(separation_of_duties\)/); expect(classStatus(self.message)).toBe(403);
     expect((await refusal(decide({ ...haas, kind: 'agent' }, ruleId, 'approve', 'an agent approving'))).status).toBe(403);

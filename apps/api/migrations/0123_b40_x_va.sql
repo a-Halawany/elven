@@ -408,8 +408,9 @@ REVOKE ALL ON FUNCTION observation.declare_publisher_key(uuid, uuid, uuid, uuid,
 GRANT EXECUTE ON FUNCTION observation.declare_publisher_key(uuid, uuid, uuid, uuid, text, text, text, text, timestamptz, timestamptz, uuid, text, uuid, uuid) TO eye_commit;
 
 /* The retirement (a mistyped key, a compromised one, a key the publisher withdrew): once, with a reason; the row kept. A retired key verifies
-   nothing admitted after it — an item signed only with it reads as an unknown signer and is quarantined (D6). */
-CREATE OR REPLACE FUNCTION observation.retire_publisher_key(p_tenant uuid, p_domain uuid, p_key_id uuid, p_reason text, p_actor uuid, p_correlation uuid) RETURNS jsonb
+   nothing admitted after it — an item signed only with it reads as an unknown signer and is quarantined (D6). The act BINDS the fingerprint
+   the person reviewed (p_fingerprint): the key the id names must be that key (stale otherwise) — the command review's binding, server-enforced. */
+CREATE OR REPLACE FUNCTION observation.retire_publisher_key(p_tenant uuid, p_domain uuid, p_key_id uuid, p_fingerprint text, p_reason text, p_actor uuid, p_correlation uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = observation, governance, pg_catalog, pg_temp AS $$
 DECLARE v_actor uuid; k observation.publisher_keys%ROWTYPE; v_at timestamptz := clock_timestamp();
 BEGIN
@@ -422,6 +423,9 @@ BEGIN
   END IF;
   SELECT * INTO k FROM observation.publisher_keys x WHERE x.key_id = p_key_id AND x.tenant_id = p_tenant AND x.domain_id = p_domain FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'publisher key rejected (unknown_key): key % is not recorded in this domain', coalesce(p_key_id::text, '<none>') USING ERRCODE = '23503'; END IF;
+  IF p_fingerprint IS DISTINCT FROM k.fingerprint THEN
+    RAISE EXCEPTION 'publisher key rejected (stale): the retirement names key % (%); the key you reviewed is %', p_key_id, k.fingerprint, coalesce(p_fingerprint, '<none>') USING ERRCODE = '23514';
+  END IF;
   IF k.retired_at IS NOT NULL THEN
     RAISE EXCEPTION 'publisher key rejected (state): key % was retired at % (%)', k.fingerprint, graph.pv_iso(k.retired_at), k.retire_reason USING ERRCODE = '55000';
   END IF;
@@ -430,8 +434,8 @@ BEGIN
   VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, k.key_id, k.source_id, 'key.retired', v_actor, jsonb_build_object('fingerprint', k.fingerprint, 'reason', k.retire_reason), p_correlation);
   RETURN observation.pk_json(k, v_at);
 END $$;
-REVOKE ALL ON FUNCTION observation.retire_publisher_key(uuid, uuid, uuid, text, uuid, uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION observation.retire_publisher_key(uuid, uuid, uuid, text, uuid, uuid) TO eye_commit;
+REVOKE ALL ON FUNCTION observation.retire_publisher_key(uuid, uuid, uuid, text, text, uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION observation.retire_publisher_key(uuid, uuid, uuid, text, text, uuid, uuid) TO eye_commit;
 
 -- §VA.7 THE INTAKE READ (the authenticate stage; no request context) ─────────────────────────────────────────────────────────────────────
 /* The source's keys that are not retired, with their validity — PUBLIC key material only (the PEM of a public key, a pin, a fingerprint), never
@@ -993,9 +997,18 @@ REVOKE ALL ON FUNCTION observation.authenticity_measure(uuid, uuid, uuid, timest
 GRANT EXECUTE ON FUNCTION observation.authenticity_measure(uuid, uuid, uuid, timestamptz, timestamptz) TO eye_app, eye_commit;
 
 -- §VA.14 THE TRANSFORMATION-RULE PORTS ──────────────────────────────────────────────────────────────────────────────────────────────────────
+/* The DIGEST of a rule's immutable content (what a person reviews before deciding or retiring it; the acts bind it — stale otherwise). */
+CREATE OR REPLACE FUNCTION objects.tr_digest(r objects.transformation_rules) RETURNS text
+LANGUAGE sql IMMUTABLE SET search_path = objects, pg_catalog, pg_temp AS $$
+  SELECT encode(sha256(convert_to(jsonb_build_object('rule_id', r.rule_id, 'tenant_id', r.tenant_id, 'domain_id', r.domain_id, 'obligation', r.obligation,
+    'transformation', r.transformation, 'from_value', r.from_value, 'to_value', r.to_value, 'object_types', to_jsonb(r.object_types), 'rationale', r.rationale,
+    'proposed_by', r.proposed_by)::text, 'UTF8')), 'hex')
+$$;
+REVOKE ALL ON FUNCTION objects.tr_digest(objects.transformation_rules) FROM PUBLIC;
+
 CREATE OR REPLACE FUNCTION objects.tr_json(r objects.transformation_rules) RETURNS jsonb
 LANGUAGE sql STABLE SET search_path = objects, graph, pg_catalog, pg_temp AS $$
-  SELECT jsonb_build_object('rule_id', r.rule_id, 'obligation', r.obligation, 'transformation', r.transformation, 'from_value', r.from_value, 'to_value', r.to_value,
+  SELECT jsonb_build_object('rule_id', r.rule_id, 'digest', objects.tr_digest(r), 'obligation', r.obligation, 'transformation', r.transformation, 'from_value', r.from_value, 'to_value', r.to_value,
     'object_types', to_jsonb(r.object_types), 'rationale', r.rationale, 'state', r.state, 'proposed_by', r.proposed_by, 'proposed_at', graph.pv_iso(r.proposed_at),
     'decided_by', r.decided_by, 'decided_at', graph.pv_iso(r.decided_at), 'decision_reason', r.decision_reason,
     'retired_by', r.retired_by, 'retired_at', graph.pv_iso(r.retired_at), 'retire_reason', r.retire_reason)
@@ -1064,8 +1077,8 @@ REVOKE ALL ON FUNCTION objects.propose_transformation_rule(uuid, uuid, uuid, tex
 GRANT EXECUTE ON FUNCTION objects.propose_transformation_rule(uuid, uuid, uuid, text, text, text, text, text[], text, uuid, uuid) TO eye_commit;
 
 /* DECIDE (objects.transformation_rule.decide — the privacy officer, human-gated; never the proposer, never an agent): approve or reject a
-   proposed rule with a reason. */
-CREATE OR REPLACE FUNCTION objects.decide_transformation_rule(p_tenant uuid, p_domain uuid, p_rule_id uuid, p_decision text, p_reason text, p_actor uuid, p_correlation uuid) RETURNS jsonb
+   proposed rule with a reason, on the DIGEST of the rule the person reviewed (stale otherwise). */
+CREATE OR REPLACE FUNCTION objects.decide_transformation_rule(p_tenant uuid, p_domain uuid, p_rule_id uuid, p_digest text, p_decision text, p_reason text, p_actor uuid, p_correlation uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = objects, governance, pg_catalog, pg_temp AS $$
 DECLARE v_actor uuid; r objects.transformation_rules%ROWTYPE;
 BEGIN
@@ -1081,6 +1094,9 @@ BEGIN
   IF p_reason IS NULL OR length(btrim(p_reason)) < 8 OR length(p_reason) > 2000 THEN
     RAISE EXCEPTION 'transformation rule rejected (reason): a decision states its reason (8 to 2000 characters)' USING ERRCODE = '22023';
   END IF;
+  IF p_digest IS DISTINCT FROM objects.tr_digest(r) THEN
+    RAISE EXCEPTION 'transformation rule rejected (stale): rule % is recorded with digest %; the rule you reviewed is %', r.rule_id, objects.tr_digest(r), coalesce(p_digest, '<none>') USING ERRCODE = '23514';
+  END IF;
   IF r.state <> 'proposed' THEN
     RAISE EXCEPTION 'transformation rule rejected (state): rule % is %; only a proposed rule is decided', r.rule_id, r.state USING ERRCODE = '55000';
   END IF;
@@ -1090,11 +1106,12 @@ BEGIN
   VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, r.rule_id, 'rule.' || r.state, v_actor, jsonb_build_object('reason', r.decision_reason), p_correlation);
   RETURN objects.tr_json(r);
 END $$;
-REVOKE ALL ON FUNCTION objects.decide_transformation_rule(uuid, uuid, uuid, text, text, uuid, uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION objects.decide_transformation_rule(uuid, uuid, uuid, text, text, uuid, uuid) TO eye_commit;
+REVOKE ALL ON FUNCTION objects.decide_transformation_rule(uuid, uuid, uuid, text, text, text, uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION objects.decide_transformation_rule(uuid, uuid, uuid, text, text, text, uuid, uuid) TO eye_commit;
 
-/* RETIRE (objects.transformation_rule.retire — the privacy officer, human-gated): an approved rule stops relaxing anything; the row kept. */
-CREATE OR REPLACE FUNCTION objects.retire_transformation_rule(p_tenant uuid, p_domain uuid, p_rule_id uuid, p_reason text, p_actor uuid, p_correlation uuid) RETURNS jsonb
+/* RETIRE (objects.transformation_rule.retire — the privacy officer, human-gated): an approved rule stops relaxing anything; the row kept; on
+   the digest of the rule the person reviewed. */
+CREATE OR REPLACE FUNCTION objects.retire_transformation_rule(p_tenant uuid, p_domain uuid, p_rule_id uuid, p_digest text, p_reason text, p_actor uuid, p_correlation uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = objects, governance, pg_catalog, pg_temp AS $$
 DECLARE v_actor uuid; r objects.transformation_rules%ROWTYPE;
 BEGIN
@@ -1107,6 +1124,9 @@ BEGIN
   END IF;
   SELECT * INTO r FROM objects.transformation_rules x WHERE x.rule_id = p_rule_id AND x.tenant_id = p_tenant AND x.domain_id = p_domain FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'transformation rule rejected (unknown_rule): rule % is not recorded in this domain', coalesce(p_rule_id::text, '<none>') USING ERRCODE = '23503'; END IF;
+  IF p_digest IS DISTINCT FROM objects.tr_digest(r) THEN
+    RAISE EXCEPTION 'transformation rule rejected (stale): rule % is recorded with digest %; the rule you reviewed is %', r.rule_id, objects.tr_digest(r), coalesce(p_digest, '<none>') USING ERRCODE = '23514';
+  END IF;
   IF r.state <> 'approved' THEN
     RAISE EXCEPTION 'transformation rule rejected (state): rule % is %; only an approved rule is retired', r.rule_id, r.state USING ERRCODE = '55000';
   END IF;
@@ -1115,8 +1135,8 @@ BEGIN
   VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, r.rule_id, 'rule.retired', v_actor, jsonb_build_object('reason', r.retire_reason), p_correlation);
   RETURN objects.tr_json(r);
 END $$;
-REVOKE ALL ON FUNCTION objects.retire_transformation_rule(uuid, uuid, uuid, text, uuid, uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION objects.retire_transformation_rule(uuid, uuid, uuid, text, uuid, uuid) TO eye_commit;
+REVOKE ALL ON FUNCTION objects.retire_transformation_rule(uuid, uuid, uuid, text, text, uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION objects.retire_transformation_rule(uuid, uuid, uuid, text, text, uuid, uuid) TO eye_commit;
 
 /* THE REGISTER (read): the domain's rules, newest first, each with its ledger. */
 CREATE OR REPLACE FUNCTION objects.transformation_rules_read(p_tenant uuid, p_domain uuid) RETURNS jsonb

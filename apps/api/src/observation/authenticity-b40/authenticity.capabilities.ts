@@ -17,7 +17,7 @@ export interface PublisherKeyDeclareWrites {
                validFrom: string | null; validTo: string | null; rotatedFrom: string | null; reason: string; actor: string; correlationId: string }): Promise<Row>;
 }
 export interface PublisherKeyRetireWrites {
-  retire(a: { tenantId: string; domainId: string; keyId: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
+  retire(a: { tenantId: string; domainId: string; keyId: string; fingerprint: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
 }
 export interface EvidenceAttributeWrites {
   setAttribute(a: { requestId: string; tenantId: string; domainId: string; evdId: string; version: number; attribute: string; value: unknown; reason: string; actor: string; correlationId: string }): Promise<Row>;
@@ -31,10 +31,10 @@ export interface TransformationRuleProposeWrites {
                rationale: string; actor: string; correlationId: string }): Promise<Row>;
 }
 export interface TransformationRuleDecideWrites {
-  decide(a: { tenantId: string; domainId: string; ruleId: string; decision: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
+  decide(a: { tenantId: string; domainId: string; ruleId: string; digest: string; decision: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
 }
 export interface TransformationRuleRetireWrites {
-  retireRule(a: { tenantId: string; domainId: string; ruleId: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
+  retireRule(a: { tenantId: string; domainId: string; ruleId: string; digest: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
 }
 export interface RetentionRegisterReads {
   register(a: { tenantId: string }): Promise<Row>;
@@ -61,8 +61,8 @@ class VaCapabilityImpl implements AuthenticityReads, PublisherKeyDeclareWrites, 
       ${a.kind}, ${a.publicKeyPem}::text, ${a.pin}::text, ${a.validFrom}::timestamptz, ${a.validTo}::timestamptz, ${a.rotatedFrom}::uuid, ${a.reason}, ${a.actor}::uuid,
       ${a.correlationId}::uuid) as r`);
   }
-  retire(a: { tenantId: string; domainId: string; keyId: string; reason: string; actor: string; correlationId: string }): Promise<Row> {
-    return this.one(sql<{ r: Row }>`select observation.retire_publisher_key(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.keyId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+  retire(a: { tenantId: string; domainId: string; keyId: string; fingerprint: string; reason: string; actor: string; correlationId: string }): Promise<Row> {
+    return this.one(sql<{ r: Row }>`select observation.retire_publisher_key(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.keyId}::uuid, ${a.fingerprint}, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
   }
   setAttribute(a: { requestId: string; tenantId: string; domainId: string; evdId: string; version: number; attribute: string; value: unknown; reason: string; actor: string; correlationId: string }): Promise<Row> {
     return this.one(sql<{ r: Row }>`select observation.set_evidence_attribute(${a.requestId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.evdId}::uuid, ${a.version}::int,
@@ -79,12 +79,12 @@ class VaCapabilityImpl implements AuthenticityReads, PublisherKeyDeclareWrites, 
     return this.one(sql<{ r: Row }>`select objects.propose_transformation_rule(${a.requestId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.obligation}, ${a.transformation},
       ${a.from}, ${a.to}, ${a.objectTypes}::text[], ${a.rationale}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
   }
-  decide(a: { tenantId: string; domainId: string; ruleId: string; decision: string; reason: string; actor: string; correlationId: string }): Promise<Row> {
-    return this.one(sql<{ r: Row }>`select objects.decide_transformation_rule(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.ruleId}::uuid, ${a.decision}, ${a.reason}, ${a.actor}::uuid,
+  decide(a: { tenantId: string; domainId: string; ruleId: string; digest: string; decision: string; reason: string; actor: string; correlationId: string }): Promise<Row> {
+    return this.one(sql<{ r: Row }>`select objects.decide_transformation_rule(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.ruleId}::uuid, ${a.digest}, ${a.decision}, ${a.reason}, ${a.actor}::uuid,
       ${a.correlationId}::uuid) as r`);
   }
-  retireRule(a: { tenantId: string; domainId: string; ruleId: string; reason: string; actor: string; correlationId: string }): Promise<Row> {
-    return this.one(sql<{ r: Row }>`select objects.retire_transformation_rule(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.ruleId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+  retireRule(a: { tenantId: string; domainId: string; ruleId: string; digest: string; reason: string; actor: string; correlationId: string }): Promise<Row> {
+    return this.one(sql<{ r: Row }>`select objects.retire_transformation_rule(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.ruleId}::uuid, ${a.digest}, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
   }
   register(a: { tenantId: string }): Promise<Row> {
     return this.one(sql<{ r: Row }>`select retention.tenant_register(${a.tenantId}::uuid) as r`);

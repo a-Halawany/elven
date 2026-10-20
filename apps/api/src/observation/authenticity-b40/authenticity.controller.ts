@@ -5,7 +5,8 @@
  *   POST …/domains/:d/observation/authenticity/keys/read          {sourceId?}       the key register (observation.authenticity.read)
  *   POST …/domains/:d/observation/authenticity/keys/declare       {sourceId, keyRef, kind, publicKeyPem | pin, validFrom?, validTo?, rotatedFrom?, reason,
  *                                                                   requestId?}     observation.authenticity.key.declare (human-gated)
- *   POST …/domains/:d/observation/authenticity/keys/:keyId/retire {reason}          observation.authenticity.key.retire (human-gated)
+ *   POST …/domains/:d/observation/authenticity/keys/:keyId/retire {fingerprint, reason}  observation.authenticity.key.retire (human-gated; the
+ *                                                                   fingerprint reviewed is bound by the port — stale otherwise)
  *   POST …/domains/:d/observation/authenticity/evidence/:evdId/read {}              an evidence object's outcome + attributes per version (observation.authenticity.read)
  *   POST …/domains/:d/observation/evidence/:evdId/attributes/set  {version, attribute, value, reason, requestId?}
  *                                                                                   observation.evidence.attribute.set (a data steward, human-gated)
@@ -13,8 +14,9 @@
  *   POST …/domains/:d/observation/transformation-rules/read       {}                the rule register (objects.obligations.read)
  *   POST …/domains/:d/observation/transformation-rules/propose    {obligation, transformation, from, to, objectTypes, rationale, requestId?}
  *                                                                                   objects.transformation_rule.propose (a data steward, human-gated)
- *   POST …/domains/:d/observation/transformation-rules/:ruleId/decide {decision, reason}  objects.transformation_rule.decide (the privacy officer)
- *   POST …/domains/:d/observation/transformation-rules/:ruleId/retire {reason}           objects.transformation_rule.retire (the privacy officer)
+ *   POST …/domains/:d/observation/transformation-rules/:ruleId/decide {digest, decision, reason}  objects.transformation_rule.decide (the privacy officer)
+ *   POST …/domains/:d/observation/transformation-rules/:ruleId/retire {digest, reason}           objects.transformation_rule.retire (the privacy officer)
+ *                                                                   — each on the DIGEST of the rule reviewed, bound by the port (stale otherwise)
  *   POST /v1/tenants/:t/observation/retention-register/read       {}                the per-tenant retention register (retention.register.read, TENANT)
  *
  * Metadata only (D9): no route here serves evidence bytes or payload content. The answers are the ports', with the receipt. CONSTRUCTION only.
@@ -97,10 +99,11 @@ export class AuthenticityController {
     const corr = envelope.correlation_id;
     const keyId = pathId(keyIdRaw, 'publisher key', corr);
     const reason = text(body?.payload?.['reason'], 'publisher key', 'reason', corr);
+    const fingerprint = text(body?.payload?.['fingerprint'], 'publisher key', 'fingerprint (the key you reviewed)', corr);
     const out = await this.pipeline.write(envelope, principal,
       { scope: 'DOMAIN', tenantId, domainId, action: 'observation.authenticity.key.retire', objectType: 'PBK', objectId: keyId },
       VaCapability.retireKey,
-      async (cap) => ({ result: await cap.retire({ tenantId, domainId, keyId, reason, actor: principal.principalId, correlationId: corr }), targetType: 'PBK', targetId: keyId, targetVersion: null, outboxEvent: null }));
+      async (cap) => ({ result: await cap.retire({ tenantId, domainId, keyId, fingerprint, reason, actor: principal.principalId, correlationId: corr }), targetType: 'PBK', targetId: keyId, targetVersion: null, outboxEvent: null }));
     return { key: out.result, receipt: receipt(out) };
   }
 
@@ -176,10 +179,11 @@ export class AuthenticityController {
     const corr = envelope.correlation_id; const n = 'transformation rule';
     const ruleId = pathId(ruleIdRaw, n, corr);
     const decision = text(body?.payload?.['decision'], n, 'decision', corr); const reason = text(body?.payload?.['reason'], n, 'reason', corr);
+    const digest = text(body?.payload?.['digest'], n, 'digest (of the rule you reviewed)', corr);
     const out = await this.pipeline.write(envelope, principal,
       { scope: 'DOMAIN', tenantId, domainId, action: 'objects.transformation_rule.decide', objectType: 'TRR', objectId: ruleId },
       VaCapability.decideRule,
-      async (cap) => ({ result: await cap.decide({ tenantId, domainId, ruleId, decision, reason, actor: principal.principalId, correlationId: corr }), targetType: 'TRR', targetId: ruleId, targetVersion: null, outboxEvent: null }));
+      async (cap) => ({ result: await cap.decide({ tenantId, domainId, ruleId, digest, decision, reason, actor: principal.principalId, correlationId: corr }), targetType: 'TRR', targetId: ruleId, targetVersion: null, outboxEvent: null }));
     return { rule: out.result, receipt: receipt(out) };
   }
 
@@ -189,10 +193,11 @@ export class AuthenticityController {
     const corr = envelope.correlation_id; const n = 'transformation rule';
     const ruleId = pathId(ruleIdRaw, n, corr);
     const reason = text(body?.payload?.['reason'], n, 'reason', corr);
+    const digest = text(body?.payload?.['digest'], n, 'digest (of the rule you reviewed)', corr);
     const out = await this.pipeline.write(envelope, principal,
       { scope: 'DOMAIN', tenantId, domainId, action: 'objects.transformation_rule.retire', objectType: 'TRR', objectId: ruleId },
       VaCapability.retireRule,
-      async (cap) => ({ result: await cap.retireRule({ tenantId, domainId, ruleId, reason, actor: principal.principalId, correlationId: corr }), targetType: 'TRR', targetId: ruleId, targetVersion: null, outboxEvent: null }));
+      async (cap) => ({ result: await cap.retireRule({ tenantId, domainId, ruleId, digest, reason, actor: principal.principalId, correlationId: corr }), targetType: 'TRR', targetId: ruleId, targetVersion: null, outboxEvent: null }));
     return { rule: out.result, receipt: receipt(out) };
   }
 
