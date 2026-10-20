@@ -314,7 +314,26 @@ export class PipelineService {
     try {
       return await this.writer(route).transaction().execute(async (tx) => {
         await this.establishCommitContext(tx, principal, ctx, envelope, route, polId, policyResult);
-        const result = await handler(capability(tx, route.action), ctx, policyResult.obligations);
+        /* B40 res (R2): §TR's rule for the evidenced read too. A handler that THROWS once its context expired (any port asserting the
+           bound action or scope — observation.assert_authority → ctx.assert_business_authority) escaped the completeness check, which
+           ran only after a handler that RETURNED, and answered 500 EYE-INT-001. The handler runs under a savepoint; on its failure the
+           savepoint is rolled back (the transaction usable again) and the context's liveness asked: expired → the existing 503
+           EYE-DEP-001 (the output discarded, the failure audited by recordHandlerFailure); live → the handler's own error, unchanged.
+           A returned result keeps its result-derived evidence below; nothing is extended; a denial before the handler never reaches here. */
+        await sql`savepoint b40_res_read`.execute(tx);
+        let result: T;
+        try {
+          result = await handler(capability(tx, route.action), ctx, policyResult.obligations);
+        } catch (handlerError) {
+          let incomplete: unknown = null;
+          try {
+            await sql`rollback to savepoint b40_res_read`.execute(tx);
+            await this.assertReadComplete(tx, envelope, route);
+          } catch (x) { incomplete = x; }
+          if (incomplete instanceof HttpException) throw incomplete;
+          throw handlerError;
+        }
+        /* end B40 res */
         await this.assertReadComplete(tx, envelope, route);
         const ev = evidenceOf(result);
         await this.commitPolicy(tx, envelope, route, policyInput, policyResult, polId);
