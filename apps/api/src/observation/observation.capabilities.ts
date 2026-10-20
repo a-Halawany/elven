@@ -371,12 +371,27 @@ export interface AcquisitionWrites extends ObservationReads {
   /* B40 va */
   /* end B40 va */
   /* B40 in */
+  /** B40 §IN (0123 §IN): the inspect stage's record — every engine's verdict WITH its identity, the item's assessment, custody.inspected and a
+   *  held upload's approval — inside the admission / quarantine transaction (observation.record_inspection; D2 held by the port too). */
+  recordInspection(a: InspectionRecordArgs): Promise<Record<string, unknown>>;
   /* end B40 in */
   /* B40 ap */
   /* end B40 ap */
   /* B40 cr */
   /* end B40 cr */
 }
+
+/* B40 in */
+export interface InspectionRecordArgs {
+  tenantId: string; domainId: string; sourceId: string; contractVersion: number; runId: string;
+  point: { kind: 'admitted'; evdObjectId: string; evdVersion: number; manifestId: string; contentDigest: string; itemKey: string }
+       | { kind: 'quarantined'; caseId: string; manifestId: string; contentDigest: string; itemKey: string };
+  decision: 'pass' | 'quarantine'; decisionClass: string | null;
+  verdicts: Array<Record<string, unknown>>;
+  assessment: Record<string, unknown>;
+  correlationId: string;
+}
+/* end B40 in */
 
 /* B23 (0084) stream */
 /** What the stream ports answer: the stream as it now stands, plus the port's own facts (resumed, redelivered, requested, …). */
@@ -1054,6 +1069,12 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
   /* B40 va */
   /* end B40 va */
   /* B40 in */
+  async recordInspection(a: InspectionRecordArgs): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select observation.record_inspection(
+      ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.sourceId}::uuid, ${a.contractVersion}::int, ${a.runId}::uuid, ${JSON.stringify(a.point)}::jsonb,
+      ${a.decision}, ${a.decisionClass}, ${JSON.stringify(a.verdicts)}::jsonb, ${JSON.stringify(a.assessment)}::jsonb, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
   /* end B40 in */
   /* B40 ap */
   /* end B40 ap */

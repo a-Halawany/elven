@@ -1531,6 +1531,18 @@ const BUNDLE_V1: Rule[] = [
   /* B40 va */
   /* end B40 va */
   /* B40 in */
+  /* B40 §IN (0123 §IN; F-P1-03; DESIGN D9, D9b, D14, D15). EXACT rules, before the `observation.` collection prefix rule (which would otherwise
+     admit a domain analyst or the collection agent first). READING the intake review queue, a case's WHY and an evidence version's verdicts —
+     METADATA only (engine identity, outcomes, finding codes and offsets; never content, D9): observation.read's HUMAN readers (the collection
+     agent is absent — it writes verdicts through the admission's own action, it does not read the queue). The case's EXCERPT is not this
+     action: it is a read of the bytes under the existing `observation.evidence.retrieve` (no widening). DECIDING a held upload (SP-22) — a
+     collection manager or the domain admin, human-gated; the PORT re-checks the person, the role, and that the decider is not the uploader.
+     No role is added (D14). */
+  { actionPrefix: 'observation.inspection.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' },
+      { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.upload.approve', exact: true, requiredAnyRole: [{ role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B40 in */
   /* B40 ap */
   /* end B40 ap */

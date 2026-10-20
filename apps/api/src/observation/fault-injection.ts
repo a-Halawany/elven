@@ -93,7 +93,14 @@ export type InjectionPoint =
   // policy columns (memory.expected_items — arrival 1 on every withdrawn read) and the absent rows' versions (arrival 2, only when the log
   // names a row the projection lacks). Fires on the first arrival, or on the nth when armed with armNth(): a caller answers by the
   // withdrawn rule — 503 EYE-DEG-001 for a read, a degraded memory source for a briefing — never a raw failure.
-  | 'b21.memory_fallback_content_unavailable';
+  | 'b21.memory_fallback_content_unavailable'
+  /* B40 in */
+  // CP-6 B40 §IN (DESIGN D2, D17; V03-T-276) — the inspection engines fail CLOSED: F48 the sandboxed content inspector crashes or times out
+  // (raised where the stage asks the sandbox; the stage answers `unavailable` → the item is quarantined inspection_unavailable); F49 the clamd
+  // engine is unavailable (raised where the adapter would connect; the same answer). Never a clean verdict.
+  | 'f48.inspector_crash_or_timeout'
+  | 'f49.clamd_unavailable'
+  /* end B40 in */;
 
 /** Raised by an armed injection point. Distinguishable from a real failure. */
 export class InjectedFault extends Error {
