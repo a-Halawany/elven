@@ -48,7 +48,7 @@ import { PdpService } from '../../src/policy/pdp.service.js';
 import * as fault from '../../src/observation/fault-injection.js';
 import { Phase4Harness } from './phase4-helpers.js';
 import { inCommitContext } from './phase1-helpers.js';
-import { evaluateForApproval, fixtureBytes, publisherKeyPair, signedBulletin, signDetached, signJws, srcV4Contract, tamperedCopy, B40_FILES, type PublisherKeyPair } from './phase6-b40-fixtures.js';
+import { evaluateForApproval, v4Blocks, fixtureBytes, publisherKeyPair, signedBulletin, signDetached, signJws, srcV4Contract, tamperedCopy, B40_FILES, type PublisherKeyPair } from './phase6-b40-fixtures.js';
 
 type Row = Record<string, unknown>;
 let h: Phase4Harness; let pdp: PdpService;
@@ -101,7 +101,10 @@ async function v4UploadSource(label: string, authenticity: Row, attributes?: Row
   const controller = h.app.get(ObservationController);
   const key = `b40-va-${label}-${uuidv7().slice(-8)}`;
   const contract = srcV4Contract({ sourceKey: key, kind: 'upload', mediaTypes: ['application/json'],
-    blocks: { authenticity: authenticity as never, ...(attributes === undefined ? {} : { evidence_attributes: attributes as never }) } });
+    blocks: { authenticity: authenticity as never, ...(attributes === undefined ? {} : { evidence_attributes: attributes as never }),
+      /* B40 integration: §IN's upload rule (SP-22) holds an upload outside the contract's auto-admit rule (the fixture default `never`); this
+         harness's bulletins are JSON uploads within limits, admitted without a second person — the authenticity stage is what is under test */
+      content_policy: { ...v4Blocks().content_policy, auto_admit: { mode: 'within_limits' as const, max_bytes: 1_048_576, media_types: ['application/json'] } } } });
   (contract['identity'] as Row)['source_identity'] = key;
   (contract['authority_and_rights'] as Row)['purposes'] = ['observation', 'corridor monitoring'];   // the upload route's purpose
   const r = await controller.registerSource(h.req(h.registrar, 'observation.source.register', 'SRC', null, 'observation'), T(), D(), { payload: { contract } }) as { source: { sourceId: string } };

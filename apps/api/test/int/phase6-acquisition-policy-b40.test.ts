@@ -535,7 +535,9 @@ describe('IG · the ingress check, folded into the inspect stage (IntakeStages.i
     expect(q).toMatchObject({ reason_class: 'response_anomaly', reason: expect.stringContaining('keys_changed') });
     const fp = await rows(sql`select verdict, root_type, anomaly from observation.acquisition_response_fingerprints where source_id = ${h.fx.sourceId}::uuid and run_id in
       (${r1.runId}::uuid, ${r2.runId}::uuid, ${r3.runId}::uuid) order by observed_at`);
-    expect(fp.map((x) => x['verdict'])).toEqual(['baseline', 'consistent', 'anomaly']);
+    // B40 integration: the check now runs on EVERY run of an SRC@v4 contract (folded into the inspect stage), so this harness's earlier runs
+    // of the same poll already set the baseline — r1 reads `consistent` against it (or `baseline` when it is the first)
+    expect(fp.map((x) => x['verdict'])).toEqual([expect.stringMatching(/^(baseline|consistent)$/), 'consistent', 'anomaly']);
     expect(fp[2]!['anomaly']).toEqual([expect.objectContaining({ code: 'keys_changed' })]);
   }, 120_000);
   it('a residency conflict recorded under `record`: what the run fetched is quarantined `residency_conflict` for a person to decide', async () => {
