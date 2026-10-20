@@ -505,7 +505,7 @@ describe('VA8 · authenticity as a MEASURED coverage dimension (L1-C06)', () => 
     };
     const a = (await measure(customs)).find((d) => d['dimension'] === 'authenticity')!;
     expect(a).toMatchObject({ state: 'measured', errorClass: 'authenticity_failed', confidence: 'recorded-per-version' });
-    expect(String(a['valueText'])).toMatch(/^content authenticity of \d+ admitted version\(s\) in the window \(publisher signature, ed25519_detached\): 2 FAILED signature check\(s\) — admitted marked, refused at decision-active use; 1 verified; 1 unsigned\.);
+    expect(String(a['valueText'])).toMatch(/^content authenticity of \d+ admitted version\(s\) in the window \(publisher signature, ed25519_detached\): 2 FAILED signature check\(s\) — admitted marked, refused at decision-active use; 1 verified; 1 unsigned\./);
     const legacy = (await measure(h.fx.sourceId)).find((d) => d['dimension'] === 'authenticity')!;
     expect(legacy['state']).not.toBe('measured');
   }, 120_000);
