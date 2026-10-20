@@ -43,6 +43,7 @@ import { drafts } from '../../../../lib/drafts-b80';
 import { AuthorityBanner, ConsequencePreview } from '../../../../components/authority';
 import { consequenceStated } from '../../../../lib/authority-b81';
 /* end B81 ha */
+/* B40 rg */ import { CandidateDraft } from './candidate-draft-b40'; /* end B40 rg */
 
 type Row = Record<string, unknown>;
 const PURPOSE = 'observation';
@@ -145,6 +146,9 @@ export default function RegisterSourcePage() {
   return (
     <>
       <h1 className="eye-page-title">Register a source</h1>
+      {/* B40 rg — from Source discovery (?candidate=): the server's prefilled SRC@v4 draft, registered and promoted in one governed act (nothing rendered without a candidate) */}
+      <CandidateDraft scope={scope} me={me} />
+      {/* end B40 rg */}
       <Stepper label="Registration steps" steps={STEPS} current={step} visited={visited} errors={holds.length > 0 ? errors : []} />
 
       <FormDraft scope={scope} purpose={PURPOSE} formKey={FORM_KEY} schemaVersion={SCHEMA_VERSION} payload={draftPayload}
