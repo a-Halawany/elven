@@ -104,7 +104,16 @@ export type InjectionPoint =
   // engine is unavailable (raised where the adapter would connect; the same answer). Never a clean verdict.
   | 'f48.inspector_crash_or_timeout'
   | 'f49.clamd_unavailable'
-  /* end B40 in */;
+  /* end B40 in */
+  /* B40 ap — CP-6 B40 §AP (0123 §AP; D17): the acquisition-time policy's four boundaries, each failing CLOSED — the rate bucket unreachable
+     (F50 → the request refused `unavailable`), the Retry-After unreadable (F51 → `unparsed`: the contract's schedule applies, never sooner),
+     robots.txt not fetched (F52 → the run refused `unavailable` before any request), the residency profile not resolved (F53 → the run
+     refused `unavailable` before any request) */
+  | 'f50.rate_bucket_unavailable'
+  | 'f51.retry_after_parse'
+  | 'f52.robots_fetch_failure'
+  | 'f53.residency_lookup'
+  /* end B40 ap */;
 
 /** Raised by an armed injection point. Distinguishable from a real failure. */
 export class InjectedFault extends Error {

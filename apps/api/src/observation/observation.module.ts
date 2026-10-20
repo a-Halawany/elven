@@ -34,13 +34,23 @@ import { ObservationExceptionFilter } from './observation.filter.js';
 /* B40 rg */ import { RegistryB40Controller } from './registry-b40/registry-b40.controller.js'; /* end B40 rg */
 /* B40 va */ import { AuthenticityController } from './authenticity-b40/authenticity.controller.js'; /* end B40 va */
 /* B40 in */ import { IntakeB40Controller } from './intake-b40/intake-b40.controller.js'; /* end B40 in */
+/* B40 ap */
+import { AcquisitionPolicyController } from './acquisition-policy/acquisition-policy.controller.js';
+import { AcquisitionPolicyStore } from './acquisition-policy/policy-store.js';
+import { RateBucket } from './acquisition-policy/rate-bucket.js';
+import { RobotsService } from './acquisition-policy/robots.service.js';
+import { RunPolicyCache } from './acquisition-policy/run-policy.js';
+import { ContractBackoffAp } from './acquisition-policy/contract-backoff.service.js';
+import { IngressPolicyAp } from './acquisition-policy/ingress-ap.js';
+/* end B40 ap */
 
 @Module({
   imports: [PipelineModule, IdentityModule],
   controllers: [ObservationController, UploadController, /* B82 ev: the cited evidence segment, the rights terms (0121 §EV) */ EvidenceB82Controller /* end B82 ev */,
     /* B40 rg: the source registry, stewardship, the rights lifecycle and revocation impact (0123_b40_x_rg) */ RegistryB40Controller /* end B40 rg */,
     /* B40 va: publisher keys, evidence authenticity + attributes, inheritance, transformation rules, the tenant retention register (0123_b40_x_va) */ AuthenticityController /* end B40 va */,
-    /* B40 in: the intake review queue, the case's why, the verdicts, the upload approval (0123 §IN) */ IntakeB40Controller /* end B40 in */],
+    /* B40 in: the intake review queue, the case's why, the verdicts, the upload approval (0123 §IN) */ IntakeB40Controller /* end B40 in */,
+    /* B40 ap: the acquisition policy read (0123 §AP.7) */ AcquisitionPolicyController /* end B40 ap */],
   providers: [
     SourcesService,
     SourceCredentialStore,
@@ -60,6 +70,10 @@ import { ObservationExceptionFilter } from './observation.filter.js';
     /* B40 §0: the intake seam — the composition and the four parts' stages (authorize-ap, throttle-ap, inspect-in, authenticate-va) */
     ...INTAKE_STAGE_PROVIDERS,
     /* end B40 §0 */
+    /* B40 ap: what §AP's stages and the scheduler's contract backoff use (the policy records' ports, the shared rate bucket, robots, the
+       run's cached authorization, the contract's retry, the ingress check the integrator folds into the inspect composition) */
+    AcquisitionPolicyStore, RateBucket, RobotsService, RunPolicyCache, ContractBackoffAp, IngressPolicyAp,
+    /* end B40 ap */
     // Registered AFTER the Phase 0 filter so it is consulted first for these
     // routes; a refusal a governed port raised deliberately answers as the rule
     // it is, and everything else falls through unchanged.
