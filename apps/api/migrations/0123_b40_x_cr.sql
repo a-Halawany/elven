@@ -553,9 +553,11 @@ REVOKE ALL ON FUNCTION observation.register_adapter_package(uuid, uuid, uuid, js
 GRANT EXECUTE ON FUNCTION observation.register_adapter_package(uuid, uuid, uuid, jsonb, jsonb, text, text, text, uuid, uuid) TO eye_commit;
 
 /* DECIDE: a SECOND person — a domain admin or another collection manager, never the registrant, never an agent, never an external
-   collaborator — approves or rejects a registered package, once, with a reason. */
+   collaborator — approves or rejects a registered package, once, with a reason. The decision BINDS the digest the decider reviewed
+   (p_expected_digest): a package is decided only as the bytes that were shown (server-enforced; a package's digest never changes, and a
+   decision naming another digest is refused stale). */
 CREATE OR REPLACE FUNCTION observation.decide_adapter_package(
-  p_request_id uuid, p_tenant uuid, p_domain uuid, p_package_id uuid, p_decision text, p_reason text, p_actor uuid, p_correlation uuid
+  p_request_id uuid, p_tenant uuid, p_domain uuid, p_package_id uuid, p_decision text, p_reason text, p_expected_digest text, p_actor uuid, p_correlation uuid
 ) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = observation, governance, pg_catalog, pg_temp AS $$
 DECLARE v_actor uuid; p observation.adapter_packages%ROWTYPE;
@@ -582,6 +584,9 @@ BEGIN
   IF p_reason IS NULL OR length(btrim(p_reason)) < 8 OR length(p_reason) > 2000 THEN
     RAISE EXCEPTION 'adapter package rejected (reason): a decision states its reason in 8 to 2000 characters (what was reviewed)' USING ERRCODE = '22023';
   END IF;
+  IF p_expected_digest IS DISTINCT FROM p.package_digest THEN
+    RAISE EXCEPTION 'adapter package rejected (stale): % % digests to %; the decision reviewed %', p.name, p.version, p.package_digest, coalesce(p_expected_digest, 'no digest') USING ERRCODE = '23514';
+  END IF;
   UPDATE observation.adapter_packages SET state = CASE p_decision WHEN 'approve' THEN 'approved' ELSE 'rejected' END, decided_by = v_actor, decided_at = clock_timestamp(),
          decision_reason = btrim(p_reason)
    WHERE package_id = p.package_id RETURNING * INTO p;
@@ -590,8 +595,8 @@ BEGIN
           jsonb_build_object('reason', p.decision_reason, 'registered_by', p.registered_by, 'package_digest', p.package_digest, 'request_id', p_request_id), p_correlation);
   RETURN observation.cr_package_json(p) || jsonb_build_object('replayed', false);
 END $$;
-REVOKE ALL ON FUNCTION observation.decide_adapter_package(uuid, uuid, uuid, uuid, text, text, uuid, uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION observation.decide_adapter_package(uuid, uuid, uuid, uuid, text, text, uuid, uuid) TO eye_commit;
+REVOKE ALL ON FUNCTION observation.decide_adapter_package(uuid, uuid, uuid, uuid, text, text, text, uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION observation.decide_adapter_package(uuid, uuid, uuid, uuid, text, text, text, uuid, uuid) TO eye_commit;
 
 -- §CR.6 THE RUN'S READ, THE RECEIPTS AND THE SUSPENSION (the cell's own agent, under its lease) ───────────────────────────────────────────
 /* What one run of an adapter contract may do: the contract (its kind, mode, registered destination hosts, purposes, declared pins, its
@@ -769,9 +774,10 @@ REVOKE ALL ON FUNCTION observation.submit_requalification(uuid, uuid, uuid, uuid
 GRANT EXECUTE ON FUNCTION observation.submit_requalification(uuid, uuid, uuid, uuid, uuid, jsonb, text, uuid, uuid) TO eye_commit;
 
 /* DECIDE: a SECOND person — a domain admin or a collection manager, never the submitter, never an agent, never an external collaborator —
-   approves (the contract records contract.requalified; the package becomes the one in force) or rejects (it may be submitted again). */
+   approves (the contract records contract.requalified; the package becomes the one in force) or rejects (it may be submitted again). The
+   decision BINDS the package digest the decider reviewed (server-enforced: a resubmission with another package makes it stale). */
 CREATE OR REPLACE FUNCTION observation.decide_requalification(p_request_id uuid, p_tenant uuid, p_domain uuid, p_requalification_id uuid, p_decision text, p_reason text,
-                                                             p_actor uuid, p_correlation uuid) RETURNS jsonb
+                                                             p_expected_digest text, p_actor uuid, p_correlation uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = observation, governance, pg_catalog, pg_temp AS $$
 DECLARE v_actor uuid; r observation.connector_requalifications%ROWTYPE;
 BEGIN
@@ -801,6 +807,10 @@ BEGIN
   IF p_reason IS NULL OR length(btrim(p_reason)) < 8 OR length(p_reason) > 2000 THEN
     RAISE EXCEPTION 'requalification rejected (reason): a decision states its reason in 8 to 2000 characters (what was reviewed)' USING ERRCODE = '22023';
   END IF;
+  IF p_expected_digest IS DISTINCT FROM r.package_digest THEN
+    RAISE EXCEPTION 'requalification rejected (stale): requalification % submits package digest %; the decision reviewed %', r.requalification_id, coalesce(r.package_digest, 'none'),
+      coalesce(p_expected_digest, 'no digest') USING ERRCODE = '23514';
+  END IF;
   UPDATE observation.connector_requalifications SET state = CASE p_decision WHEN 'approve' THEN 'approved' ELSE 'rejected' END, decided_by = v_actor,
          decided_at = clock_timestamp(), decision_reason = btrim(p_reason)
    WHERE requalification_id = r.requalification_id RETURNING * INTO r;
@@ -815,8 +825,8 @@ BEGIN
   END IF;
   RETURN observation.cr_requalification_json(r) || jsonb_build_object('replayed', false);
 END $$;
-REVOKE ALL ON FUNCTION observation.decide_requalification(uuid, uuid, uuid, uuid, text, text, uuid, uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION observation.decide_requalification(uuid, uuid, uuid, uuid, text, text, uuid, uuid) TO eye_commit;
+REVOKE ALL ON FUNCTION observation.decide_requalification(uuid, uuid, uuid, uuid, text, text, text, uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION observation.decide_requalification(uuid, uuid, uuid, uuid, text, text, text, uuid, uuid) TO eye_commit;
 
 /* ROTATE: a named collection manager binds a NEW credential reference to an adapter contract version (the next binding version), the one
    in force is revoked, `contract.credential_rotated` is recorded, the contract is suspended and its requalification opened (or joined). The

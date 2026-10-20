@@ -20,7 +20,8 @@ export interface AdapterRegisterWrites {
                 actor: string; correlationId: string }): Promise<Row>;
 }
 export interface AdapterDecideWrites {
-  decide(a: { requestId: string; tenantId: string; domainId: string; packageId: string; decision: 'approve' | 'reject'; reason: string; actor: string; correlationId: string }): Promise<Row>;
+  decide(a: { requestId: string; tenantId: string; domainId: string; packageId: string; decision: 'approve' | 'reject'; reason: string; expectedDigest: string | null; actor: string;
+              correlationId: string }): Promise<Row>;
 }
 export interface CellBindingReads {
   binding(a: { tenantId: string; domainId: string; sourceId: string; contractVersion: number }): Promise<Row>;
@@ -37,7 +38,8 @@ export interface RequalificationSubmitWrites {
               correlationId: string }): Promise<Row>;
 }
 export interface RequalificationDecideWrites {
-  decide(a: { requestId: string; tenantId: string; domainId: string; requalificationId: string; decision: 'approve' | 'reject'; reason: string; actor: string; correlationId: string }): Promise<Row>;
+  decide(a: { requestId: string; tenantId: string; domainId: string; requalificationId: string; decision: 'approve' | 'reject'; reason: string; expectedDigest: string | null; actor: string;
+              correlationId: string }): Promise<Row>;
 }
 export interface CredentialRotateWrites {
   rotate(a: { requestId: string; tenantId: string; domainId: string; sourceId: string; contractVersion: number; ref: string; header: string; reason: string; actor: string;
@@ -65,7 +67,7 @@ class CellCapabilityImpl implements AdapterRegisterWrites, AdapterDecideWrites, 
   }
   decide(a: Parameters<AdapterDecideWrites['decide']>[0]): Promise<Row> {
     return this.one(sql<{ r: Row }>`select observation.decide_adapter_package(${a.requestId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.packageId}::uuid,
-      ${a.decision}, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+      ${a.decision}, ${a.reason}, ${a.expectedDigest}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
   }
   binding(a: Parameters<CellBindingReads['binding']>[0]): Promise<Row> {
     return this.one(sql<{ r: Row }>`select observation.connector_cell_binding(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.sourceId}::uuid, ${a.contractVersion}::int) as r`);
@@ -110,7 +112,7 @@ class RequalificationDecideImpl implements RequalificationDecideWrites {
   get action(): string { return this.#action; }
   async decide(a: Parameters<RequalificationDecideWrites['decide']>[0]): Promise<Row> {
     return ((await sql<{ r: Row }>`select observation.decide_requalification(${a.requestId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.requalificationId}::uuid,
-      ${a.decision}, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`.execute(this.#tx)).rows[0]?.r ?? {}) as Row;
+      ${a.decision}, ${a.reason}, ${a.expectedDigest}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`.execute(this.#tx)).rows[0]?.r ?? {}) as Row;
   }
 }
 

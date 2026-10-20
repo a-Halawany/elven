@@ -76,9 +76,10 @@ async function registerPackage(dir: string, who = dvorak, requestId?: string): P
   const r = await ctl.registerAdapter(req(who, 'observation.adapter.register'), T(), D(), { payload: { files: filesOf(dir), ...(requestId === undefined ? {} : { requestId }) } }) as { package: Row };
   return r.package;
 }
-async function decidePackage(packageId: string, who: AuthenticatedPrincipal, decision: 'approve' | 'reject' = 'approve'): Promise<Row> {
+const digestOfPackage = async (packageId: string) => String((await one(sql`select package_digest d from observation.adapter_packages where package_id = ${packageId}::uuid`))['d']);
+async function decidePackage(packageId: string, who: AuthenticatedPrincipal, decision: 'approve' | 'reject' = 'approve', expectedDigest?: string): Promise<Row> {
   const r = await ctl.decideAdapter(req(who, 'observation.adapter.approve', 'ADP', packageId), T(), D(), packageId,
-    { payload: { decision, reason: 'reviewed the manifest, the destinations and the code (SYNTHETIC)' } }) as { package: Row };
+    { payload: { decision, reason: 'reviewed the manifest, the destinations and the code (SYNTHETIC)', expectedDigest: expectedDigest ?? await digestOfPackage(packageId) } }) as { package: Row };
   return r.package;
 }
 const bind = (p: Row) => ({ package_id: String(p['package_id']), version: String(p['version']), digest: String(p['package_digest']) });
@@ -143,9 +144,10 @@ async function submit(requalificationId: string, packageId: string | null, who =
   return await ctl.submitRequalification(req(who, 'observation.connector.requalification.submit', 'RQL', requalificationId), T(), D(), requalificationId,
     { payload: { packageId, reason: 'the requalified adapter follows tracking links on declared destinations only (SYNTHETIC)' } }) as { requalification: Row; contractTests: Row };
 }
-async function decideReq(requalificationId: string, who: AuthenticatedPrincipal, decision: 'approve' | 'reject' = 'approve'): Promise<Row> {
+async function decideReq(requalificationId: string, who: AuthenticatedPrincipal, decision: 'approve' | 'reject' = 'approve', expectedDigest?: string): Promise<Row> {
+  const digest = expectedDigest ?? String((await one(sql`select package_digest d from observation.connector_requalifications where requalification_id = ${requalificationId}::uuid`))['d']);
   return (await ctl.decideRequalification(req(who, 'observation.connector.requalification.approve', 'RQL', requalificationId), T(), D(), requalificationId,
-    { payload: { decision, reason: 'reviewed the package, the digest and the contract tests (SYNTHETIC)' } }) as { requalification: Row }).requalification;
+    { payload: { decision, reason: 'reviewed the package, the digest and the contract tests (SYNTHETIC)', expectedDigest: digest } }) as { requalification: Row }).requalification;
 }
 
 beforeAll(async () => {
@@ -213,6 +215,10 @@ describe('the adapter package register (DP-14-003, D12)', () => {
     const agentPrincipal = { ...h.manager, principalId: uuidv7(), kind: 'agent' as const, assurance: 'agent_grant' as const,
       bindings: [{ roleCode: 'collection_agent', scope: 'DOMAIN' as const, tenantId: T(), domainId: D() }] };
     expect((await refused(decidePackage(id, agentPrincipal))).status).toBe(403);
+    // the decision binds the digest the decider reviewed: another digest is refused stale (409), nothing decided
+    const stale = await refused(decidePackage(id, richter, 'approve', 'e'.repeat(64)));
+    expect(stale.status).toBe(409);
+    expect(stale.message).toMatch(/^adapter package rejected \(stale\): nordwerk-logistics-consignments 1\.0\.0 digests to [0-9a-f]{64}; the decision reviewed e{64}/);
     expect(await decidePackage(id, richter)).toMatchObject({ state: 'approved', decided_by: richter.principalId, replayed: false });
     expect((await refused(decidePackage(id, richter, 'reject'))).status).toBe(409);
     expect(await decidePackage(String(pkg101['package_id']), richter)).toMatchObject({ state: 'approved' });
@@ -295,6 +301,7 @@ describe('scene B40-5 — the customer-written adapter runs in its cell; the unr
     const self = await refused(decideReq(String(q['id']), dvorak));
     expect(self.status).toBe(403);
     expect(self.message).toMatch(/^requalification rejected \(separation_of_duties\)/);
+    expect((await refused(decideReq(String(q['id']), richter, 'approve', String(pkg100['package_digest'])))).message).toMatch(/^requalification rejected \(stale\)/);
     expect(await decideReq(String(q['id']), richter)).toMatchObject({ state: 'approved', decided_by: richter.principalId });
     expect(await one(sql`select event, details ->> 'package_version' v from observation.source_contract_events where source_id = ${srcA}::uuid and event = 'contract.requalified'`))
       .toEqual({ event: 'contract.requalified', v: '1.0.1' });

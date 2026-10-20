@@ -7,11 +7,11 @@
  *   POST …/observation/egress/read                                  {sourceId?, runId?, limit?}       observation.egress.read — the transfer
  *        receipts (digests, sizes, destinations, decisions; never bytes — D9) and their counts
  *   POST …/observation/adapters/register                            {files: [{file, base64}], requestId?}   observation.adapter.register (human-gated)
- *   POST …/observation/adapters/:packageId/decide                   {decision, reason, requestId?}    observation.adapter.approve (human-gated;
+ *   POST …/observation/adapters/:packageId/decide                   {decision, reason, expectedDigest, requestId?}  observation.adapter.approve (human-gated;
  *        the port refuses the registrant, an agent and an external collaborator — D12)
  *   POST …/observation/requalifications/:requalificationId/submit   {packageId?, reason, requestId?}  observation.connector.requalification.submit
  *        (human-gated) — the contract tests are RUN HERE in a cell (no publisher), then recorded with the submission
- *   POST …/observation/requalifications/:requalificationId/decide   {decision, reason, requestId?}    observation.connector.requalification.approve
+ *   POST …/observation/requalifications/:requalificationId/decide   {decision, reason, expectedDigest, requestId?}  observation.connector.requalification.approve
  *        (human-gated; a second person ≠ the submitter)
  *   POST …/observation/connectors/:sourceId/credential/rotate       {contractVersion, ref, header, reason, requestId?}
  *        observation.connector.credential.rotate (human-gated) — a REFERENCE, never a value
@@ -114,11 +114,13 @@ export class ConnectorCellController {
     const p = body?.payload ?? {};
     const decision = p['decision'] === 'approve' || p['decision'] === 'reject' ? p['decision'] : unprocessable(corr, 'adapter package rejected (decision): decision is approve or reject');
     const reason = typeof p['reason'] === 'string' ? p['reason'] : unprocessable(corr, 'adapter package rejected (reason): a decision states its reason');
+    // the digest the decider REVIEWED: the port refuses a decision naming another (stale) — a server-enforced binding
+    const expectedDigest = typeof p['expectedDigest'] === 'string' && /^[0-9a-f]{64}$/.test(p['expectedDigest']) ? p['expectedDigest'] : unprocessable(corr, 'adapter package rejected (digest): expectedDigest is the package digest you reviewed');
     const out = await mapped(corr, this.pipeline.write(envelope, principal,
       { scope: 'DOMAIN', tenantId, domainId, action: 'observation.adapter.approve', objectType: 'ADP', objectId: packageId },
       CellCapability.decide,
       async (cap) => {
-        const r = await cap.decide({ requestId: requestIdOf(p), tenantId, domainId, packageId, decision, reason, actor: principal.principalId, correlationId: corr });
+        const r = await cap.decide({ requestId: requestIdOf(p), tenantId, domainId, packageId, decision, reason, expectedDigest, actor: principal.principalId, correlationId: corr });
         return { result: r, targetType: 'ADP', targetId: packageId, targetVersion: String(r['version'] ?? ''), outboxEvent: null };
       }));
     return { package: out.result, receipt: receipt(out) };
@@ -144,11 +146,13 @@ export class ConnectorCellController {
     const p = body?.payload ?? {};
     const decision = p['decision'] === 'approve' || p['decision'] === 'reject' ? p['decision'] : unprocessable(corr, 'requalification rejected (decision): decision is approve or reject');
     const reason = typeof p['reason'] === 'string' ? p['reason'] : unprocessable(corr, 'requalification rejected (reason): a decision states its reason');
+    // the package digest the decider REVIEWED (with its contract tests): the port refuses a decision naming another (stale)
+    const expectedDigest = typeof p['expectedDigest'] === 'string' && /^[0-9a-f]{64}$/.test(p['expectedDigest']) ? p['expectedDigest'] : unprocessable(corr, 'requalification rejected (digest): expectedDigest is the submitted package digest you reviewed');
     const out = await mapped(corr, this.pipeline.write(envelope, principal,
       { scope: 'DOMAIN', tenantId, domainId, action: 'observation.connector.requalification.approve', objectType: 'RQL', objectId: requalificationId },
       CellCapability.decideRequalification,
       async (cap) => {
-        const r = await cap.decide({ requestId: requestIdOf(p), tenantId, domainId, requalificationId, decision, reason, actor: principal.principalId, correlationId: corr });
+        const r = await cap.decide({ requestId: requestIdOf(p), tenantId, domainId, requalificationId, decision, reason, expectedDigest, actor: principal.principalId, correlationId: corr });
         return { result: r, targetType: 'RQL', targetId: requalificationId, targetVersion: null, outboxEvent: null };
       }));
     return { requalification: out.result, receipt: receipt(out) };
