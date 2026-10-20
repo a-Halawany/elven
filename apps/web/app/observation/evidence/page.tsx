@@ -15,7 +15,12 @@ import { observation } from '../../../lib/observation';
 import {
   Empty, Mono, ScrollBox, SyntheticMarker, badgeRowStyle, fmtBytes, fmtInstant,
 } from '../../../components/observation';
-import { ErrorNote, TruthBadge } from '../../../components/ui';
+import { ErrorNote } from '../../../components/ui';
+/* B82 ts: the DISPLAY truth of each current version (CORRECTED linked to its preserved original, INDETERMINATE with its reason — derived by
+   the server, never stored); an unread display truth shows the stored state and says so */
+import { TruthStateLabel, useDisplayTruth } from '../../../components/truth';
+import { refKey } from '../../../lib/truth-b82';
+/* end B82 ts */
 
 export default function EvidencePage() {
   const { scope } = useShell();
@@ -31,6 +36,9 @@ export default function EvidencePage() {
   }, [scope, sourceFilter]);
 
   useEffect(() => { void load(); }, [load]);
+  /* B82 ts */
+  const truths = useDisplayTruth(scope, (rows ?? []).map((e) => ({ type: 'EVD', id: String(e['object_id']), version: Number(e['object_version']), stored: String(e['truth_state']) })));
+  /* end B82 ts */
 
   return (
     <>
@@ -89,7 +97,12 @@ export default function EvidencePage() {
                         )}
                       </div>
                     </td>
-                    <td data-label="Truth state"><TruthBadge state={String(e['truth_state'])} /></td>
+                    {/* B82 ts */}
+                    <td data-label="Truth state">{(() => {
+                      const t = truths.get(refKey({ type: 'EVD', id: String(e['object_id']), version: Number(e['object_version']) }));
+                      return <TruthStateLabel truth={t ?? { stored: String(e['truth_state']), unread: 'reading the display truth' }} detail="compact" />;
+                    })()}</td>
+                    {/* end B82 ts */}
                     <td data-label="Bytes">
                       {fmtBytes(payload['byte_length'])}
                       <div><Mono>{String(payload['content_digest'] ?? '').slice(0, 12)}…</Mono></div>

@@ -14,6 +14,7 @@ import { envelopeKeyLines, fitnessLabel } from '../../lib/fitness';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant, textareaStyle } from '../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../components/ui';
 import { CompositionPanel } from './composition-panel'; // B29 (0092): families, contracts, links, coupling, dependency completeness
+/* B82 ev: each element's citations a CitationLink, resolved when opened (a version cites hundreds; CMP-026, UX-ADR-006) */ import { CitationLink } from '../../components/evidence'; /* end B82 ev */
 
 const KIND: Record<Element['kind'], { glyph: string; token: string; text: string }> = {
   observed: { glyph: '●', token: '--eye-color-success', text: 'OBSERVED' },
@@ -176,7 +177,7 @@ export default function TwinsPage() {
                       <Td>{e.material ? 'material' : 'context'}</Td>
                       <Td>{HEALTH[e.health]}</Td>
                       <Td mono>{e.valid_from ? `${day(e.valid_from)} → ${e.valid_to ? day(e.valid_to) : '…'}` : '—'}</Td>
-                      <Td mono>{e.citations.map((c) => `${c.kind}:${c.id.slice(0, 8)}…@${c.version}`).join(' ')}</Td>
+                      <Td>{/* B82 ev */}{e.citations.length === 0 ? 'cites nothing' : e.citations.map((c) => <div key={`${c.kind}:${c.id}@${c.version}`}><CitationLink citation={c} scope={scope} resolution="on_open" /></div>)}{/* end B82 ev */}</Td>
                     </tr>
                   ))}
                 </tbody>

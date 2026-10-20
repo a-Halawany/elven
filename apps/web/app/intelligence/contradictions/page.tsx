@@ -24,6 +24,12 @@ import { Empty, GovernedButton, LiveStatus, Mono, ScrollBox, cardStyle, Definiti
   fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt, TruthBadge, LifecycleBadge } from '../../../components/ui';
 /* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../components/forms';
+/* B82 ts: each assertion's DISPLAY truth — an open contradiction (or one adjudicated "both stand") makes both versions INDETERMINATE (TS-10,
+   HX-02; derived by the server, never stored); the extraction's confidence as an uncalibrated model score (NUM-02), never a bare number */
+import { ConfidenceClass, TruthStateLabel, useDisplayTruth } from '../../../components/truth';
+import { refKey, type TruthInput } from '../../../lib/truth-b82';
+const scoreOf = (v: unknown) => ({ score: v === null || v === undefined || v === '' ? null : Number(v), calibrated: false, source: 'extraction model' });
+/* end B82 ts */
 
 type Row = Record<string, unknown>;
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
@@ -66,6 +72,13 @@ function Assertion({ side, c, read, problem }: { side: Side; c: ContradictionRow
   const named = read === null ? null : read.versions.find((v) => Number(v.object_version) === version) ?? null;
   const current = read === null ? null : read.current;
   const basisTruth = side === 'a' ? c.basis['a_truth_state'] : undefined;
+  /* B82 ts: the display truth of the named version and of the current one (one audited read) */
+  const { scope } = useShell();
+  const want = [...(named === null ? [] : [{ type: String(named.object_type), id: objectId, version, stored: String(named.truth_state) }]),
+    ...(current !== null && Number(current.object_version) !== version ? [{ type: String(current.object_type), id: objectId, version: Number(current.object_version), stored: String(current.truth_state) }] : [])];
+  const truths = useDisplayTruth(read === null ? null : scope, want);
+  const truthAt = (type: string, v: number, stored: string): TruthInput => truths.get(refKey({ type, id: objectId, version: v })) ?? { stored, unread: 'reading the display truth' };
+  /* end B82 ts */
   return (
     <div style={{ ...cardStyle, background: 'var(--eye-color-surface-secondary)' }}>
       <h4 style={{ ...h3, marginBlockStart: 0 }}>Assertion {side.toUpperCase()} {side === 'a' ? '— the one that stood' : '— the one admitted against it'}</h4>
@@ -86,16 +99,16 @@ function Assertion({ side, c, read, problem }: { side: Side; c: ContradictionRow
         )}
         {named !== null && (
           <>
-            <DefinitionRow term="Truth state"><TruthBadge state={String(named.truth_state)} /> <LifecycleBadge state={String(named.lifecycle_state)} /> · <Mono>{str(named.object_type)}</Mono> · {str(named.payload.claim_kind)}</DefinitionRow>
+            <DefinitionRow term="Truth state">{/* B82 ts */}<TruthStateLabel truth={truthAt(String(named.object_type), version, String(named.truth_state))} />{/* end B82 ts */} <LifecycleBadge state={String(named.lifecycle_state)} /> · <Mono>{str(named.object_type)}</Mono> · {str(named.payload.claim_kind)}</DefinitionRow>
             <DefinitionRow term="Value at that version">{str(named.payload.object_value)}{named.payload.subject !== c.subject || named.payload.predicate !== c.predicate ? <span style={muted}> · the version states {str(named.payload.subject)} / {str(named.payload.predicate)}</span> : null}</DefinitionRow>
             <DefinitionRow term="Recorded">{fmtInstant(named.recorded_at)}{named.event_time !== null ? <> · event time {fmtInstant(named.event_time)}</> : null}</DefinitionRow>
-            <DefinitionRow term="Confidence"><Mono>{str(named.payload.confidence)}</Mono> · mode <Mono>{str(named.payload.lineage?.mode)}</Mono> · method <Mono>{str(named.payload.lineage?.method_key)}</Mono></DefinitionRow>
+            <DefinitionRow term="Confidence">{/* B82 ts */}<ConfidenceClass confidence={scoreOf(named.payload.confidence)} />{/* end B82 ts */} · mode <Mono>{str(named.payload.lineage?.mode)}</Mono> · method <Mono>{str(named.payload.lineage?.method_key)}</Mono></DefinitionRow>
             <DefinitionRow term="Review on the claim">{str(named.payload.review?.state)}{named.payload.review?.reason !== null && named.payload.review?.reason !== undefined ? <> — {String(named.payload.review.reason)}</> : null}</DefinitionRow>
           </>
         )}
         {current !== null && Number(current.object_version) !== version && (
           <DefinitionRow term="Since then">
-            the claim is now version <Mono>{String(current.object_version)}</Mono> — <TruthBadge state={String(current.truth_state)} /> <LifecycleBadge state={String(current.lifecycle_state)} />, value {str(current.payload.object_value)}; the link is to version {version} and stays
+            the claim is now version <Mono>{String(current.object_version)}</Mono> — {/* B82 ts */}<TruthStateLabel truth={truthAt(String(current.object_type), Number(current.object_version), String(current.truth_state))} detail="compact" />{/* end B82 ts */} <LifecycleBadge state={String(current.lifecycle_state)} />, value {str(current.payload.object_value)}; the link is to version {version} and stays
           </DefinitionRow>
         )}
       </dl>
@@ -108,7 +121,7 @@ function CaseDetail({ k }: { k: ReviewCase }) {
   return (
     <dl style={{ margin: 0 }}>
       <DefinitionRow term="Case"><Mono>{k.case_id}</Mono> · state <strong>{k.state}</strong></DefinitionRow>
-      <DefinitionRow term="Queued because"><Mono>{k.queued_reason}</Mono>{k.confidence !== null ? <> · confidence <Mono>{Number(k.confidence).toFixed(2)}</Mono></> : null}</DefinitionRow>
+      <DefinitionRow term="Queued because"><Mono>{k.queued_reason}</Mono>{k.confidence !== null ? <> · {/* B82 ts */}<ConfidenceClass confidence={scoreOf(k.confidence)} />{/* end B82 ts */}</> : null}</DefinitionRow>
       <DefinitionRow term="On claim">{k.claim_object_id === null ? 'no claim' : <><Mono>{k.claim_object_id}</Mono> @ version <Mono>{str(k.claim_version)}</Mono></>}</DefinitionRow>
       <DefinitionRow term="Opened">{fmtInstant(k.opened_at)} · run <Mono>{short(k.run_id)}</Mono> · method <Mono>{short(k.method_id)}</Mono></DefinitionRow>
       <DefinitionRow term="Decided">{k.decided_at === null ? 'not yet' : <>{fmtInstant(k.decided_at)}{k.decision_reason !== null ? <> — {k.decision_reason}</> : null}{k.superseded_to_version !== null ? <> · the claim became version <Mono>{String(k.superseded_to_version)}</Mono></> : null}</>}</DefinitionRow>

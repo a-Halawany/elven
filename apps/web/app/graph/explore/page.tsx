@@ -27,6 +27,7 @@ import { graph, projectionNote, type EdgeRow, type EntityRow, type AsOf, type Pr
 import { Empty, LiveStatus, Mono, ModeBadge, cardStyle, UnknownNote, GovernedButton,
   fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td } from '../../../components/ui';
+/* B82 gm */ import { KnowledgeGraphView } from '../../../components/canvas'; /* end B82 gm */
 
 function local(iso: string): string {
   return new Date(iso).toISOString().slice(0, 16);
@@ -266,6 +267,16 @@ export default function ExplorePage() {
         )}
       </section>
 
+      {/* B82 gm (VIZ-13, CMP-063, UX-ADR-016): the answer DRAWN — a task-bounded knowledge graph of exactly these edges (the question it
+          answers, the caps, the projection watermark); over its caps it is not drawn and says why. The edge table below stays. */}
+      {edges === null || edges.length === 0 || asOf === null ? null : (
+        <section aria-labelledby="kg-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
+          <h2 id="kg-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>The answer drawn</h2>
+          <KnowledgeGraphView question={neighbours.length > 0 ? `What is within ${depth} hop(s) of ${name(from)}, known at and valid at the instant asked?` : 'Which relationships were visible at the instant asked?'}
+            edges={edges} entities={entities} depth={neighbours.length > 0 ? depth : 4} projection={projection} asOf={asOf.knownAt} />
+        </section>
+      )}
+      {/* end B82 gm */}
       {edges === null ? null : edges.length === 0 ? (
         <Empty>No edges were visible at that instant.</Empty>
       ) : (

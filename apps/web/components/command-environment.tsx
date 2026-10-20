@@ -6,8 +6,8 @@
  *   CommandComposition   the operations room at ≥ 1920 px (BP-05) through §LY-G's Composition and Regions: the context band (scope, the
  *                        classification, the data watermark), the status band (the display's record, the synchronisation, the divergence
  *                        watermark, a freeze in words), the AUTHORITY band (which window is the control surface; the person's open
- *                        handoffs from their other sessions, claimable here), the corridor (a STRUCTURED alternative — the map canvas is
- *                        B82's), the warning queue, the twin state with §OB's ObjectHeader for the synchronized selection, and the window
+ *                        handoffs from their other sessions, claimable here), the corridor (B82 gm: a MapCanvas of the declared
+ *                        references with this STRUCTURED list as its table alternative), the warning queue, the twin state with §OB's ObjectHeader for the synchronized selection, and the window
  *                        commands — each naming the authoritative control surface and the data watermark. Below 1920 px the regions reflow
  *                        (§LY-G) and the room says so. A mirror window (the display is controlled by another of the person's sessions) offers
  *                        no command: it follows.
@@ -38,6 +38,13 @@ import { ObjectHeader } from './object';
 import { GovernedButton, LiveStatus } from './observation';
 import { ErrorNote, Receipt } from './ui';
 import { Dialog } from './layers';
+/* B82 gm */
+import { GeospatialMap } from './canvas';
+import { geoApi } from '../lib/geo-api-b82';
+import { geoReferenceOf } from '../lib/canvas-specs-b82';
+import { CORRIDOR_KINDS } from '../lib/windows-b81';
+import type { GeoReference } from '../lib/b82-seams';
+/* end B82 gm */
 
 type Err = { code: string; message: string; correlationId: string } | null;
 type Rcpt = { policyDecisionId: string; auditSeq: number } | null;
@@ -66,6 +73,39 @@ function RoomList({ section, onSelect }: { section: RoomSection; onSelect?: ((r:
     </div>
   );
 }
+
+/* B82 gm */
+/**
+ * THE CORRIDOR REGION (BP-05 + CMP-064, VIZ-16): the corridor's DECLARED geographic references drawn on a MapCanvas (EPSG:4326, a graticule
+ * and a scale bar, no basemap, no tiles, no network) read under the person's own context (graph.geo.read), with B81's structured list of the
+ * corridor exposures KEPT below as the region's table alternative (the map's own table lists every reference with its coordinates, source
+ * and licence). A refused or empty read is said in words; the list stays.
+ */
+function CorridorRegion({ scope, section, onSelect }: { scope: ShellScope; section: RoomSection; onSelect?: ((r: RoomRow) => void) | undefined }) {
+  const [refs, setRefs] = useState<GeoReference[] | null>(null);
+  const [asOf, setAsOf] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void geoApi.layer(scope, { kinds: [...CORRIDOR_KINDS] }).then((r) => {
+      if (!live) return;
+      if (!r.ok || r.data === undefined) { setProblem(`The corridor map could not be read: HTTP ${r.status}${r.error?.code ? ` ${r.error.code}` : ''} — ${r.error?.message ?? 'no answer'}`); return; }
+      setProblem(null); setRefs(r.data.layer.references.map(geoReferenceOf)); setAsOf(r.data.layer.as_of);
+    });
+    return () => { live = false; };
+  }, [scope]);
+  return (
+    <div className="eye-cmdenv-section" data-room-section="corridor-map">
+      {problem !== null && <p role="alert" className="eye-help">{problem} The structured list below still states the corridor.</p>}
+      {refs === null && problem === null && <LiveStatus>reading the corridor map…</LiveStatus>}
+      {refs !== null && asOf !== null && (refs.length === 0
+        ? <p className="eye-help">No geographic reference is declared for this domain yet, so the corridor map draws nothing. A data steward declares them on the Geography page (/graph/geo).</p>
+        : <GeospatialMap refs={refs} title="Corridor map — declared references" asOf={asOf} dash={Object.fromEntries(refs.filter((x) => x.key.includes('cape')).map((x) => [x.key, 'dashed' as const]))} />)}
+      <RoomList section={section} onSelect={onSelect} />
+    </div>
+  );
+}
+/* end B82 gm */
 
 /** The synchronized selection's header (§OB's grammar) — only for the object types with a page today; the others are said. */
 function selectionHeader(sel: RoomSelection | null, detail: string | null): ObjectHeaderInput | null {
@@ -229,7 +269,9 @@ export function CommandComposition({ scope, data, authenticated, mirrorWindow, o
         {claimed !== null && <div role="status" className="eye-cmdenv-receipt">{claimLines(claimed).map((l) => <p key={l} className="eye-shell-meta">{l}</p>)}</div>}
       </div>
     ),
-    primary: <RoomList section={sections[0]!} onSelect={isControl ? (r) => setSelection({ kind: r.kind, id: r.id }) : undefined} />,
+    /* B82 gm: the corridor region is a MapCanvas; the B81 RoomList is kept as its table alternative */
+    primary: <CorridorRegion scope={scope} section={sections[0]!} onSelect={isControl ? (r) => setSelection({ kind: r.kind, id: r.id }) : undefined} />,
+    /* end B82 gm */
     evidence: <RoomList section={sections[1]!} onSelect={isControl ? (r) => setSelection({ kind: r.kind, id: r.id }) : undefined} />,
     inspector: (
       <div>

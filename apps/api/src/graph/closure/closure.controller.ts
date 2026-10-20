@@ -9,6 +9,8 @@
  *                                                                                     (check = true runs the projection reconciliation in the read)
  *     POST …/graph/closure/adoptable                 {}                               the applied cases with no closure record (listed, never adopted)
  *     POST …/graph/closure/contract                  {}                               the domain's closure contract and its versions
+ *   THE OWNER'S READ (B82-F cc; graph.closure.obligation.read — the acknowledge / except roles, audited; NOT graph.read)
+ *     POST …/graph/closure/obligations               {caseId?}                        the caller's OWN obligations, with only what the act needs
  *   ACTS (human-gated; the sweep is a person's route here and the attention tick's step otherwise)
  *     POST …/graph/closure/contract/declare          {windows, exceptionMaxDays, synthetic, statement, contractId?}   graph.closure.contract.declare
  *     POST …/graph/closure/cases/:caseId/acknowledge {consumerRef, state?, note, recomputeRef?, ackId?}               graph.closure.acknowledge
@@ -87,6 +89,19 @@ export class ClosureB50Controller {
       async (cap) => cap.read({ tenantId, domainId, caseId, check }));
     return { closure: out.result, receipt: receipt(out) };
   }
+
+  /* B82-F cc */
+  /** The affected product's owner reaches their OWN obligation without graph.read: the port answers only the consumers the caller
+   *  answers for as the acknowledge / except ports decide — never the case's graph, its other consumers or any evidence. */
+  @Post('/closure/obligations')
+  async obligations(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: Body_) {
+    const { envelope, principal } = ctx(req);
+    const caseId = optionalUuid(body?.payload ?? {}, 'caseId', envelope.correlation_id);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.closure.obligation.read', 'COR', caseId), ClosureCapability.obligations,
+      async (cap) => cap.obligations({ tenantId, domainId, actor: principal.principalId, caseId }));
+    return { obligations: out.result, receipt: receipt(out) };
+  }
+  /* end B82-F cc */
 
   // ───────────────────────── the contract ─────────────────────────
   @Post('/closure/contract/declare')

@@ -26,6 +26,11 @@ export const closureApi = {
   /** The applied cases with no closure record — listed, never adopted by this read. */
   adoptable: (s: Scope) => p<{ cases: Row[]; receipt: Receipt }>(s, '/adoptable', 'graph.read', 'COR', null, {}, true),
   contract: (s: Scope) => p<{ contract: Row; receipt: Receipt }>(s, '/contract', 'graph.read', 'CCT', null, {}, true),
+  /* B82-F cc */
+  /** The caller's OWN correction obligations (graph.closure.obligation.read — the acknowledge / except roles, not graph.read); one case when named. */
+  obligations: (s: Scope, caseId: string | null) =>
+    p<{ obligations: Row; receipt: Receipt }>(s, '/obligations', 'graph.closure.obligation.read', 'COR', caseId, caseId === null ? {} : { caseId }, true),
+  /* end B82-F cc */
   acknowledge: (s: Scope, caseId: string, a: { consumerRef: string; state: 'acknowledged' | 'recomputed'; note: string; recomputeRef: string | null; ackId: string }) =>
     p<{ acknowledgement: Row; receipt: Receipt }>(s, `/cases/${seg(caseId)}/acknowledge`, 'graph.closure.acknowledge', 'COR', caseId, a),
   except: (s: Scope, caseId: string, a: { consumerRef: string; reason: string; expiresAt: string; ownerPrincipalId: string; ackId: string }) =>

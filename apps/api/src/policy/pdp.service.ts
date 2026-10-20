@@ -1503,6 +1503,26 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'observation.coverage_remediation.close', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'observation.coverage_remediation.withdraw', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B28 remediation */
+  /* B82 ev */
+  /* B82 §EV (0121_b82_x_ev; CMP-031, UX-26-002/004, DESIGN D10). EXACT rules, placed BEFORE the `observation.` collection prefix rule (which
+     would otherwise match them first and admit a domain analyst or the collection agent). THE RIGHTS TERMS of a source contract version are
+     declared, revised and withdrawn by a named DATA STEWARD or COLLECTION MANAGER — human-gated; the ports re-check the person, the role and
+     the acting principal (governance.assert_approver). Reading them is `observation.read.rights`, the existing `observation.read` prefix rule's
+     readers (unchanged). DESIGN D9: NO evidence-read action is added or widened — the cited-span route uses the EXISTING
+     `observation.evidence.retrieve`, the citation resolution the EXISTING `graph.provenance.read`. */
+  { actionPrefix: 'observation.rights.declare', exact: true, requiredAnyRole: [{ role: 'data_steward', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.rights.withdraw', exact: true, requiredAnyRole: [{ role: 'data_steward', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B82 ev */
+  /* B82-F rt */
+  /* B82-F §RT (0122_b82f_x_rt): THE DECLARERS' READ of the rights terms — EXACT, for exactly the declare rule's roles at DOMAIN (the data
+     steward and the collection manager), placed BEFORE the `observation.` collection prefix rule (which would otherwise match it first).
+     Rights METADATA only (observation.rights_terms_register — the port re-checks the bound action, the scope and the acting principal's
+     role); it grants no evidence read and no `observation.read` (no existing rule or prefix widened). */
+  { actionPrefix: 'observation.rights.terms.read', exact: true, requiredAnyRole: [{ role: 'data_steward', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B82-F rt */
   {
     // The COLLECTION surface: run lifecycle, admission, quarantine, checkpoints,
     // coverage measurement and sweeper reconciliation. Held by the agent role and
@@ -1550,6 +1570,24 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B50 lc */
+  /* B82 ts */
+  /* B82 §TS (0121_b82_x_ts; TS-06/08/10, HX-02, UX-06-004/-005/-006). ONE EXACT rule, placed BEFORE the `objects.read` and `objects.` prefix
+     rules (neither is a prefix of `objects.display_truth.read` except `objects.`, which would admit the administrators only). THE DISPLAY-TRUTH
+     READ (objects.display_truth — RECOMMENDED / CORRECTED / INDETERMINATE derived, never stored): EXACTLY graph.provenance.read's readers
+     (B50 §PV), who already read every product's truth and lifecycle state through graph.explain — no role gains a read it did not hold
+     (DESIGN D9: no new permission in substance); audited, purpose-bound, C2 at most. The read asserts the caller's tenant and domain itself. */
+  ...((): Rule[] => {
+    const d = (role: string) => ({ role, atScope: 'DOMAIN' as Scope });
+    const readers = [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }, { role: 'auditor', atScope: 'TENANT' as Scope },
+      { role: 'retention_authority', atScope: 'TENANT' as Scope },
+      ...['domain_admin', 'domain_analyst', 'collection_manager', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator',
+        'knowledge_owner', 'record_authority', 'retention_steward', 'ontology_steward', 'data_steward', 'method_steward', 'decision_owner', 'decision_approver', 'decision_authority',
+        'executive', 'executive_operator', 'risk_owner', 'privacy_officer'].map(d)];
+    return [
+      { actionPrefix: 'objects.display_truth.read', exact: true, requiredAnyRole: readers, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B82 ts */
   {
     actionPrefix: 'objects.read',
     requiredAnyRole: [
@@ -3390,6 +3428,21 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B50 cl */
+  /* B82-F cc */
+  /* B82-F cc (0122_b82f_x_cc; B50 §CL "Observed, not fixed"). EXACT rule — no earlier rule is a prefix of `graph.closure.obligation.read`
+     (the graph prefix rules are graph.read, graph.entity.*, graph.resolution.*, graph.edge.*, graph.strategy.*, graph.propagation.*,
+     graph.impact.propagate, graph.subscription.*; the graph.closure.* rules above are all exact). THE OWNER'S READ: the acting principal's
+     OWN correction obligations (graph.correction_obligations) — its roles are EXACTLY the roles of graph.closure.acknowledge / .except
+     (the people who may own an affected product), audited; the PORT answers only the consumers the caller answers for as the acknowledge /
+     except ports decide, with only what the act needs. graph.read and the acknowledge / except rules are unchanged; no role gains a case,
+     graph or evidence read. */
+  ...((): Rule[] => {
+    const owners = ['domain_admin', 'domain_analyst', 'domain_specialist', 'collection_manager', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner',
+      'twin_owner', 'simulation_operator', 'knowledge_owner', 'record_authority', 'ontology_steward', 'data_steward', 'method_steward', 'decision_owner', 'decision_approver',
+      'decision_authority', 'executive', 'executive_operator', 'risk_owner', 'privacy_officer'].map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    return [{ actionPrefix: 'graph.closure.obligation.read', exact: true, requiredAnyRole: owners, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' }];
+  })(),
+  /* end B82-F cc */
   /* B50 tl */
   /* B50 §TL (0120_b50_x_tl; F-P3-04: PR-22-001/002/003/005, CAP-UM-10). EXACT rules — no earlier rule is a prefix of graph.timeline.* (the
      graph rules are graph.read, graph.entity.*, graph.resolution.*, graph.edge.*, graph.strategy.*, graph.propagation.*, graph.impact.*,
@@ -3413,6 +3466,61 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B50 tl */
+  /* B82 gm */
+  /* B82 §GM (0121_b82_x_gm; CMP-064, VIZ-16/18, DESIGN D4). EXACT rules — no earlier rule is a prefix of graph.geo.* (the graph rules are
+     graph.read, graph.entity.*, graph.resolution.*, graph.edge.*, graph.strategy.*, graph.propagation.*, graph.impact.*, graph.subscription.*,
+     graph.provenance.*, graph.timeline.*, graph.closure.*, graph.revision.commit …; none is a prefix of `graph.geo`). THE READ
+     (`graph.geo.read`: the geographic layer the map canvases draw) by §PV's readers, audited. THE REGISTER (`graph.geo.declare`,
+     `graph.geo.retire`): a NAMED DATA STEWARD only — human-gated; the port re-checks the human, the role and the acting principal
+     (governance.assert_approver). No role gains anything it held not before (D9): these are the register's own three actions. */
+  ...((): Rule[] => {
+    const d = (role: string) => ({ role, atScope: 'DOMAIN' as Scope });
+    const readers = [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }, { role: 'auditor', atScope: 'TENANT' as Scope },
+      { role: 'retention_authority', atScope: 'TENANT' as Scope },
+      ...['domain_admin', 'domain_analyst', 'collection_manager', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator',
+        'knowledge_owner', 'record_authority', 'retention_steward', 'ontology_steward', 'data_steward', 'method_steward', 'decision_owner', 'decision_approver', 'decision_authority',
+        'executive', 'executive_operator', 'risk_owner', 'privacy_officer'].map(d)];
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    return [
+      { actionPrefix: 'graph.geo.read', exact: true, requiredAnyRole: readers, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.geo.declare', exact: true, requiredAnyRole: [d('data_steward')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.geo.retire', exact: true, requiredAnyRole: [d('data_steward')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B82 gm */
+  /* B82 px */
+  /* B82 §PX (0121_b82_x_px; UX-57-001…005, CMP-022, WS-18). EXACT rules — no earlier rule is a prefix of graph.trust.* (the graph rules are
+     graph.read, graph.entity.*, graph.resolution.*, graph.edge.*, graph.strategy.*, graph.propagation.*, graph.impact.*, graph.subscription.*,
+     graph.provenance.*, graph.timeline.*, graph.closure.*, graph.geo.*, graph.revision.commit …; none is a prefix of `graph.trust`). THE READ
+     (`graph.trust.read`: the trust envelope, the provenance strength, the Trust and Governance overview) by §PV's readers, audited — the
+     facets and records carry no evidence bytes (D9: no evidence read is widened). THE ACTS, each human-gated, the PORT re-checking the
+     person and the role (graph.px_actor): VERIFY AGAIN (`graph.trust.verify`) — the auditor (TENANT), a record authority, a data steward, a
+     knowledge owner, a method steward, an analyst, the domain administrator, a decision approver, a privacy officer; ATTEST and WITHDRAW
+     (`graph.trust.attest`, `graph.trust.withdraw`) — the auditor (TENANT), a record authority, a data steward, a knowledge owner, a method
+     steward, an analyst, a decision approver, a risk owner (the port refuses the producer and the owner; an attestation is never an
+     approval and no rule reads it); INVESTIGATE (`graph.trust.investigate`) — those and the decision owner, the decision authority, the
+     executive, the domain administrator, a forecast owner, a strategy owner. No agent role appears here. */
+  ...((): Rule[] => {
+    const d = (role: string) => ({ role, atScope: 'DOMAIN' as Scope });
+    const auditor = { role: 'auditor', atScope: 'TENANT' as Scope };
+    const readers = [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }, auditor,
+      { role: 'retention_authority', atScope: 'TENANT' as Scope },
+      ...['domain_admin', 'domain_analyst', 'collection_manager', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator',
+        'knowledge_owner', 'record_authority', 'retention_steward', 'ontology_steward', 'data_steward', 'method_steward', 'decision_owner', 'decision_approver', 'decision_authority',
+        'executive', 'executive_operator', 'risk_owner', 'privacy_officer'].map(d)];
+    const verifiers = [auditor, ...['record_authority', 'data_steward', 'knowledge_owner', 'method_steward', 'domain_analyst', 'domain_admin', 'decision_approver', 'privacy_officer'].map(d)];
+    const attesters = [auditor, ...['record_authority', 'data_steward', 'knowledge_owner', 'method_steward', 'domain_analyst', 'decision_approver', 'risk_owner'].map(d)];
+    const investigators = [...attesters, ...['decision_owner', 'decision_authority', 'executive', 'domain_admin', 'forecast_owner', 'strategy_owner'].map(d)];
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    return [
+      { actionPrefix: 'graph.trust.read', exact: true, requiredAnyRole: readers, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.trust.verify', exact: true, requiredAnyRole: verifiers, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.trust.attest', exact: true, requiredAnyRole: attesters, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.trust.withdraw', exact: true, requiredAnyRole: attesters, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.trust.investigate', exact: true, requiredAnyRole: investigators, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B82 px */
 ];
 
 /* B107 conformance */

@@ -102,9 +102,11 @@ test.describe.serial('CP-6 B81 §RE — the sign-in return and B80\'s residues',
     await expect(page.getByText(/held — this fixture region is frozen \(SYNTHETIC\)/)).toBeVisible();
     await expect(page.getByText('Last fixture activation: none')).toBeVisible();
     // UX-20-001: the symbol set's glyphs, the name kept
-    for (const s of ['observed', 'assessed', 'decided', 'withdrawn', 'rumoured']) await expect(page.getByLabel(`truth state ${s}`)).toBeVisible();
-    await expect(page.getByLabel('truth state assessed')).toHaveAttribute('data-symbol', 'TS-04');
-    await expect(page.getByLabel('truth state rumoured')).toHaveAttribute('data-symbol', 'GEN-00');
+    // B82: the catalogue also lists every display truth state (§TS) — §RE's glyphs are read in their own section
+    const truthRe = page.getByRole('region', { name: 'Governed controls, truth' });
+    for (const s of ['observed', 'assessed', 'decided', 'withdrawn', 'rumoured']) await expect(truthRe.getByLabel(`truth state ${s}`)).toBeVisible();
+    await expect(truthRe.getByLabel('truth state assessed')).toHaveAttribute('data-symbol', 'TS-04');
+    await expect(truthRe.getByLabel('truth state rumoured')).toHaveAttribute('data-symbol', 'GEN-00');
     // UX-20-004 / LAY-003: an icon-only C3 control is held with its reason; the labelled one is the 44px control and runs
     const enforce = page.getByRole('region', { name: 'The Button\'s enforcement', exact: true });
     const icons = enforce.getByRole('button', { name: '✕' });

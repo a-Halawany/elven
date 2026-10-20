@@ -69,8 +69,8 @@ describe('the eight shells keep every hosted selector (UX-09-001, CMP-011)', () 
     expect(labels('prediction')).toEqual(expect.arrayContaining(['Ensembles', 'Information sets', 'Forecasting portfolio', 'Domains']));
     expect(labels('twins')).toEqual(expect.arrayContaining(['Explorer', 'Reconciliation', 'Models', 'Fabric experiments', 'Supply network']));
     expect(DECISIONS_NAV[0]).toEqual({ href: '/home', label: 'Home', glyph: '⌂' });
-    expect(shellSpec('observation').nav).toHaveLength(12);
-    expect(shellSpec('graph').nav).toHaveLength(28);
+    expect(shellSpec('observation').nav).toHaveLength(13);   // B82-F rt: + Rights terms (the declarers' page)
+    expect(shellSpec('graph').nav).toHaveLength(30);   // B82: + Geography (/graph/geo), Trust (/graph/trust)
     expect(shellSpec('prediction').nav).toHaveLength(20);
     expect(shellSpec('twins').nav).toHaveLength(15);
     expect(shellSpec('intelligence').nav).toHaveLength(13);

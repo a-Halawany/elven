@@ -15,6 +15,12 @@ import {
 } from '../../../lib/envelope-b30';
 import { Empty, LiveStatus, Mono, UnknownNote, cardStyle, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+/* B82 cf: a model's calibration pairs — predicted against later observed, the line of perfect agreement a reference, never a fit (VIZ-25) */
+import { Scatter } from '../../../components/chart';
+import { calibrationPairs } from '../../../lib/chart-reads-b82';
+import type { CalibrationRead } from '../../../lib/envelope-b30';
+import { pairsSpec, readExport } from '../../../lib/chart-specs-b82';
+/* end B82 cf */
 
 type R = { policyDecisionId: string; auditSeq: number };
 const refusal = (r: { status: number; error?: { code: string; message: string } }, fallback: string) =>
@@ -105,6 +111,15 @@ export default function ModelsPage() {
   const [calProblem, setCalProblem] = useState<string | null>(null);
   const [ctxVersion, setCtxVersion] = useState('');
   const [ctx, setCtx] = useState<AiContext | null>(null);
+  /* B82 cf: the chosen twin's calibrations as the existing read returns them (twin.read · /calibrations/read — with their pairs), re-read after an act */
+  const [cal, setCal] = useState<{ read: CalibrationRead; at: string } | { error: { code: string; message: string; correlationId: string } } | null>(null);
+  useEffect(() => {
+    setCal(null);
+    if (twinId === '') return;
+    void api.calibrations(scope, twinId).then((r) => setCal(r.ok && r.data !== undefined ? { read: r.data.calibrations, at: new Date().toISOString() }
+      : { error: r.error ?? { code: 'EYE-TWN', message: 'the calibrations were not read; reload the page to read them again', correlationId: '—' } }));
+  }, [scope, twinId, last]);
+  /* end B82 cf */
 
   const load = async () => {
     const [m, r, t] = await Promise.all([api.models(scope), api.runs(scope), twinApi.list(scope)]);
@@ -179,6 +194,21 @@ export default function ModelsPage() {
         ) : null}
         {calProblem === null ? null : <LiveStatus assertive><span style={{ color: 'var(--eye-color-critical)' }}>{calProblem}</span></LiveStatus>}
       </section>
+
+      {/* B82 cf: the chosen twin's latest calibrations drawn — predicted against later observed, per model */}
+      <section aria-label="calibration pairs of the chosen twin" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
+        {cal === null ? <Empty>reading the calibrations of the chosen twin…</Empty> : 'error' in cal ? <LiveStatus assertive>not read — {cal.error.message}</LiveStatus> : (() => {
+          const byModel = new Map<string, typeof cal.read.latest>();
+          for (const c of cal.read.latest) byModel.set(c.model_ref, [...(byModel.get(c.model_ref) ?? []), c]);
+          if (byModel.size === 0) return <Empty>No calibration is recorded on {twin?.title ?? 'this twin'}: its models&apos; fitness against observed outcomes is unknown.</Empty>;
+          return [...byModel.entries()].map(([ref, cs]) => {
+            const pts = calibrationPairs(cs);
+            return <Scatter key={ref} spec={pairsSpec(ref, pts, cal.at)} points={pts} xLabel="predicted" yLabel="observed" line={{ kind: 'identity', label: 'perfect agreement (y = x)' }}
+              exportAs={readExport(scope, cal.at, 'SYNTHETIC — every number on this screen')} {...(pts.length === 0 ? { status: { state: 'empty' as const, statement: 'the calibrations carry no pair yet' } } : {})} />;
+          });
+        })()}
+      </section>
+      {/* end B82 cf */}
 
       <section aria-labelledby="ctx-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
         <h2 id="ctx-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>What an AI consumer is told</h2>

@@ -249,7 +249,26 @@ export class PipelineService {
           target: { type: route.objectType, id: route.objectId, version: null },
           metadata: { assurance: principal.assurance },
         });
-        const result = await handler(capability(tx, route.action), ctx, policyResult.obligations);
+        /* B82-F tr: a handler that THROWS part-way is judged by the same B33-H rule as one that returns. A nested read that re-asserts the
+           caller's scope (graph.trust_overview → graph.explain per product) raises `read rejected (scope)` once the context has expired,
+           so the handler failed BEFORE the completeness check could run — and answered 500. The handler runs under a savepoint; on its
+           failure the savepoint is rolled back (the transaction usable again) and the context's liveness asked: expired → the existing
+           503 EYE-DEP-001 (the result discarded, the failure audited by recordHandlerFailure); live → the handler's own error, unchanged.
+           Nothing is extended; a denial before the handler never reaches here. */
+        await sql`savepoint b82f_tr_read`.execute(tx);
+        let result: T;
+        try {
+          result = await handler(capability(tx, route.action), ctx, policyResult.obligations);
+        } catch (handlerError) {
+          let incomplete: unknown = null;
+          try {
+            await sql`rollback to savepoint b82f_tr_read`.execute(tx);
+            await this.assertReadComplete(tx, envelope, route);
+          } catch (x) { incomplete = x; }
+          if (incomplete instanceof HttpException) throw incomplete;
+          throw handlerError;
+        }
+        /* end B82-F tr */
         await this.assertReadComplete(tx, envelope, route);
         return { result, policyDecisionId: polId, auditSeq: aud.auditSeq, obligations: policyResult.obligations };
       });

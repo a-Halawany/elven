@@ -17,7 +17,7 @@
  * the OUTCOME LOOP (each response monitored, its outcome reviewed against the exposure — effect, residual verdict, lesson); the
  * portfolio's CONCENTRATION.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useShell } from '../layout';
 import { exposures, POLARITY_LABEL, STATE_LABEL, assessorLine, gapLine, likelihoodLine, methodLine, rangeLine, residualLine,
          type Aggregation, type ExposureDetail, type ExposureRow, type Polarity, type Preview, type Register, type ResponseKind,
@@ -25,6 +25,17 @@ import { exposures, POLARITY_LABEL, STATE_LABEL, assessorLine, gapLine, likeliho
          /* B36 (0094 §C5) */ learningLine } from '../../../lib/exposures';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+/* B82 sc: the register drawn — RiskMatrix, OpportunityPortfolio (components/strategic-charts.tsx), §GM's Treemap, §CF's CorrelationMatrix */
+import { OpportunityPortfolio, RiskMatrix } from '../../../components/strategic-charts';
+import { Treemap } from '../../../components/canvas';
+import { CorrelationMatrix } from '../../../components/chart';
+import { chartReads, correlationInput, type CorrelationRead } from '../../../lib/chart-reads-b82';
+import { correlationSpec, readExport } from '../../../lib/chart-specs-b82';
+import { correlationMatrix } from '../../../lib/chart-b82';
+import { horizonDays } from '../../../lib/numbers-b82';
+import { dominantUnit, isoOf, opportunityFromDetail, opportunitySpec, residualTreemapItems, riskInput, riskSpec, type OpportunityIn } from '../../../lib/strategic-charts-b82';
+import type { Scope } from '../../../lib/observation';
+/* end B82 sc */
 
 type R = { policyDecisionId: string; auditSeq: number } | null;
 const short = (v: unknown): string => (typeof v === 'string' ? `${v.slice(0, 8)}…` : '—');
@@ -181,6 +192,10 @@ export default function ExposuresPage() {
           <UnknownNote>{reg.concentration?.[0]?.rule ?? ''}</UnknownNote>
         </section>
       )}
+
+      {/* B82 sc: the register drawn (VIZ-10, VIZ-11, VIZ-21, VIZ-24) — static drawings (every value in their tables), after the roll-up */}
+      <RegisterDrawn scope={scope} reg={reg} />
+      {/* end B82 sc */}
 
       {prio === null ? null : (
         <section aria-labelledby="prio-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
@@ -436,3 +451,51 @@ export default function ExposuresPage() {
     </>
   );
 }
+
+/* B82 sc: THE REGISTER DRAWN over the existing reads — the register (risks by likelihood and residual; the accepted residual by category),
+   each opportunity's record (timing and value range), the declared correlations (beside /correlations/declare). The drawings are STATIC
+   (interactive={false}): an exposure's title never names a control here; every value is in the table alternative. */
+function RegisterDrawn({ scope, reg }: { scope: Scope; reg: Register }) {
+  const asOf = isoOf(reg.at, new Date().toISOString());
+  const risks = useMemo(() => riskInput(reg.risks), [reg.risks]);
+  const unit = useMemo(() => dominantUnit(risks.map((r) => r.unit)), [risks]);
+  const rSpec = useMemo(() => riskSpec({ items: risks, unit, asOf, rule: reg.rule }), [risks, unit, asOf, reg.rule]);
+  const parts = useMemo(() => residualTreemapItems(risks, unit), [risks, unit]);
+  const [opps, setOpps] = useState<{ items: OpportunityIn[]; unread: number } | null>(null);
+  const [corr, setCorr] = useState<{ read: CorrelationRead } | { problem: { code: string; message: string; correlationId: string } } | null>(null);
+  const oppIds = reg.opportunities.slice(0, 12).map((o) => o.exposure_id).join(',');
+  useEffect(() => {
+    let live = true;
+    void Promise.all(reg.opportunities.slice(0, 12).map((o) => exposures.get(scope, o.exposure_id))).then((rs) => {
+      if (!live) return;
+      const items = rs.flatMap((r) => (r.ok && r.data !== undefined ? [opportunityFromDetail(r.data, horizonDays)] : []));
+      setOpps({ items, unread: rs.length - items.length });
+    });
+    void chartReads.correlations(scope).then((r) => {
+      if (!live) return;
+      setCorr(r.ok && r.data !== undefined ? { read: r.data.correlations } : { problem: { code: r.error?.code ?? `HTTP ${r.status}`, message: r.error?.message ?? 'the correlations could not be read', correlationId: r.error?.correlationId ?? '' } });
+    });
+    return () => { live = false; };
+  }, [scope.tenantId, scope.domainId, oppIds]); // eslint-disable-line react-hooks/exhaustive-deps
+  const oUnit = useMemo(() => dominantUnit((opps?.items ?? []).map((o) => o.unit)), [opps]);
+  const oSpec = useMemo(() => opportunitySpec({ items: opps?.items ?? [], unit: oUnit, asOf, unread: opps?.unread ?? 0 }), [opps, oUnit, asOf]);
+  const cIn = useMemo(() => (corr !== null && 'read' in corr ? correlationInput(corr.read) : { variables: [], cells: [] }), [corr]);
+  const cM = useMemo(() => correlationMatrix(cIn.variables, cIn.cells), [cIn]);
+  const cAt = corr !== null && 'read' in corr ? isoOf(corr.read.at, asOf) : asOf;
+  const cSpec = useMemo(() => correlationSpec(cM.pairs, cM.missing, cAt, corr !== null && 'read' in corr ? corr.read.method : 'not read'), [cM, cAt, corr]);
+  const exportAs = readExport(scope, asOf);
+  return (
+    <section aria-labelledby="drawn-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
+      <h2 id="drawn-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>The register drawn</h2>
+      <RiskMatrix spec={rSpec} items={risks} unit={unit} interactive={false} exportAs={exportAs} />
+      {parts.length === 0 ? <Empty>No risk carries an accepted residual in one unit — there is no whole to divide.</Empty> : (
+        <Treemap items={parts} title="The risks' accepted residual by category" measure="accepted residual (upper bound)" unit={unit ?? ''} asOf={asOf} cutoff={null}
+          basis="each risk's accepted residual upper bound, grouped by its category — the parts sum to the naive total; the roll-up above counts a shared driver once"
+          source={{ read: 'prediction.exposure.read · /exposures/list', label: 'the risk register' }} rule="categories largest first; the risks inside each largest first; ties by name" />
+      )}
+      <OpportunityPortfolio spec={oSpec} items={opps?.items ?? []} unit={oUnit} interactive={false} exportAs={exportAs} {...(opps === null ? { status: { state: 'loading' as const } } : {})} />
+      <CorrelationMatrix spec={cSpec} variables={cIn.variables} cells={cIn.cells} {...(corr === null ? { status: { state: 'loading' as const } } : 'problem' in corr ? { status: { state: 'error' as const, error: corr.problem } } : { exportAs: readExport(scope, cAt) })} />
+    </section>
+  );
+}
+/* end B82 sc */

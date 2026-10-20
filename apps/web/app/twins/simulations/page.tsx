@@ -4,7 +4,7 @@
  * compared on that common baseline; the assumptions carrying the result; and
  * reproduction from the stored contract. Every value is SYNTHETIC and says so.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useShell } from '../layout';
 import { twins as api, runRefusalLine, type Run, type Twin, type Challenge, type ChallengeKind } from '../../../lib/twins';
 import { prediction, type ScenarioRow } from '../../../lib/prediction';
@@ -16,6 +16,9 @@ import { MethodPanel } from './method-panel'; /* B29 (0092) §C */
 import { summaryLines } from '../../../lib/methods'; /* B29 (0092): a method run's headline results */
 import { EnvelopePanel } from './envelope-panel'; /* B30 envelope */
 import { EntitlementBanner } from './entitlement-banner'; /* B91 grace */
+/* B82 sc */ import { RunComparison } from '../../../components/strategic-charts';
+import { COMPARED_MEASURES, comparedRuns, runSpec } from '../../../lib/strategic-charts-b82';
+import { readExport } from '../../../lib/chart-specs-b82'; /* end B82 sc */
 
 const money = (v: unknown): string => (typeof v === 'string' ? `€${Number(v).toLocaleString('en-GB', { minimumFractionDigits: 2 })}` : '—');
 const iv = (r: Run): string => r.interventions.map((i) => (i['type'] === 'none' ? 'none' : `${String(i['type'])}${i['shipment'] ? ` ${String(i['shipment'])}` : ''}${i['weeks'] ? ` ${String(i['weeks'])}w` : ''}`)).join(' + ');
@@ -271,6 +274,9 @@ export default function SimulationsPage() {
           </table>
         </section>
       )}
+      {/* B82 sc: the compared runs drawn on their one basis (VIZ-27) — a section of its own after the comparison (its selectors unchanged) */}
+      {comparison === null ? null : <SimRuns scope={scope} compared={comparison.runs} runs={runs ?? []} />}
+      {/* end B82 sc */}
       {open === null ? null : (
         <section aria-labelledby="run-d" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
           <h2 id="run-d" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Run <Mono>{open.run_id}</Mono> — SYNTHETIC</h2>
@@ -383,3 +389,17 @@ export default function SimulationsPage() {
     </>
   );
 }
+
+/* B82 sc: RunComparison (VIZ-27) over the comparison read — the manifests from the run list; incompatible runs named, never drawn together */
+function SimRuns({ scope, compared, runs }: { scope: Scope; compared: Array<{ run_id: string; run_kind: string; totals: { line_stop_days: number; days_below_safety_stock: number; cost: { total: string } } }>; runs: Run[] }) {
+  const items = useMemo(() => comparedRuns(compared, runs), [compared, runs]);
+  const asOf = useMemo(() => new Date().toISOString(), [compared]); // eslint-disable-line react-hooks/exhaustive-deps
+  const spec = useMemo(() => runSpec({ title: 'The selected runs drawn per measure on their one basis', runs: items, measures: COMPARED_MEASURES, asOf, read: 'simulation.read · /simulations/compare', readLabel: 'the comparison on the common control' }), [items, asOf]);
+  return (
+    <section aria-labelledby="sim-runs-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
+      <h2 id="sim-runs-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>The selected runs, drawn</h2>
+      <RunComparison spec={spec} runs={items} measures={COMPARED_MEASURES} exportAs={readExport(scope, asOf)} />
+    </section>
+  );
+}
+/* end B82 sc */

@@ -19,6 +19,10 @@ import { ContextSwitcher } from './context-switcher';
 import { CommandViews } from './command-views';
 /* B81 lym */ import Link from 'next/link'; /* end B81 lym */
 import { HomeSections } from './sections';
+/* B82 ts: the FRESHNESS of the executive home (HX-15, CMP-023, V00-T-102): the home's as-of as its cutoff, the read instant and the domain's
+   source health (B81 §DG's governed read) — stale or partial says which consequential commands are held; CURRENT only when verified */
+import { FreshnessWatermark, useSourceHealth } from '../../components/truth';
+/* end B82 ts */
 
 type Row = Record<string, unknown>;
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
@@ -45,6 +49,7 @@ export default function HomePage() {
   const [agendaRows, setAgendaRows] = useState<Array<{ kind: string; id: string; note: string }>>([{ kind: 'attention_item', id: '', note: '' }]);
   const [gap, setGap] = useState({ subjectKind: 'attention_item', subjectId: '', reason: '', to: '' });
   const [metrics, setMetrics] = useState<MetricsRead | null>(null);
+  /* B82 ts */ const health = useSourceHealth(scope, 'decision'); /* end B82 ts */
   const load = async () => {
     const r = await api.read(scope);
     if (!r.ok || r.data === undefined) { setProblem(refusal(r, 'the home could not be read')); return; }
@@ -65,6 +70,10 @@ export default function HomePage() {
       <h1 style={{ fontSize: 'var(--eye-type-heading-1)', marginBlockStart: 0 }}>Executive home</h1>
       <p style={{ ...small, ...muted }}>One cadence: priorities, intelligence, warnings, decisions, commitments, outcomes — and the loop reset. Composed as of <Mono>{h.as_of}</Mono> (read {h.read_at}), each section under the context named below; what a section could not show is said in its limitations.</p>
       <p style={small} aria-label="the home's context"><strong>Context:</strong> {contextLine(h.context, h.ceiling)}</p>
+      {/* B82 ts */}
+      <FreshnessWatermark label="Freshness of the home" freshness={{ cutoff: h.as_of, asOf: h.read_at, sources: health.sources,
+        sourcesNote: health.read ? 'no source signal is declared for this domain' : (health.problem ?? 'reading the source health') }} />
+      {/* end B82 ts */}
       {problem !== null && <p role="alert" style={critical}>{problem}</p>}
       {act !== null && <p role="alert" style={critical}>{act}</p>}
       <ContextSwitcher context={h.context} ceiling={h.ceiling} onChanged={done} />

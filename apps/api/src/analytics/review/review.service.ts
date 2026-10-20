@@ -14,6 +14,7 @@ import { newId } from '../../shared/ids.js';
 import { PipelineService } from '../../pipeline/pipeline.service.js';
 import { ANALYTICS_READ } from '../compute/compute.service.js';
 import { ReviewCapability, type ReviewReads, type ReviewWrites } from './review.capabilities.js';
+import { decorateReview, decorateSeries, recordedComputations, registryByKey, reviewComputationKeys, reviewResultIds } from '../computation-versions.js';
 
 type Row = Record<string, unknown>;
 export const REVIEW_OBJECT = 'AOR';
@@ -72,11 +73,19 @@ export class AnalyticsReviewService {
     return { ...out.result, boundary: REVIEW_BOUNDARY, receipt: AnalyticsReviewService.receipt(out) };
   }
   async review(env: Envelope, p: AuthenticatedPrincipal, t: string, d: string, reviewId: string) {
-    const out = await this.read(env, p, t, d, reviewId, async (cap) => ({ review: await cap.review(reviewId), read_at: await cap.now() }));
+    // B82-F mt: the SQL read unchanged (its digest is the review's own); per metric the registry's computation NOW, per series period the computation its result ran
+    const out = await this.read(env, p, t, d, reviewId, async (cap) => {
+      const review = await cap.review(reviewId);
+      return { review: decorateReview(review, await registryByKey(cap.tx, reviewComputationKeys(review)), await recordedComputations(cap.tx, reviewResultIds(review))), read_at: await cap.now() };
+    });
     return { ...out.result, boundary: REVIEW_BOUNDARY, receipt: AnalyticsReviewService.receipt(out) };
   }
   async series(env: Envelope, p: AuthenticatedPrincipal, t: string, d: string, q: { metricKey: string; scopeKey: string | null; through: string | null; count: number }) {
-    const out = await this.read(env, p, t, d, null, async (cap) => ({ series: await cap.series({ tenantId: t, domainId: d, ...q }), read_at: await cap.now() }));
+    const out = await this.read(env, p, t, d, null, async (cap) => {
+      const series = await cap.series({ tenantId: t, domainId: d, ...q });
+      const ids = (Array.isArray(series['periods']) ? (series['periods'] as Row[]) : []).map((x) => x['result_id']).filter((x): x is string => typeof x === 'string');
+      return { series: decorateSeries(series, await recordedComputations(cap.tx, ids)), read_at: await cap.now() };   // B82-F mt
+    });
     return { ...out.result, receipt: AnalyticsReviewService.receipt(out) };
   }
 }

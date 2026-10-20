@@ -267,10 +267,10 @@ describe('CMP-005…008 / REG-03 — the primitives\' gaps, and one primary task
   });  /* B82-F cc */
   /** REG-03 IN EVERY STATE: a page keeps its h1 while it reads, when its read is refused or fails and when it is empty. A TITLELESS state is a
    *  statement-level `return <LiveStatus …>` / `return <Empty …>` or a Suspense fallback of only one — a branch that renders the status with no
-   *  title. The correction / impact family (B50 §CL, §CI) has NONE; the pages listed below carried one when this
+   *  title. The correction / impact family (B50 §CL, §CI and B82-F cc's obligations page) has NONE; the pages listed below carried one when this
    *  ratchet was written (B82-F cc, 2026-10-20) — the list may only SHRINK: a page added with a titleless state fails here. */
   const TITLELESS_STATE = /\breturn\s*\(?\s*<(LiveStatus|Empty)\b|fallback=\{<(LiveStatus|Empty)\b/;
-  const CORRECTION_FAMILY = ['app/graph/impact/page.tsx', 'app/observation/corrections/page.tsx', 'app/observation/corrections/[caseId]/page.tsx'];
+  const CORRECTION_FAMILY = ['app/graph/impact/page.tsx', 'app/observation/corrections/page.tsx', 'app/observation/corrections/[caseId]/page.tsx', 'app/observation/corrections/obligations/page.tsx'];
   const PRE_B82F_TITLELESS_STATES = [
     'app/decisions/analysis/page.tsx', 'app/decisions/board/page.tsx', 'app/decisions/briefings/page.tsx', 'app/decisions/packages/[id]/page.tsx',
     'app/decisions/page.tsx', 'app/decisions/publications/page.tsx', 'app/decisions/review/page.tsx', 'app/graph/challenges/page.tsx',

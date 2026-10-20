@@ -7,7 +7,7 @@
  * cut-offs, unavailable artefacts marked. State is never told by colour alone;
  * receipts come only from authoritative responses.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useShell } from './layout';
 import { decisions as api, type Package, type PackageVersion, type Option, type Replay } from '../../lib/decisions';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, fmtInstant } from '../../components/observation';
@@ -30,6 +30,11 @@ import { reviewDigest } from '../../lib/forms-b80';
 import { reviewRequested } from '../../lib/authority-b81';
 import { routeId } from '../../lib/object-b81';
 /* end B81 si */
+/* B82 ev: every option citation a CitationLink (CMP-026, UX-ADR-006) — resolved in one batch under graph.provenance.read, opened in a drawer on this page */
+import { CitationLink } from '../../components/evidence';
+import { useCitationResolutions } from '../../lib/evidence-api-b82';
+import { citationKey, parseCitations } from '../../lib/evidence-b82';
+/* end B82 ev */
 
 const STATE_TEXT: Record<string, string> = { draft: '◌ DRAFT', proposed: '◍ PROPOSED', under_review: '◍ UNDER REVIEW', approved: '● APPROVED', committed: '■ COMMITTED', monitoring: '◉ MONITORING', closed: '□ CLOSED', rejected: '✕ REJECTED', withdrawn: '✕ WITHDRAWN',
   /* B34 (0090) gates */ deferred: '◷ DEFERRED', information_requested: '? INFORMATION REQUESTED' };
@@ -113,6 +118,13 @@ export default function DecisionsPage() {
   useEffect(() => { setDraftDigest(null); if (draftOf !== null) void reviewDigest(draftBody(draftOf)).then(setDraftDigest); }, [open, version]);
   /* end B81 ha */
 
+  /* B82 ev */
+  const evRefs = useMemo(() => {
+    const vv = open === null || version === null ? null : open.versions.find((x) => x.version === version) ?? null;
+    return vv === null ? [] : parseCitations(vv.options.flatMap((o) => o.consequences)).refs;
+  }, [open, version]);
+  const evRes = useCitationResolutions(scope, evRefs);
+  /* end B82 ev */
   if (problem !== null) return <LiveStatus assertive>{problem}</LiveStatus>;
   if (rows === null) return <Empty>reading decisions…</Empty>;
   const v: PackageVersion | null = open === null || version === null ? null : open.versions.find((x) => x.version === version) ?? null;
@@ -217,6 +229,7 @@ export default function DecisionsPage() {
               ) : null}
               {/* end B81 ha */}
               <h4 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Options on one baseline</h4>
+              {/* B82 ev */}{evRes.state === 'refused' && <><p className="eye-ev-note">The citations below were not resolved on this read:</p><ErrorNote error={evRes.error} /></>}{/* end B82 ev */}
               <table className="eye-table" style={tableStyle}>
                 <thead><tr><Th>Option</Th><Th>Kind</Th><Th>Consequences</Th><Th>Uncertainty</Th><Th>Choice</Th></tr></thead>
                 <tbody>
@@ -227,7 +240,8 @@ export default function DecisionsPage() {
                       <Td>
                         {o.consequences.length === 0 ? '—' : o.consequences.map((c) => (
                           <div key={`${c.kind}:${c.id}@${c.version}`} style={{ fontSize: 'var(--eye-type-label-sm)' }}>
-                            {c.kind === 'run' ? <strong style={{ color: 'var(--eye-color-critical)' }}>SYNTHETIC </strong> : null}{c.kind} <Mono>{short(c.id)}@{c.version}</Mono>
+                            {c.kind === 'run' ? <strong style={{ color: 'var(--eye-color-critical)' }}>SYNTHETIC </strong> : null}
+                            {/* B82 ev */}<CitationLink citation={c} scope={scope} resolution={evRes.state === 'ready' ? evRes.byKey.get(citationKey(c)) ?? null : evRes.state === 'refused' ? null : undefined} />{/* end B82 ev */}
                           </div>
                         ))}
                         {o.synthetic_state ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-critical)', fontWeight: 650 }}>SYNTHETIC</div> : null}

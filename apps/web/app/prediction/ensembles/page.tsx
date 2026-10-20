@@ -18,6 +18,11 @@ import { graph, type StrategyRow } from '../../../lib/graph';
 import { ensembles, disagreementMark, exclusionLine, overlayLine, pinLine, quantileLine, routeLine, runStateMark, semanticsLine, splitLine, weightLine, type EnsemblePackage, type Quantiles, type RunSummary } from '../../../lib/ensembles-b25';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, GovernedButton, UnknownNote, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+/* B82 cf: the members, the ensemble and the judgement as distributions on one axis (VIZ-08) */
+import { Distribution } from '../../../components/chart';
+import { ensembleItems } from '../../../lib/chart-reads-b82';
+import { ensembleSpec, readExport } from '../../../lib/chart-specs-b82';
+/* end B82 cf */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const muted = { color: 'var(--eye-color-ink-muted)' } as const;
@@ -138,6 +143,16 @@ function Ensembles() {
             )}
           </section>
 
+          {/* B82 cf: every distribution of the run on one axis — the members as issued, the ensemble (MODEL OUTPUT), the standing JUDGEMENT beside it */}
+          {(() => {
+            const items = ensembleItems(pkg); const at = new Date().toISOString();
+            return items.length === 0 ? null : (
+              <section aria-label="the run's distributions" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
+                <Distribution spec={ensembleSpec(pkg.run.series_key, pkg.run.horizon_code, unit, items, pkg.run.known_at, at, pkg.run.combination_rule)} input={{ kind: 'percentiles', items }} exportAs={readExport(scope, at)} />
+              </section>
+            );
+          })()}
+          {/* end B82 cf */}
           <section aria-labelledby="en-members" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
             <h2 id="en-members" style={h2}>Members</h2>
             <ScrollBox label="the ensemble's members">

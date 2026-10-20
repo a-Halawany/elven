@@ -473,7 +473,7 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
      (held)` and `export rejected (held)` → 409. Placed at the head: the B36 publication 422 row and the unclassed `^export rejected` 422
      row below would shadow them. No earlier row raises these texts. */
   { match: /^object use rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
-  { match: /^object use rejected \((incomplete_header|unfit)\)|^(publication|export) rejected \(held\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^object use rejected \((incomplete_header|unfit|integrity_failed|inaccessible|rights_expired)\)|^(publication|export) rejected \(held\)/i, status: 409, code: 'EYE_STA_002' }, // B82 §EV: integrity_failed, inaccessible, rights_expired
   { match: /^object use rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B50 §0 */
   /* B50 (0120 §HD, §LC, §PV, §CI) — the parts' nouns, centrally, in the CLASS form `<noun> rejected (<class>): …` (anchored; ahead of the
@@ -488,6 +488,14 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(lifecycle transition|lifecycle proposal|lifecycle read|work object|provenance agent|provenance|product fitness|knowledge challenge|impact trigger|identity|correction closure|trace reconciliation|timeline|trace) rejected \((state|stale|duplicate|held|expired)\)|^impact rejected \(state\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(lifecycle transition|lifecycle proposal|lifecycle read|work object|provenance agent|provenance|product fitness|knowledge challenge|impact trigger|identity|correction closure|trace reconciliation|timeline|trace) rejected \(|^admission rejected \((time|declaration)\)/i, status: 422, code: 'EYE_REQ_001' },
   /* end B50 */
+  /* B82 (0121) — B82's nouns, centrally, in the CLASS form `<noun> rejected (<class>): …` (anchored): §TS `display truth`, §EV `citation
+     resolution`, `evidence segment`, `rights terms`, §GM `geographic reference`, §PX `trust verification|attestation|investigation`.
+     403 actor|authority|separation_of_duties|principal|access · 404 unknown_* · 409 state|stale|duplicate|held|expired · 422 the rest. */
+  { match: /^(display truth|citation resolution|evidence segment|rights terms|geographic reference|trust verification|trust attestation|trust investigation) rejected \((actor|authority|separation_of_duties|principal|access)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(display truth|citation resolution|evidence segment|rights terms|geographic reference|trust verification|trust attestation|trust investigation) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(display truth|citation resolution|evidence segment|rights terms|geographic reference|trust verification|trust attestation|trust investigation) rejected \((state|stale|duplicate|held|expired)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(display truth|citation resolution|evidence segment|rights terms|geographic reference|trust verification|trust attestation|trust investigation) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B82 */
   /* B35 reopen (0101 §P3) — the reopen's NEW causes refuse in the CLASS form `reopen rejected (<class>): …` (unknown_challenge, unknown_appeal,
      unknown_change → 404; cause_state → 409; cause → 422). Placed at the head: the unclassed `^reopen rejected` 422 row below would shadow them.
      The older unclassed reopen texts keep their rows. */

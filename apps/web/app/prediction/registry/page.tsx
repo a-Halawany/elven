@@ -13,6 +13,12 @@ import { useShell } from '../layout';
 import { registry, headline, languageLabel, planLines, validationClaim, type Plan, type RegistryView, type RoutedForecast } from '../../../lib/registry-b25';
 import { Empty, LiveStatus, Mono, UnknownNote, cardStyle, fmtInstant, textareaStyle } from '../../../components/observation';
 import { Th, Td, buttonStyle, inputStyle, tableStyle } from '../../../components/ui';
+/* B82 cf: the six canonical horizons of a series as the forecasts in force read them, with the horizon policy's treatment as each row's use (VIZ-04) */
+import { HorizonMatrix } from '../../../components/chart';
+import { prediction, type ForecastRow } from '../../../lib/prediction';
+import { forecastHorizonRows } from '../../../lib/chart-reads-b82';
+import { horizonSpec, readExport } from '../../../lib/chart-specs-b82';
+/* end B82 cf */
 
 const HORIZONS = ['30d', '90d', '180d', '1y', '3y', '5y'];
 const section: CSSProperties = { ...cardStyle, marginBlockStart: 'var(--eye-space-16)' };
@@ -34,11 +40,17 @@ export default function RegistryPage() {
   const [targetJson, setTargetJson] = useState('{\n  "targetKey": "",\n  "kind": "event",\n  "unit": "probability",\n  "title": "",\n  "definition": { "series_key": "" }\n}');
   const [policyJson, setPolicyJson] = useState('{\n  "riskClass": "standard",\n  "statement": "",\n  "steward": "",\n  "rules": {}\n}');
   const [decideId, setDecideId] = useState(''); const [decideNote, setDecideNote] = useState('');
+  /* B82 cf */ const [forecasts, setForecasts] = useState<ForecastRow[] | null>(null); const [hzSeries, setHzSeries] = useState(''); const [readAt, setReadAt] = useState(() => new Date().toISOString()); /* end B82 cf */
 
   const load = useCallback(async () => {
     const r = await registry.read(scope);
     if (!r.ok || r.data === undefined) { setProblem(r.error?.message ?? 'the registry could not be read'); return; }
     setView(r.data); setProblem(null);
+    /* B82 cf: the forecasts as known now (the existing forecasts read) for the horizon matrix */
+    const f = await prediction.listForecasts(scope);
+    setForecasts(f.ok && f.data !== undefined ? f.data.forecasts : []); setReadAt(new Date().toISOString());
+    if (f.ok && f.data !== undefined) setHzSeries((cur) => cur || (f.data?.forecasts[0]?.series_key ?? ''));
+    /* end B82 cf */
   }, [scope]);
   useEffect(() => { void load(); }, [load]);
 
@@ -112,6 +124,29 @@ export default function RegistryPage() {
           </div>
         )}
       </section>
+
+      {/* B82 cf */}
+      <section aria-labelledby="hz-h" style={section}>
+        <h2 id="hz-h" style={h2}>Horizons of a series — the forecasts in force</h2>
+        {forecasts === null ? <Empty>reading the forecasts…</Empty> : forecasts.length === 0 ? <Empty>No forecast has been issued yet: the six horizons have nothing to show.</Empty> : (
+          <>
+            <label htmlFor="hz-series" style={{ display: 'block' }}>Series</label>
+            <select id="hz-series" style={inputStyle} value={hzSeries} onChange={(e) => setHzSeries(e.target.value)}>
+              {[...new Set(forecasts.map((f) => f.series_key))].map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
+            {(() => {
+              const pol = active[0] ?? null;
+              const hz = forecastHorizonRows(forecasts, hzSeries).map((r) => {
+                const rule = (pol?.rules[r.horizon] ?? null) as Record<string, unknown> | null;
+                const treatment = rule === null ? 'no policy rule (the legacy rule applies)' : typeof rule['unsupported'] === 'string' ? `UNSUPPORTED: ${String(rule['unsupported'])}` : String(rule['treatment'] ?? 'as the policy states');
+                return { ...r, use: `${r.use ?? '—'} · policy: ${treatment}` };
+              });
+              return <HorizonMatrix spec={horizonSpec(hzSeries, hz, readAt)} rows={hz} exportAs={readExport(scope, readAt)} />;
+            })()}
+          </>
+        )}
+      </section>
+      {/* end B82 cf */}
 
       <section aria-labelledby="m-h" style={section}>
         <h2 id="m-h" style={h2}>The registry</h2>

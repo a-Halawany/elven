@@ -10,7 +10,7 @@
  * number and flatter it. Collapsing them into one would be the more comfortable
  * design and the less honest one.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useShell } from './layout';
 import { observation, type Overview } from '../../lib/observation';
@@ -19,6 +19,9 @@ import {
   ScrollBox, SyntheticMarker, UnknownNote, badgeRowStyle, cardStyle,
 } from '../../components/observation';
 import { ErrorNote } from '../../components/ui';
+/* B82 sc */ import { StatusBoard } from '../../components/strategic-charts';
+import { degraded } from '../../lib/degraded-b81';
+import { isoOf, statusFromDegraded, statusFromSources, statusOrder, statusSpec, type StatusIn } from '../../lib/strategic-charts-b82'; /* end B82 sc */
 
 export default function ObservationOverview() {
   const { scope } = useShell();
@@ -123,6 +126,10 @@ export default function ObservationOverview() {
             </ScrollBox>
           </section>
 
+          {/* B82 sc: the capabilities as an operational status board (VIZ-33) — shapes and words, worst first, unknown counted */}
+          <CapabilityBoard scope={scope} data={data} />
+          {/* end B82 sc */}
+
           <section aria-labelledby="attention" style={{ marginBlockStart: 'var(--eye-space-24)' }}>
             <h2 id="attention" style={{ fontSize: 'var(--eye-type-heading-3)' }}>Needs attention</h2>
             {data.counts.openQuarantineCases === 0 && data.counts.openCorrections === 0 && data.counts.unconfirmedRights === 0 ? (
@@ -183,3 +190,30 @@ function Stat({ label, value, warn }: { label: string; value: number; warn?: boo
     </div>
   );
 }
+
+/* B82 sc: THE STATUS BOARD over the overview's sources and B81's governed degraded-state read (shell.degraded.read): each source as the
+   capability "collection · …" with its health, its connector and rights, and — when its source contract is declared — the contract's
+   service level, signal instant and owner; the other dependencies after. A refused degraded read is said; the sources still stand. */
+function CapabilityBoard({ scope, data }: { scope: ReturnType<typeof useShell>['scope']; data: Overview }) {
+  const [fromD, setFromD] = useState<{ items: StatusIn[]; at: string } | { problem: string } | null>(null);
+  useEffect(() => {
+    let live = true;
+    void degraded.state(scope, 'navigation').then((r) => {
+      if (!live) return;
+      setFromD(r.ok && r.data !== undefined ? { items: statusFromDegraded(r.data.degraded), at: r.data.degraded.read_at } : { problem: `the degraded-state read was not answered — HTTP ${r.status}${r.error?.code ? ` ${r.error.code}` : ''} — ${r.error?.message ?? 'no answer'}` });
+    });
+    return () => { live = false; };
+  }, [scope.tenantId, scope.domainId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const items = useMemo(() => statusOrder(statusFromSources(data.sources, fromD !== null && 'items' in fromD ? fromD.items : null)), [data.sources, fromD]);
+  const asOf = isoOf(fromD !== null && 'at' in fromD ? fromD.at : null, new Date().toISOString());
+  const spec = useMemo(() => statusSpec({ title: 'Collection capabilities — a status board', items, asOf, read: 'observation.read · /observation/overview + shell.degraded.read · /shell/degraded/state', readLabel: 'the overview and the degraded state',
+    sloWords: 'a declared degraded-mode contract\'s maximum duration; none declared is said — this product declares no other service level on this read' }), [items, asOf]);
+  return (
+    <section aria-labelledby="capability-board" style={{ marginBlockStart: 'var(--eye-space-24)' }}>
+      <h2 id="capability-board" style={{ fontSize: 'var(--eye-type-heading-3)' }}>Capabilities</h2>
+      {fromD !== null && 'problem' in fromD ? <p style={{ color: 'var(--eye-color-ink-muted)', fontSize: 'var(--eye-type-body-sm)' }}>Contracts not shown: {fromD.problem}.</p> : null}
+      <StatusBoard spec={spec} items={items} />
+    </section>
+  );
+}
+/* end B82 sc */

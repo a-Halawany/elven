@@ -48,7 +48,7 @@ test.describe.serial('CP-6 B35 §R — recommendations on the demonstration', ()
     await expect(page.getByRole('heading', { name: /^Side by side/, level: 3 })).toBeVisible();
     const ai = page.getByRole('region', { name: 'the Decision Agent\'s recommendations' });
     const humans = page.getByRole('region', { name: 'the named humans\' recommendations' });
-    await expect(ai.getByRole('article').first()).toContainText('DECISION AGENT (AI) — drafted, never decides');
+    await expect(ai.getByRole('article').first()).toContainText('DECISION AGENT (AI) — RECOMMENDED — by the agent Decision Agent; not a decision');   // B82 ts: CNT-08's one wording
     await expect(ai.getByRole('article').first()).toContainText(/Morocco/i);
     await expect(humans.getByRole('article').first()).toContainText('NAMED HUMAN');
     for (const card of [ai.getByRole('article').first(), humans.getByRole('article').first()]) {

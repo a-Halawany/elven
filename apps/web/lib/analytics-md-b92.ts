@@ -27,7 +27,13 @@ export interface ScopeRow {
   proposed_by_name: string | null; decided_by_name: string | null; entities: Array<{ entity_id: string; name: string; type: string; state: string }>;
   objectives: Array<{ objective_id: string; title: string; status: string }>; results_under_it: number;
 }
-export interface ResultSummary {
+/** B82-F mt: the computation registry's row for a key NOW — the version a computation runs, where it was registered and its body digest. */
+export interface ComputationNow {
+  computation_key: string; function_name: string; version: number; kind: string; registered_in: string; registered_at: string; body_digest: string; description: string;
+}
+/** B82-F mt: what a stored result RECORDED of the computation it ran (null key: an unsupported result; null version: not recorded). */
+export interface RecordedComputation { computation_key?: string | null; computation_version?: number | null; computation_digest?: string | null }
+export interface ResultSummary extends RecordedComputation {
   result_id: string; period_key: string; scope_key: string | null; scope_version?: number | null; definition_version: number; state: ResultState; value: number | string | null; unit?: string;
   n: number | null; reasons: string[]; uncertainty: Row | null; clock?: string; threshold_eval: Row | null; computed_at: string; preview?: boolean; replay_of?: string | null; replay_verdict?: string | null;
 }
@@ -35,14 +41,16 @@ export interface CatalogRow {
   definition_id: string; metric_key: string; version: number; state: DefinitionState; title: string; meaning: string; kind: string; unit: string; direction: string; supported: boolean;
   unsupported_reason: string | null; computation_key: string | null; purpose_key: string; serves: Row; cadence: string; floor_n: number; k_min: number; privacy_class: string; window_spec: Row;
   owner_principal_id: string; owner_name: string | null; digest: string; source_refs: string[]; results_by_period: ResultSummary[]; uses: number; b90_catalog_entry: Row | null;
+  decided_at?: string | null; computation?: ComputationNow | null;
 }
 export interface DefinitionVersion extends Row {
   definition_id: string; metric_key: string; version: number; state: DefinitionState; digest: string; contract: Row; proposed_by: string; proposed_by_name: string | null;
   decided_by: string | null; decided_by_name: string | null; decided_at: string | null; decision_reason: string | null; effective_from: string | null; superseded_at: string | null;
   retired_at: string | null; retire_reason: string | null; owner_name: string | null; supported: boolean; floor_n: number; k_min: number;
+  computation?: ComputationNow | null;
 }
 export interface DiffRow { field: string; from: unknown; to: unknown }
-export interface UseRow { use_id: string; result_id: string; used_in_kind: string; used_in_id: string; note: string | null; used_at: string; used_by_name: string | null; metric_key: string; definition_version: number; period_key: string; result_state: ResultState }
+export interface UseRow extends RecordedComputation { use_id: string; result_id: string; used_in_kind: string; used_in_id: string; note: string | null; used_at: string; used_by_name: string | null; metric_key: string; definition_version: number; period_key: string; result_state: ResultState }
 export interface DefinitionCard {
   metric_key: string; versions: DefinitionVersion[]; diff: { from: Row; to: Row; changed: DiffRow[] } | null; results: Array<ResultSummary & Row>; uses: UseRow[];
   ledger: Array<{ event_id: string; event: string; version: number | null; occurred_at: string; actor_name: string | null; details: Row }>;
@@ -56,6 +64,7 @@ export interface ResultRead extends Row {
   computation_key: string | null; computation_version: number | null; computation_digest: string | null; source_revision: string; records_count: number; replay_of: string | null; replay_verdict: string | null;
   computed_at: string; computed_by_kind: string; definition: Row | null; scope_row: Row | null; records: RecordRow[]; records_by_role: Record<string, number>;
   uses: Row[]; replays: Array<{ result_id: string; verdict: string; computed_at: string; source_revision: string }>;
+  computation_now?: ComputationNow | null;
 }
 
 /* ───────────── the words ───────────── */
@@ -123,6 +132,45 @@ export function thresholdLine(t: Row | null | undefined): string {
   if (t['breach'] === false) return `within the ${what}`;
   return `the ${what} is not evaluated for this direction`;
 }
+/* ───────────── B82-F mt: the definition and computation versions, said together ───────────── */
+const short = (d: unknown): string => (typeof d === 'string' && d !== '' ? `${d.slice(0, 12)}…` : '');
+/** The computation a definition's key names NOW (the version a computation runs): key, version, where and when it was registered, its body digest. */
+export function computationNowLine(c: ComputationNow | null | undefined, computationKey: string | null | undefined): string {
+  if (c === null || c === undefined) return computationKey ? `${computationKey} — not in the computation registry` : 'none — the definition is unsupported (no computation)';
+  return `${c.computation_key} v${c.version} — registered in ${c.registered_in} on ${dayOf(c.registered_at)} (body digest ${short(c.body_digest)})`;
+}
+/** The computation as a short tag: `met010_correction_propagation v2 (0120 §CL)`. */
+export function computationTag(c: ComputationNow | null | undefined, computationKey: string | null | undefined): string {
+  if (c === null || c === undefined) return computationKey ? `${computationKey} (not registered)` : 'none (unsupported)';
+  return `${c.computation_key} v${c.version} (${c.registered_in})`;
+}
+/** Said when the computation now was registered AFTER the definition version was decided: the definition was approved against an earlier body. */
+export function registeredAfterDecision(c: ComputationNow | null | undefined, decidedAt: string | null | undefined): string | null {
+  if (c === null || c === undefined || typeof decidedAt !== 'string' || Number.isNaN(Date.parse(c.registered_at)) || Number.isNaN(Date.parse(decidedAt))) return null;
+  if (Date.parse(c.registered_at) <= Date.parse(decidedAt)) return null;
+  return `computation v${c.version} was registered (${c.registered_in}, ${dayOf(c.registered_at)}) after this definition version was decided (${dayOf(decidedAt)})`;
+}
+/** A result's two versions together: `definition v1 · computation v2`. */
+export function versionsPair(definitionVersion: number | null | undefined, r: RecordedComputation): string {
+  const d = `definition v${definitionVersion ?? '?'}`;
+  if (r.computation_key === null || r.computation_key === undefined) return `${d} · no computation (unsupported)`;
+  return r.computation_version === null || r.computation_version === undefined ? `${d} · computation version not recorded` : `${d} · computation v${r.computation_version}`;
+}
+/**
+ * What a stored result RAN beside what the registry holds NOW. The registry keeps one row per computation: where an EARLIER version was
+ * registered is not recorded anywhere, so it is said as not recorded — never inferred. A result that records no version says so (a limitation).
+ */
+export function recordedComputationLine(r: RecordedComputation, now: ComputationNow | null | undefined): string {
+  if (r.computation_key === null || r.computation_key === undefined) return 'none — the result is unsupported (no computation ran)';
+  if (r.computation_version === null || r.computation_version === undefined) return `${r.computation_key} — this result records no computation version (a stated limitation: the version is not inferred)`;
+  const ran = `${r.computation_key} v${r.computation_version}${r.computation_digest ? ` (body digest ${short(r.computation_digest)})` : ''}`;
+  if (now === null || now === undefined) return `${ran} — the registry no longer holds this computation`;
+  if (now.version === r.computation_version && (r.computation_digest === null || r.computation_digest === undefined || r.computation_digest === now.body_digest)) {
+    return `${ran} — the version the registry holds now (registered in ${now.registered_in})`;
+  }
+  return `${ran} — the registry now holds v${now.version} (registered in ${now.registered_in} on ${dayOf(now.registered_at)}); where v${r.computation_version} was registered is not recorded (the registry keeps one row per computation)`;
+}
+
 /** The records by role, in the drill-down's order. */
 export function roleCounts(byRole: Record<string, number> | null | undefined): Array<{ role: string; count: number }> {
   const order = ['numerator', 'denominator', 'included', 'excluded', 'context'];

@@ -44,6 +44,7 @@ function CaseBody() {
   const caseId = typeof params.caseId === 'string' && UUID.test(params.caseId) ? params.caseId.toLowerCase() : null;
   const [view, setView] = useState<Row | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  /* B82-F cc */ const [refused, setRefused] = useState(false); /* end B82-F cc */
   const [actProblem, setActProblem] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptT | null>(null);
   const [checked, setChecked] = useState(false);
@@ -63,8 +64,8 @@ function CaseBody() {
   const load = useCallback(async (check: boolean) => {
     if (caseId === null) return;
     const r = await closureApi.read(scope, caseId, check);
-    if (!r.ok || r.data === undefined) { setProblem(said(r, 'The correction case was not read')); return; }
-    setProblem(null); setView(r.data.closure); setChecked(check);
+    if (!r.ok || r.data === undefined) { setProblem(said(r, 'The correction case was not read')); /* B82-F cc */ setRefused(r.status === 403); /* end B82-F cc */ return; }
+    setProblem(null); setRefused(false); setView(r.data.closure); setChecked(check);
   }, [scope, caseId]);
   useEffect(() => { void load(false); }, [load]);
 
@@ -73,7 +74,10 @@ function CaseBody() {
       <p><Link href="/observation/corrections">The corrections list</Link></p></>);
   }
   if (view === null) {
-    return (<><PageTitle>Correction case {caseId.slice(0, 8)}…</PageTitle>{problem === null ? <Empty>reading the case…</Empty> : <LiveStatus assertive>{problem}</LiveStatus>}</>);
+    return (<><PageTitle>Correction case {caseId.slice(0, 8)}…</PageTitle>{problem === null ? <Empty>reading the case…</Empty> : <LiveStatus assertive>{problem}</LiveStatus>}
+      {/* B82-F cc: the case is its readers'; a product's owner reaches their own obligation on it */}
+      {refused ? <p>If a product this correction affected is yours, <Link href={`/observation/corrections/obligations?case=${caseId}`}>your obligations on this case</Link> are where you acknowledge it or grant a bounded exception.</p> : null}
+      {/* end B82-F cc */}</>);
   }
 
   const k = (view['case'] ?? {}) as Row;

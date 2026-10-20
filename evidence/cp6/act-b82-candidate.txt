@@ -1,0 +1,31 @@
+THE B82 CANDIDATE ACT on eye_demo — 2026-10-19T12:57:21.439Z — API http://localhost:3401
+
+C-0 THE STATE — 0121 applied, the build identity, the cast; the registers re-imported and the component manifest registered
+  ✓ migration applied: 0120_b50_knowledge_core.sql
+  ✓ migration applied: 0121_b82_trust_evidence_visualization.sql
+  ✓ the API declares its build: head 235a80a2b65d… (from env), migration head —, policy bundle bundle-v1
+  ✓ P. Castellano (conformance steward) RE-IMPORTED the registers READ-ONLY in 1.0 s: audit/requirements/v00-v01.csv +0, audit/requirements/v08.csv +0, audit/requirements/v09.csv +0, audit/delivery/feature-rowmap.csv +0
+  ✓ P. Castellano REGISTERED the committed component manifest v5: 32 deployable units, 298 components
+
+C-1 THE RELEASE-CANDIDATE DRIFT (§CM) — the earlier candidates read drifted; a new candidate at the deployed head, checked and attested (not a release)
+  · the monitor: {"open":4,"opened":0,"run_id":"d9eeabad-2ec7-4c1e-8b1c-aeca23527a70","recorded":true,"resolved":1,"holds_lifted":0,"holds_opened":0,"observation_digest":"c38a5ec68b8902d9513ffc330d41861f815f55417bbe5c74e8354ca10a260446","findings":[{"kind":"head_drift","fingerprint":"head_drift:c61c8f1c-0ae2-4f78-ac
+  · candidate ac8e…09aa00 v1 "NORDWERK corridor release candidate 2026-10 (SYNTHETIC — a l…": withdrawn, head 42a10891c042…, migration head 0115_b107_governance_registries_acceptance.sql — open holds: evidence_stale: change impact dfa10f34dba4: a controlling artifact changed under RC:ac8ef1d9-b4e6-402f-978c-06dbfb09aa00; its dependent 
+  · candidate c974…15c44f v1 "NORDWERK corridor release candidate 2026-10 r2 — at the B107…": withdrawn, head 855d69633c9f…, migration head 0117_b107g_expansion_at_activation.sql — open holds: evidence_stale: change impact dfa10f34dba4: a controlling artifact changed under RC:c9741340-0b5d-40f0-8640-eac92e15c44f; its dependent 
+  · candidate 02a1…518faa v1 "NORDWERK corridor release candidate 2026-10 r3 — at the B80 …": withdrawn, head 7833eda358c8…, migration head 0118_b80_shell_foundations.sql — open holds: evidence_stale: change impact dfa10f34dba4: a controlling artifact changed under RC:02a1c8e6-2dec-4246-9237-dac359518faa; its dependent 
+  · candidate b651…2939e3 v1 "NORDWERK corridor release candidate 2026-10 r4 — at the B81 …": withdrawn, head cdff286b6628…, migration head 0119_b81_patterns_layout_content.sql
+  · candidate c61c…d43227 v1 "NORDWERK corridor release candidate 2026-10 r5 — at the B50 …": attested, head f9b022205962…, migration head 0120_b50_knowledge_core.sql — open holds: conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 r5 — at the B50 head (SYNTHETIC — a local release-candida; conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 r5 — at the B50 head (SYNTHETIC — a local release-candida; conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 r5 — at the B50 head (SYNTHETIC — a local release-candida; conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 r5 — at the B50 head (SYNTHETIC — a local release-candida
+  ✓ P. Castellano INGESTED b82-contract.vitest.json (203/203 passed at head 235a80a2b65d…)
+  ✓ P. Castellano INGESTED b82-trust.vitest.json (31/31 passed at head 235a80a2b65d…)
+  ✓ P. Castellano INGESTED b82-human-authority.vitest.json (118/118 passed at head 235a80a2b65d…)
+  ✓ P. Castellano ASSEMBLED be0d…cded44 v1 at head 235a80a2b65d…, migration head 0121_b82_trust_evidence_visualization.sql
+  ✓ the CHECK: CONFORMANT
+  ✓ P. Castellano (the assembler) attests the candidate REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ H. Achterberg (independent assurance) ATTESTED the new candidate v1: attested — a LOCAL CONFORMANCE RECORD, nothing released
+
+C-2 THE SUPERSEDED CANDIDATES — withdrawn by the conformance steward with the reason; the monitor run again
+  ✓ P. Castellano (conformance steward) WITHDREW c61c…d43227 v1 "NORDWERK corridor release candidate 2026-10 r5 — at the …" (was attested): 4 hold(s) lifted — superseded by the candidate be0d…cded44 at the deployed head 235a80a2b65d (0121); this one is bound to head f9b022205962 (SYNTHETIC)
+  · the monitor again: open 0, resolved 4
+  ✓ open conformance findings: none — the live candidate is bound to the deployed head, manifest, migration and policy
+  · LIMITS — CONSTRUCTION: §CM (0115) and its harness; DEMONSTRATED OPERATION: this act (SYNTHETIC vendor personas; every record claim = demonstration); the candidate is a local conformance record (B65 substituted) — NEVER a release; production admission is R1.
+
+ALL SCENES HELD

@@ -7,7 +7,7 @@ import { authorMark, completenessWords, coverageWords, flagWords, linesOf, sourc
 
 describe('B35 recommendation · the words', () => {
   it('the author: the Decision Agent is named as AI that drafts and never decides; a human as a named human', () => {
-    expect(authorMark('agent').text).toBe('DECISION AGENT (AI) — drafted, never decides');
+    expect(authorMark('agent').text).toBe('DECISION AGENT (AI) — RECOMMENDED — by the agent Decision Agent; not a decision');   // B82 ts: CNT-08's one wording
     expect(authorMark('human').text).toBe('NAMED HUMAN');
   });
   it('a state as glyph, token and words — accepted for consideration is not a decision', () => {

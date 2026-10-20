@@ -24,6 +24,7 @@
  */
 import type { LifecycleState, ObjectTypeSpec } from './b81-seams';
 import type { EffectiveTimeSupport } from './b80-seams';
+/* B82 ts */ import { freshnessView, truthGate, type FreshnessInput, type PendingCommand, type StatePolicy, type TruthInput } from './truth-b82'; /* end B82 ts */
 
 /* ═════════════════════════════ THE LIFECYCLE CATALOGUE (Volume 9 LS-01…12) ═════════════════════════════ */
 export interface LifecycleDef { code: LifecycleState; label: string; definition: string; glyph: string }
@@ -373,6 +374,15 @@ export interface ObjectHeaderInput {
   /** how this page treats the context bar's effective time (B80 Q11) */ effective: { support: EffectiveTimeSupport | 'immutable'; asOf: string | null };
   /** the eligibility the page read for the mutating commands (its role flags) — the server re-checks every act */ eligible?: Partial<Record<CommandVerb, { can: boolean; reason: string | null }>>;
   /** an inconsistency the page found between two reads of the same object (e.g. a context version that does not match) */ inconsistencies?: string[];
+  /* B82 ts — THE STATE STRIP (UX-06-001/-002/-005, HX-02, HX-15; all OPTIONAL — a page that passes none renders exactly as before): the
+     server's display truth (objects.display_truth, or `{ stored, unread }`), the freshness of what the object rests on, the policy (the
+     classification and the purpose) and the person's pending commands for the one-dimension context entry (UX-06-003). An INDETERMINATE
+     display truth or stale / partial data HOLDS the mutating commands with the reason (the server refuses independently). */
+  displayTruth?: TruthInput | null;
+  freshness?: FreshnessInput | null;
+  policy?: StatePolicy | null;
+  pending?: PendingCommand[];
+  /* end B82 ts */
 }
 export interface HeaderField { key: string; label: string; value: string | null; unresolved: string | null }
 export interface HeaderCommand { verb: CommandVerb; label: string; href: string | null; anchor: string | null; disabledReason: string | null; absent: { reason: string; carrier: string } | null }
@@ -421,7 +431,10 @@ export function headerView(i: ObjectHeaderInput): HeaderView {
     ...i.time.map((x, n) => f(`time-${n}`, x.label, x.value, 'not recorded')),
     { key: 'synthetic', label: 'Synthetic', value: i.synthetic === null ? null : i.synthetic ? 'SYNTHETIC — never observed' : 'not synthetic', unresolved: i.synthetic === null ? 'not recorded on this read' : null },
   ];
-  const commands = headerCommands(i.type, ref, { indeterminate, eligible: i.eligible ?? {} });
+  /* B82 ts: the display truth and the freshness hold the mutating commands with their reason (never a silent disable) */
+  const held = (i.displayTruth === undefined ? null : truthGate(i.displayTruth, 'propose')) ?? (i.freshness === undefined || i.freshness === null ? null : freshnessView(i.freshness).constrains);
+  const commands = headerCommands(i.type, ref, { indeterminate, eligible: i.eligible ?? {}, held });
+  /* end B82 ts */
   const recorded = i.receipt === null ? null : `Opening this page was recorded — policy decision ${i.receipt.policyDecisionId.slice(0, 13)}…, audit seq ${i.receipt.auditSeq}. Viewing changed nothing.`;
   return {
     typeLabel, title: i.title ?? `${typeLabel} (name unresolved)`, ref, reference, fields, lifecycle, indeterminate, reasons,
@@ -439,7 +452,7 @@ export function effectiveLine(e: { support: EffectiveTimeSupport | 'immutable'; 
 
 /** The header's commands: a navigation, an anchor on the page, or ABSENT with its carrier. A mutating one is disabled with the reason when the
  *  object is indeterminate or the person is not eligible. The header itself never calls a port. */
-export function headerCommands(type: string, ref: ObjectRef | null, facts: { indeterminate: boolean; eligible: Partial<Record<CommandVerb, { can: boolean; reason: string | null }>> }): HeaderCommand[] {
+export function headerCommands(type: string, ref: ObjectRef | null, facts: { indeterminate: boolean; eligible: Partial<Record<CommandVerb, { can: boolean; reason: string | null }>>; /* B82 ts */ held?: string | null /* end B82 ts */ }): HeaderCommand[] {
   const t = objectType(type);
   if (t === null) return COMMAND_VERBS.map((verb) => ({ verb, label: verb, href: null, anchor: null, disabledReason: null, absent: { reason: 'this type has no object page', carrier: DECLARED_TYPES.find((d) => d.type === type)?.carrier ?? 'not declared' } }));
   return COMMAND_VERBS.map((verb) => {
@@ -448,6 +461,9 @@ export function headerCommands(type: string, ref: ObjectRef | null, facts: { ind
     let disabledReason: string | null = null;
     if (MUTATING_VERBS.has(verb)) {
       if (facts.indeterminate) disabledReason = 'the object could not be resolved consistently — nothing may change it until it is reconciled';
+      /* B82 ts: held by the truth state or the freshness — a correction stays offered (it is how an indeterminate state is resolved) */
+      else if (facts.held !== undefined && facts.held !== null && verb !== 'correct') disabledReason = facts.held;
+      /* end B82 ts */
       else if (facts.eligible[verb] !== undefined && !facts.eligible[verb]!.can) disabledReason = facts.eligible[verb]!.reason ?? 'you are not eligible for this act';
     }
     if (ref === null && c.kind === 'navigate') return { verb, label: c.label, href: null, anchor: null, disabledReason: disabledReason ?? 'the identifier could not be resolved', absent: null };

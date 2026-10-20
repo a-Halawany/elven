@@ -415,3 +415,36 @@ commits = ['''f7584f990b4502d309e7846b06df4d72f37d932c''']
 paths = ['''^apps/api/migrations/0120_b50_x_cl\.sql$''']
 regexTarget = "match"
 regexes = ['''^r\.computation_key = 'met010_correction_propagation'$''']
+
+# ── B82-F HISTORY (the B80–B82 integration pass): MET-010's COMPUTATION IDENTIFIER in two §MT commits, not a credential
+#
+# The §MT builder's commits 5d81c35 and 90dd637 wrote the MET-010 computation identifier in an object literal of two new tests
+# (`computation_key: '<the identifier>'`); its next commit 9445e40 built the key from its parts, so the working tree passes
+# gitleaks-worktree. These exclusions exist solely so the FULL-HISTORY scan does not fail on the two commits that carried the
+# unsplit form (found by the hosted-equivalent scan before the branch was pushed; not rewritten, because the deployed identity and
+# the attested release candidate are bound to commits after them). The B36-F1 form, one tuple per commit and file: ONE rule, ONE
+# commit, ONE anchored path, ONE exact anchored match; condition = AND.
+
+[[allowlists]]
+description = """
+B82-F history 1/2 — the §MT commit 5d81c35 carried the MET-010 computation identifier in the expectations of
+apps/api/test/int/phase6-b82f-mt.test.ts (five lines, one match). ONE rule, ONE commit, ONE file, ONE exact match. condition = AND.
+"""
+condition = "AND"
+targetRules = ['''generic-api-key''']
+commits = ['''5d81c3512422f0064156dbade85e29ec890ef684''']
+paths = ['''^apps/api/test/int/phase6-b82f-mt\.test\.ts$''']
+regexTarget = "match"
+regexes = ['''^computation_key: 'met010_correction_propagation'$''']
+
+[[allowlists]]
+description = """
+B82-F history 2/2 — the §MT commit 90dd637 carried the same identifier in the web unit fixture
+apps/web/lib/analytics-mt-b82f.test.ts (two lines, one match). ONE rule, ONE commit, ONE file, ONE exact match. condition = AND.
+"""
+condition = "AND"
+targetRules = ['''generic-api-key''']
+commits = ['''90dd63764935000dc27f2254902808821c7fb997''']
+paths = ['''^apps/web/lib/analytics-mt-b82f\.test\.ts$''']
+regexTarget = "match"
+regexes = ['''^computation_key: 'met010_correction_propagation'$''']

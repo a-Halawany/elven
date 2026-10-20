@@ -16,11 +16,35 @@ import { CldCatalogue } from './cld-fixtures';
 /* B81 re */
 import { RE_RENDERED, ReCatalogue } from './re-fixtures';
 /* end B81 re */
+/* B82 ts */
+import { TS_RENDERED, TsCatalogue } from './ts-fixtures';
+/* end B82 ts */
+/* B82 ev */
+import { EV_RENDERED, EvCatalogue } from './ev-fixtures';
+/* end B82 ev */
+/* B82 gm */
+import { GM_RENDERED, GmCatalogue } from './gm-fixtures';
+/* end B82 gm */
+/* B82 cf */
+import { CF_RENDERED, CfCatalogue } from './cf-fixtures';
+/* end B82 cf */
+/* B82 px */
+import { PX_RENDERED, PxCatalogue } from './px-fixtures';
+/* end B82 px */
+/* B82 sc */
+import { SC_RENDERED, ScCatalogue } from './sc-fixtures';
+/* end B82 sc */
 
 /** The library exports each folded part renders here (a part adds its names with its section). */
 const RENDERED = new Set<string>([
   /* B80 cld */ ...LIBRARY.data.exports, ...LIBRARY.layers.exports, /* end B80 cld */
   /* B81 re */ ...RE_RENDERED, /* end B81 re */
+  /* B82 ts */ ...TS_RENDERED, /* end B82 ts */
+  /* B82 ev */ ...EV_RENDERED, /* end B82 ev */
+  /* B82 gm */ ...GM_RENDERED, /* end B82 gm */
+  /* B82 cf */ ...CF_RENDERED, /* end B82 cf */
+  /* B82 px */ ...PX_RENDERED, /* end B82 px */
+  /* B82 sc */ ...SC_RENDERED, /* end B82 sc */
 ]);
 
 export default function CataloguePage() {
@@ -46,6 +70,24 @@ export default function CataloguePage() {
       {/* B81 re */}
       <ReCatalogue />
       {/* end B81 re */}
+      {/* B82 ts */}
+      <TsCatalogue />
+      {/* end B82 ts */}
+      {/* B82 ev */}
+      <EvCatalogue />
+      {/* end B82 ev */}
+      {/* B82 gm */}
+      <GmCatalogue />
+      {/* end B82 gm */}
+      {/* B82 cf */}
+      <CfCatalogue />
+      {/* end B82 cf */}
+      {/* B82 px */}
+      <PxCatalogue />
+      {/* end B82 px */}
+      {/* B82 sc */}
+      <ScCatalogue />
+      {/* end B82 sc */}
     </>
   );
 }

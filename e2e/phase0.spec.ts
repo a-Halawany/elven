@@ -244,7 +244,9 @@ test.describe.serial('Phase 0 browser regression', () => {
     // Tenant admin signing into the UI: platform tenant list is denied — visible, policy-safe error.
     await uiLogin(page, tenantAdmin.username, TENANT_ADMIN_PW);
     await page.getByRole('link', { name: 'Tenants & Domains' }).click();
-    const alert = page.getByRole('alert').filter({ hasText: /EYE-/ });
+    // The page's own denial, in its main content: since B81 the shell's Display density control states, in its own alert, that the person's
+    // saved density could not be read (the same EYE-TEN-001 for a tenant administrator on the platform workspace) — ci 39408165321.
+    const alert = page.locator('#eye-main').getByRole('alert').filter({ hasText: /EYE-/ });
     await expect(alert).toBeVisible();
     await expect(alert).toContainText(/EYE-(TEN|AUT)-00[12]/);
 

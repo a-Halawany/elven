@@ -164,18 +164,22 @@ export class PredictionController {
   async seriesPoints(
     @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
     @Param('seriesKey') seriesKey: string,
-    @Body() body: { payload?: { knownAt?: string; observedThrough?: string; limit?: number } },
+    @Body() body: { payload?: { knownAt?: string; observedThrough?: string; limit?: number; /* B82 */ tail?: boolean } },
   ) {
     const reader = this.reader(req, tenantId, domainId);
     const knownAt = instant(body.payload?.knownAt, new Date().toISOString());
-    const assembled = await this.series.assemble(reader, seriesKey, knownAt, day(body.payload?.observedThrough));
     const limit = Math.min(Math.max(1, body.payload?.limit ?? 400), 5000);
+    /* B82 (rehearsal P-2): `tail: true` reads only the evidence of the LAST `limit` days (B25-R's tail, as the twin's estimation reads) — a
+       view that shows the latest points never assembles the whole history (2,841 versions, custody written per read); `total` then counts
+       the points IN THE TAIL and the answer says so. Without it the whole history is assembled exactly as before. */
+    const tail = body.payload?.tail === true ? { points: limit, spanDays: Math.max(limit, 30) } : null;
+    const assembled = await this.series.assemble(reader, seriesKey, knownAt, day(body.payload?.observedThrough), tail);
     const unreadableNote = assembled.complete ? ''
       : ` INCOMPLETE: ${assembled.unreadable.length} evidence version(s) could not be read by this reader and contributed no points.`;
     return {
       seriesKey, knownAt, observedThrough: assembled.observedThrough,
       unit: assembled.series.unit, attribution: assembled.attribution,
-      total: assembled.points.length, points: assembled.points.slice(-limit),
+      total: assembled.points.length, points: assembled.points.slice(-limit), /* B82 */ tailOnly: tail !== null,
       evidence: assembled.evidence.length, freshestRecordedAt: assembled.freshestRecordedAt,
       complete: assembled.complete, unreadable: assembled.unreadable, controls: assembled.controls,
       supersededUnreadable: assembled.supersededUnreadable,   // B25 act-found: unreadable fragments a later version serves on their day (disclosed, not counted)

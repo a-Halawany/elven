@@ -7,6 +7,11 @@
  * from the current state, each with whether you may take it and why not, and run behind the Command Review: the version you read, your
  * rationale, the typed confirmation of a publication, a withdrawal and a retirement. The server decides; a refused attempt is KEPT in the
  * record (shown below, in the server's words). A person who may not act PROPOSES to the owner; the owner accepts or declines here.
+ *
+ * B82 §PX (UX-27-001/002/003/005, HX-05, UX-57-001): the assessment's TRUTH COMPARISON (state, confidence, uncertainty, support, alternatives,
+ * dissent, permitted use — the conservative state, never a promotion), its DISSENT (the knowledge challenges on it, with status and
+ * disposition), its TRUST FACETS (graph.trust_envelope — never a score), and before a review, approval or publication the SUPPORT COMPARISON
+ * inside the act's CommandReview (this version against the previous one).
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -22,6 +27,11 @@ import { CommandReview, TypedConfirmation } from '../../../../components/authori
 import { ErrorNote, inputStyle } from '../../../../components/ui';
 import { Empty } from '../../../../components/observation';
 import { LifecycleHistory, TransitionOutcomeNote } from '../../../../components/knowledge';
+/* B82 px */ import { DissentList, SupportComparison, TrustIndicator, TruthComparison } from '../../../../components/trust';
+import { provenanceApi } from '../../../../lib/provenance-api-b50';
+import { trustApi } from '../../../../lib/trust-api-b82';
+import { dissentOfChallenges, toEnvelope, trustHref, type EnvelopeView, type SupportSide } from '../../../../lib/trust-b82';
+import type { DisplayTruthState } from '../../../../lib/b82-seams'; /* end B82 px */
 
 type Row = Record<string, unknown>;
 type Err = { code: string; message: string; correlationId: string } | null;
@@ -43,6 +53,7 @@ export default function AssessmentPage() {
   const [typed, setTyped] = useState('');
   const [answer, setAnswer] = useState<Row | null>(null); const [problem, setProblem] = useState<string | null>(null);
   const [proposeWhy, setProposeWhy] = useState(''); const [decideWhy, setDecideWhy] = useState('');
+  /* B82 px */ const [challenges, setChallenges] = useState<Row[]>([]); const [envelope, setEnvelope] = useState<EnvelopeView | null>(null); const [trustProblem, setTrustProblem] = useState<string | null>(null); /* end B82 px */
 
   const load = useCallback(async () => {
     if (id === null) return;
@@ -53,6 +64,12 @@ export default function AssessmentPage() {
     setLife(h.data.lifecycle); setReceipt(h.data.receipt); setErr(null);
     if (p.ok && p.data !== undefined) setProfile(p.data.profiles.find((x) => x.object_type === 'ASM') ?? null);
     setDg(d.ok && d.data !== undefined ? d.data.degraded : null);
+    /* B82 px: its dissent (the knowledge challenges on it) and its trust facets — each refusal kept in the server's words */
+    const v = Number((h.data.lifecycle['object'] as Row)['version']);
+    const [c, e] = await Promise.all([provenanceApi.challenges(scope, id, null), trustApi.envelope(scope, { type: 'ASM', id, version: v })]);
+    setChallenges(c.ok && c.data !== undefined ? (c.data.challenges.challenges as Row[]) : []);
+    if (e.ok && e.data !== undefined) { setEnvelope(toEnvelope(e.data.envelope)); setTrustProblem(null); } else setTrustProblem(`The trust facets were not read — HTTP ${e.status}: ${e.error?.message ?? 'no answer; reload the page to read them again'}`);
+    /* end B82 px */
   }, [scope, id]);
   useEffect(() => { void load(); }, [load]);
 
@@ -98,6 +115,14 @@ export default function AssessmentPage() {
   ].filter((x): x is string => x !== null);
   const openProposals = ((life?.['proposals'] ?? []) as Row[]).filter((p) => p['decision'] === null);
   const isOwner = ownerId === me.principalId;
+  /* B82 px: the dissent rows and the support compared before a promoting act (this version against the previous one) */
+  const dissent = dissentOfChallenges(challenges);
+  const prev = ((life?.['versions'] ?? []) as Row[]).find((x) => Number(x['version']) === version - 1) ?? null;
+  const sideOf = (label: string, r: Row | null): SupportSide => ({ label, support: ((r?.['evidence_refs'] ?? []) as unknown[]).length, against: ((r?.['contradiction_refs'] ?? []) as unknown[]).length,
+    drivers: envelope === null ? [] : envelope.reasons.map((x) => `${x.facet}: ${x.detail}`), disagreement: dissent.length === 0 ? null : `${dissent.length} challenge(s) recorded`,
+    fitness: envelope === null ? null : envelope.facets.find((f) => f.facet === 'evaluation')?.outcome === 'failed' ? 'unfit' : envelope.facets.find((f) => f.facet === 'evaluation')?.outcome === 'verified' ? 'fit' : 'not evaluated' });
+  const promoting = act !== null && /review|approve|publish/.test(act.action);
+  /* end B82 px */
 
   const run = async (f: () => ReturnType<typeof lifecycle.transition>) => {
     setProblem(null); setAnswer(null);
@@ -116,6 +141,19 @@ export default function AssessmentPage() {
       </ObjectHeader>
       <h2>The assessment</h2>
       <p>{String(o['statement'] ?? '')}</p>
+      {/* B82 px: read together — truth, confidence, uncertainty, support, alternatives, dissent; the trust facets */}
+      <TruthComparison rows={[{ label: `${title} v${version}`, truth: (typeof o['truth_state'] === 'string' ? o['truth_state'] : null) as DisplayTruthState | null,
+        confidence: o['confidence'] === null || o['confidence'] === undefined ? null : { text: JSON.stringify(o['confidence']).slice(0, 80), calibrated: (o['confidence'] as Row)['calibrated'] === true },
+        uncertainty: o['uncertainty'] === null || o['uncertainty'] === undefined ? null : JSON.stringify(o['uncertainty']).slice(0, 120),
+        support: { for: ((o['evidence_refs'] ?? []) as unknown[]).length, against: ((o['contradiction_refs'] ?? []) as unknown[]).length }, alternatives: 0,
+        dissent: { recorded: dissent.length, shown: dissent.length }, permittedUse: reading.label }]} />
+      <DissentList rows={dissent} scope={scope} caption="Dissent on this assessment (its knowledge challenges)" />
+      {envelope !== null ? (
+        <TrustIndicator envelope={envelope} heading="Trust of this version — facets, never a score">
+          <p><Link href={trustHref('ASM', id, version)}>Open the trust page to verify, attest or investigate this version</Link></p>
+        </TrustIndicator>
+      ) : trustProblem !== null ? <p className="eye-help">{trustProblem}</p> : null}
+      {/* end B82 px */}
 
       <section aria-labelledby="acts-h">
         <h2 id="acts-h">Lifecycle acts</h2>
@@ -137,6 +175,7 @@ export default function AssessmentPage() {
               {all.map((x) => <option key={x.action} value={x.action}>{x.label}</option>)}
             </select>
             {act.kept === null ? null : <p className="eye-help">What is kept: {act.kept}.</p>}
+            {/* B82 px */}{promoting ? <SupportComparison current={sideOf(prev === null ? 'no earlier version' : `version ${version - 1}`, prev)} proposed={sideOf(`version ${version}`, o)} act={act.label} /> : null}{/* end B82 px */}
             {act.kind === 're_entry' ? (
               <>
                 <label htmlFor="lc-reentry">Re-entry reason</label>

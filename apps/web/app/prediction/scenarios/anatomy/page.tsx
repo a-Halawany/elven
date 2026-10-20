@@ -12,7 +12,7 @@
  * and its owner is tasked. The banner states the cause, when and by whom, as recorded; the owner (or the scenario's owner) reinstates it
  * with a note, and the server refuses while a critical linked assumption is still invalidated — its refusal is shown as it states it.
  */
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useShell } from '../../layout';
@@ -25,6 +25,11 @@ import {
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant, textareaStyle } from '../../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../../components/ui';
 /* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../../components/forms';
+/* B82 sc */ import { ScenarioFan } from '../../../../components/strategic-charts';
+import { twins as twinsApi, type Run } from '../../../../lib/twins';
+import { fanSpec, isoOf, runSpread, type FanBranchIn } from '../../../../lib/strategic-charts-b82';
+import { readExport } from '../../../../lib/chart-specs-b82'; /* end B82 sc */
+/* B82 ev: a record's citations each a CitationLink, resolved when opened (CMP-026, UX-ADR-006; citations only — §SC owns the rest of this page) */ import { CitationLink } from '../../../../components/evidence'; import { parseCitations } from '../../../../lib/evidence-b82'; /* end B82 ev */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const muted = { color: 'var(--eye-color-ink-muted)' } as const;
@@ -93,6 +98,10 @@ function AnatomyView() {
         <ElementsByKind label="the whole scenario" groups={data.scenario_wide.elements_by_kind} />
         <MapList label="the whole scenario" paths={data.scenario_wide.map} />
       </section>
+
+      {/* B82 sc: the branches fanned (CMP-062, VIZ-05) — its own section between the whole scenario and the branches */}
+      <BranchFan scope={scope} data={data} at={at} />
+      {/* end B82 sc */}
 
       {data.branches.map((b) => (
         <BranchSection key={b.branch_id} b={b} scope={scope} scenarioOwner={s.owner_principal_id} me={me.principalId} canWrite={canWrite}
@@ -280,6 +289,9 @@ function Records({ data, scope, canWrite, onDone, onProblem }: { data: Anatomy; 
             <div style={small}>by {r.author_name ?? `${r.author_principal_id.slice(0, 8)}…`} · {fmtInstant(r.recorded_at)} · version {r.version}
               {r.branch_id === null ? ' · the whole scenario' : ` · ${data.branches.find((b) => b.branch_id === r.branch_id)?.name ?? 'a branch'}`}
               {r.cites.length > 0 ? ` · cites ${r.cites.map((c) => `${c.kind} ${c.id.slice(0, 8)}…`).join(', ')}` : ''}</div>
+            {/* B82 ev */}{r.cites.length > 0 && (() => { const p = parseCitations(r.cites); return (
+              <div style={small}>{p.refs.map((c) => <span key={`${c.kind}:${c.id}@${c.version}`}><CitationLink citation={c} scope={scope} resolution="on_open" /> </span>)}
+                {p.rejected > 0 ? `${p.rejected} of these cite(s) name no exact version (kind and id only), so they cannot be resolved to exact evidence` : ''}</div>); })()}{/* end B82 ev */}
           </DefinitionRow>))}</dl>
       )}
       {canWrite ? (
@@ -371,3 +383,39 @@ function DeclareElement({ data, scope, onDone, onProblem }: { data: Anatomy; sco
     </section>
   );
 }
+
+/* B82 sc: THE SCENARIO FAN over the existing reads — the anatomy's branches (kind, state, live, assumptions), the scenario row's divergence and
+   signpost, and the completed VALID runs bound to each branch (their line-stop days: lowest – median – highest; not a probability). */
+function BranchFan({ scope, data, at }: { scope: Scope; data: Anatomy; at: string | null }) {
+  const [runs, setRuns] = useState<Run[] | null>(null);
+  const [row, setRow] = useState<ScenarioRow | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const id = data.scenario.scenario_id;
+  useEffect(() => {
+    let live = true;
+    void Promise.all([twinsApi.runs(scope, null), prediction.listScenarios(scope)]).then(([r, l]) => {
+      if (!live) return;
+      if (r.ok && r.data !== undefined) setRuns(r.data.runs.filter((x) => x.scenario_id === id)); else setProblem(refusal(r, 'the runs could not be read'));
+      if (l.ok && l.data !== undefined) setRow(l.data.scenarios.find((x) => x.scenario_id === id) ?? null);
+    });
+    return () => { live = false; };
+  }, [scope.tenantId, scope.domainId, id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const branches = useMemo<FanBranchIn[]>(() => data.branches.map((b) => {
+    const mine = (runs ?? []).filter((r) => r.scenario_branch_id === b.branch_id && r.state === 'completed' && r.validity !== 'invalidated');
+    const spread = runSpread(mine.map((r) => { const v = r.outputs?.totals?.line_stop_days ?? r.outputs?.summary?.['line_stop_days']; return typeof v === 'number' ? v : null; }));
+    const links = data.assumptions.filter((a) => a.branch_id === b.branch_id && a.state === 'linked');
+    const br = row?.branches.find((x) => x.branch_id === b.branch_id) ?? null;
+    return { key: b.branch_id, name: b.name, kind: b.kind, state: b.state, live: b.live, ...spread, divergence: br?.divergence ?? null,
+      assumptions: { total: links.length, critical: links.filter((a) => a.critical).length, invalidated: links.filter((a) => a.invalidated).length }, signpost: br?.signpost ?? null };
+  }), [data, runs, row]);
+  const asOf = isoOf(at, new Date().toISOString());
+  const spec = useMemo(() => fanSpec({ scenario: data.scenario.title, measure: 'line-stop days', unit: 'days', asOf, branches, read: 'prediction.scenario.read · /scenarios/:id/anatomy + simulation.read · /simulations/runs/list' }), [data.scenario.title, asOf, branches]);
+  return (
+    <section aria-labelledby="fan-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
+      <h2 id="fan-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>The branches fanned</h2>
+      {problem === null ? null : <LiveStatus assertive>{problem}</LiveStatus>}
+      <ScenarioFan spec={spec} branches={branches} exportAs={readExport(scope, asOf)} {...(runs === null && problem === null ? { status: { state: 'loading' as const } } : {})} />
+    </section>
+  );
+}
+/* end B82 sc */

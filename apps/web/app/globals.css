@@ -900,3 +900,272 @@ button.eye-cmdenv-row[aria-pressed="true"] { border-color: var(--eye-color-accen
   .eye-palette-option[data-kind="command"], .eye-search-hit, .eye-search-clarify { border-color: CanvasText; }
 }
 /* end B81 si */
+/* B82 §0 cf — THE CHART FRAME skeleton (components/chart-frame.tsx; §CF completes it in its own block). Semantic tokens only; logical
+   properties (RTL mirrors); the declarations WRAP (no sideways scroll at 390 px or 200 % zoom); the drawing scales to its container. */
+.eye-cf { margin: 0 0 var(--eye-space-16); padding: var(--eye-space-12); border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-md); min-inline-size: 0; }
+.eye-cf-title { font-weight: 600; font-size: var(--eye-type-body-md); color: var(--eye-color-ink-strong); margin-block-end: var(--eye-space-8); overflow-wrap: anywhere; }
+.eye-cf-declarations { display: flex; flex-wrap: wrap; gap: var(--eye-space-4) var(--eye-space-16); margin: 0 0 var(--eye-space-8); font-size: var(--eye-type-body-sm); }
+.eye-cf-declarations > div { display: flex; flex-wrap: wrap; gap: var(--eye-space-4); min-inline-size: 0; }
+.eye-cf-declarations dt { color: var(--eye-color-ink-muted); font-size: var(--eye-type-label-sm); text-transform: uppercase; }
+.eye-cf-declarations dd { margin: 0; overflow-wrap: anywhere; }
+.eye-cf-drawing { max-inline-size: 100%; margin-block: var(--eye-space-8); }
+.eye-cf-drawing svg { display: block; max-inline-size: 100%; block-size: auto; }
+.eye-cf-alternative { margin-block-start: var(--eye-space-8); min-inline-size: 0; }
+.eye-cf-summary { margin-block: 0 var(--eye-space-8); }
+.eye-cf-definitions { margin-block: var(--eye-space-8) 0; font-size: var(--eye-type-body-sm); }
+.eye-cf-definitions dt { font-weight: 600; }
+.eye-cf-definitions dd { margin-inline-start: 0; margin-block-end: var(--eye-space-4); color: var(--eye-color-ink-muted); }
+.eye-cf-refused { border: 1px solid var(--eye-color-warning); border-radius: var(--eye-radius-sm); padding: var(--eye-space-8) var(--eye-space-12); }
+.eye-cf-refused ul { margin: var(--eye-space-4) 0 0; padding-inline-start: var(--eye-space-16); }
+@media (forced-colors: active) {
+  .eye-cf, .eye-cf-refused { border-color: CanvasText; }
+  .eye-cf-declarations dt, .eye-cf-definitions dd { color: CanvasText; }
+}
+/* end B82 §0 cf */
+/* B82 ts — TRUTH, NUMBERS, THE AI NOTICE AND FRESHNESS (components/truth.tsx; the state strip of components/object.tsx). Semantic tokens
+   only; logical properties (RTL mirrors); everything WRAPS (no sideways scroll at 390 px or 200 % zoom); forced colours keep borders and words. */
+.eye-truth-label { display: inline; overflow-wrap: anywhere; }
+.eye-truth-stored, .eye-truth-correction, .eye-truth-unread { font-size: var(--eye-type-body-sm); color: var(--eye-color-ink-muted); }
+.eye-truth-constrained { font-size: var(--eye-type-body-sm); color: var(--eye-color-ink-default); }
+.eye-truth-reasons { margin: var(--eye-space-4) 0 0; padding-inline-start: var(--eye-space-16); font-size: var(--eye-type-body-sm); }
+.eye-truth-basis { display: block; font-size: var(--eye-type-label-sm); color: var(--eye-color-ink-muted); }
+.eye-uncertainty { margin-block: var(--eye-space-8); padding: var(--eye-space-8) var(--eye-space-12); border: 1px dashed var(--eye-color-uncertain); border-radius: var(--eye-radius-sm); min-inline-size: 0; }
+.eye-uncertainty-headline { margin: 0 0 var(--eye-space-4); overflow-wrap: anywhere; }
+.eye-uncertainty-term { font-weight: 600; }
+.eye-num-facts { display: flex; flex-wrap: wrap; gap: var(--eye-space-4) var(--eye-space-16); margin: var(--eye-space-4) 0 0; font-size: var(--eye-type-body-sm); }
+.eye-num-facts > div { display: flex; flex-wrap: wrap; gap: var(--eye-space-4); min-inline-size: 0; }
+.eye-num-facts dt { color: var(--eye-color-ink-muted); font-size: var(--eye-type-label-sm); text-transform: uppercase; }
+.eye-num-facts dd { margin: 0; overflow-wrap: anywhere; }
+.eye-num-value { font-variant-numeric: tabular-nums; font-weight: 600; }
+.eye-num-inline { font-size: var(--eye-type-body-sm); color: var(--eye-color-ink-muted); overflow-wrap: anywhere; }
+.eye-num-problems { margin: var(--eye-space-4) 0 0; padding-inline-start: var(--eye-space-16); font-size: var(--eye-type-body-sm); color: var(--eye-color-warning); }
+.eye-ai-notice { margin-block: var(--eye-space-8); padding: var(--eye-space-8) var(--eye-space-12); border: 1px solid var(--eye-color-recommended); border-inline-start-width: 4px; border-radius: var(--eye-radius-sm); }
+.eye-ai-notice p { margin: 0 0 var(--eye-space-4); overflow-wrap: anywhere; }
+.eye-ai-notice-output { font-weight: 600; }
+.eye-freshness { margin-block: var(--eye-space-8); padding: var(--eye-space-8) var(--eye-space-12); border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-sm); min-inline-size: 0; }
+.eye-freshness[data-state="stale"], .eye-freshness[data-state="partial"] { border-color: var(--eye-color-warning); }
+.eye-freshness-mark { margin: 0 0 var(--eye-space-4); font-weight: 600; overflow-wrap: anywhere; }
+.eye-freshness-lines { margin: 0; padding-inline-start: var(--eye-space-16); font-size: var(--eye-type-body-sm); color: var(--eye-color-ink-muted); overflow-wrap: anywhere; }
+.eye-freshness-held { margin: var(--eye-space-4) 0 0; font-size: var(--eye-type-body-sm); }
+.eye-state-strip { display: flex; flex-wrap: wrap; gap: var(--eye-space-4) var(--eye-space-16); margin: var(--eye-space-8) 0; padding: var(--eye-space-8) var(--eye-space-12); border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-sm); }
+.eye-state-strip > div { display: flex; flex-wrap: wrap; gap: var(--eye-space-4); min-inline-size: 0; }
+.eye-state-strip dt { color: var(--eye-color-ink-muted); font-size: var(--eye-type-label-sm); text-transform: uppercase; }
+.eye-state-strip dd { margin: 0; overflow-wrap: anywhere; }
+.eye-state-strip-held { color: var(--eye-color-warning); font-size: var(--eye-type-body-sm); }
+.eye-state-strip-switch { font: inherit; font-size: var(--eye-type-body-sm); }
+@media (forced-colors: active) {
+  .eye-uncertainty, .eye-ai-notice, .eye-freshness, .eye-state-strip { border-color: CanvasText; }
+  .eye-truth-stored, .eye-truth-correction, .eye-num-facts dt, .eye-state-strip dt, .eye-freshness-lines { color: CanvasText; }
+}
+/* end B82 ts */
+/* B82 ev — THE EVIDENCE LIBRARY (components/evidence.tsx; F-P7-E-07 chapter 26). Semantic tokens only (no new colour, D5); logical properties
+   (RTL mirrors); every state is a word, so forced colours and 200 % zoom keep it; the bytes wrap or scroll inside their own region — the page
+   never scrolls sideways. The cited span is a <mark>: outlined as well as tinted, so it survives forced colours. */
+.eye-ev-note { color: var(--eye-color-ink-muted); font-size: var(--eye-type-body-sm); margin-block: var(--eye-space-4); overflow-wrap: anywhere; }
+.eye-ev-card { border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-md); padding: var(--eye-space-8) var(--eye-space-12); margin-block: var(--eye-space-8); min-inline-size: 0; }
+.eye-ev-card[data-outcome="unverifiable"], .eye-ev-card[data-outcome="inaccessible"], .eye-ev-card[data-outcome="rights_expired"] { border-inline-start: 4px solid var(--eye-color-uncertain); }
+.eye-ev-card-title { margin-block: 0 var(--eye-space-4); display: flex; flex-wrap: wrap; gap: var(--eye-space-8); align-items: baseline; }
+.eye-ev-outcome { font-size: var(--eye-type-label-sm); font-weight: 650; color: var(--eye-color-ink-strong); }
+.eye-ev-dl { margin: 0; display: grid; gap: var(--eye-space-2, 2px) var(--eye-space-12); }
+.eye-ev-dl-row { display: flex; flex-wrap: wrap; gap: var(--eye-space-8); min-inline-size: 0; }
+.eye-ev-dl-row dt { color: var(--eye-color-ink-muted); font-size: var(--eye-type-label-sm); text-transform: uppercase; min-inline-size: 7rem; }
+.eye-ev-dl-row dd { margin: 0; overflow-wrap: anywhere; min-inline-size: 0; flex: 1 1 14rem; }
+.eye-ev-lines { margin: 0; padding-inline-start: var(--eye-space-16); }
+.eye-ev-viewer { margin-block: var(--eye-space-8); min-inline-size: 0; }
+.eye-ev-bytes { margin: var(--eye-space-4) 0 0; padding: var(--eye-space-8); background: var(--eye-color-surface-secondary); border: 1px solid var(--eye-color-border-default);
+  border-radius: var(--eye-radius-md); font-family: var(--eye-font-mono); font-size: var(--eye-type-mono-sm); white-space: pre-wrap; overflow-wrap: anywhere; max-block-size: 22rem; overflow: auto; }
+.eye-ev-bytes:focus-visible { outline: 2px solid var(--eye-color-focus); outline-offset: 2px; }
+.eye-ev-context { color: var(--eye-color-ink-muted); }
+.eye-ev-cited { background: var(--eye-color-selection); color: var(--eye-color-ink-strong); outline: 2px solid var(--eye-color-accent-strong); border-radius: var(--eye-radius-sm); }
+.eye-ev-degraded { border: 1px dashed var(--eye-color-degraded); border-radius: var(--eye-radius-sm); padding: var(--eye-space-8); }
+.eye-ev-timeline { margin: var(--eye-space-4) 0; padding-inline-start: var(--eye-space-20, 20px); font-size: var(--eye-type-body-sm); }
+.eye-ev-timeline li { margin-block: var(--eye-space-2, 2px); overflow-wrap: anywhere; }
+.eye-ev-timeline li[data-alarm="true"] { font-weight: 650; }
+.eye-ev-scroll { max-inline-size: 100%; overflow-x: auto; }
+.eye-ev-scroll:focus-visible { outline: 2px solid var(--eye-color-focus); }
+.eye-ev-rights, .eye-ev-verify, .eye-ev-custody { margin-block: var(--eye-space-8); min-inline-size: 0; }
+.eye-ev-rights[data-state="expired"] .eye-ev-rights-headline, .eye-ev-rights[data-state="withdrawn"] .eye-ev-rights-headline { color: var(--eye-color-critical); }
+.eye-ev-citation { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: var(--eye-space-4); max-inline-size: 100%; }
+.eye-ev-citation-btn { text-align: start; overflow-wrap: anywhere; }
+.eye-ev-drawer { padding: var(--eye-space-8) var(--eye-space-12); min-inline-size: 0; }
+.eye-ev-ready { margin-block: var(--eye-space-4); }
+@media (forced-colors: active) {
+  .eye-ev-cited { forced-color-adjust: none; background: Highlight; color: HighlightText; outline-color: CanvasText; }
+  .eye-ev-card, .eye-ev-bytes, .eye-ev-degraded { border-color: CanvasText; }
+  .eye-ev-context, .eye-ev-note, .eye-ev-dl-row dt { color: CanvasText; }
+}
+/* end B82 ev */
+/* B82 gm — THE GRAPH AND MAP CANVASES (components/canvas.tsx) and UX-19-003 (sticky region boundaries). Semantic tokens only (D5: no
+   new colour token — dashes, markers, hatching and direct labels tell things apart); logical properties; forced colours keep every line.
+   UX-19-003: the shell's main column is NO LONGER a scroll container. `overflow-x: clip` (not `auto`) keeps a stray wide child from
+   widening the page (phase1-observation #14: no sideways page scroll) WITHOUT making main a scroll owner — so `position: sticky` inside it
+   sticks to the page's own scroll. Wide content owns its inline scroll: the DataTable (.eye-dt-scroll), a canvas (.eye-canvas-scroll).
+   ONE SCROLL OWNER PER REGION: the supporting panel of a multi-column composition sticks at the block start and scrolls its own overflow
+   (lib/scroll-b82.ts decides; components/layout.tsx marks it). Withdrawn if the hosted no-sideways-scroll test goes red (DESIGN D18). */
+.eye-shell-main { overflow-x: clip; }
+.eye-region[data-sticky="block-start"] {
+  position: sticky; inset-block-start: 0; align-self: start; max-block-size: 100vh; overflow-y: auto; overscroll-behavior: contain;
+  background: var(--eye-color-canvas); scroll-padding-block: var(--eye-space-8);
+}
+.eye-canvas { display: grid; gap: var(--eye-space-8); min-inline-size: 0; margin-block-end: var(--eye-space-16); }
+.eye-canvas-question { margin: 0; overflow-wrap: anywhere; }
+.eye-canvas-meta { margin: 0; color: var(--eye-color-ink-muted); font-size: var(--eye-type-label-sm); overflow-wrap: anywhere; }
+.eye-canvas-current { margin: 0; font-size: var(--eye-type-body-sm); overflow-wrap: anywhere; }
+.eye-canvas-refused { border: 1px solid var(--eye-color-warning); border-radius: var(--eye-radius-sm); padding: var(--eye-space-8) var(--eye-space-12); }
+.eye-canvas-refused p { margin: 0; }
+.eye-canvas-refused ul { margin: var(--eye-space-4) 0 0; padding-inline-start: var(--eye-space-16); }
+.eye-canvas-traverse { border: 1px dashed var(--eye-color-border-strong); border-radius: var(--eye-radius-md); padding: var(--eye-space-8) var(--eye-space-12); display: grid; gap: var(--eye-space-4); }
+.eye-canvas-traverse:focus-visible { outline: 2px solid var(--eye-color-focus); outline-offset: 2px; }
+/* a canvas OWNS its inline scroll (UX-19-003): the drawing keeps its natural size and scrolls here; it never widens the page */
+.eye-canvas-scroll { overflow: auto; max-inline-size: 100%; max-block-size: 70vh; contain: inline-size; }
+.eye-cf-drawing .eye-canvas-scroll svg { max-inline-size: none; }
+.eye-canvas-fit { inline-size: 100%; block-size: auto; }
+.eye-canvas-svg text { fill: var(--eye-color-ink-default); font-family: inherit; }
+.eye-canvas-node rect { fill: var(--eye-color-surface-primary); stroke: var(--eye-color-border-strong); stroke-width: 1; }
+.eye-canvas-node[data-current="true"] rect { stroke: var(--eye-color-focus); stroke-width: 3; }
+.eye-canvas-node { cursor: pointer; }
+.eye-canvas-node-label { font-size: var(--eye-type-label-md); font-weight: 600; }
+.eye-canvas-node-kind { font-size: var(--eye-type-label-sm); }
+.eye-canvas-svg .eye-canvas-node-kind { fill: var(--eye-color-ink-muted); }
+.eye-canvas-edge path { stroke: var(--eye-color-ink-muted); stroke-width: 1.5; }
+.eye-canvas-edge[data-lit="true"] path { stroke: var(--eye-color-accent-strong); stroke-width: 2.5; }
+.eye-canvas-arrow { fill: var(--eye-color-ink-muted); }
+.eye-canvas-edge-label { font-size: var(--eye-type-label-sm); }
+.eye-canvas-svg .eye-canvas-edge-label { fill: var(--eye-color-ink-muted); }
+.eye-canvas-link { stroke: var(--eye-color-border-strong); stroke-width: 1.5; }
+.eye-canvas-tm-group { fill: none; stroke: var(--eye-color-ink-strong); stroke-width: 2; }
+.eye-canvas-tm-cell rect { fill: var(--eye-color-surface-secondary); stroke: var(--eye-color-border-default); stroke-dasharray: 2 3; }
+.eye-canvas-band { fill: var(--eye-color-uncertain); fill-opacity: 0.25; stroke: var(--eye-color-uncertain); stroke-width: 0.5; }
+.eye-canvas-sk-node rect { fill: var(--eye-color-ink-strong); }
+.eye-canvas-map-frame { fill: var(--eye-color-surface-primary); stroke: var(--eye-color-border-default); }
+.eye-canvas-grat { stroke: var(--eye-color-border-default); stroke-width: 0.5; stroke-dasharray: 2 4; }
+.eye-canvas-grat-label { font-size: var(--eye-type-label-sm); }
+.eye-canvas-svg .eye-canvas-grat-label { fill: var(--eye-color-ink-muted); }
+.eye-canvas-route path { stroke: var(--eye-color-accent-default); stroke-linecap: round; stroke-linejoin: round; }
+.eye-canvas-route[data-unknown="true"] path { stroke: var(--eye-color-ink-muted); }
+.eye-canvas-place circle, .eye-canvas-place path { fill: var(--eye-color-surface-primary); stroke: var(--eye-color-ink-strong); stroke-width: 2; }
+.eye-canvas-place[data-chokepoint="true"] path { fill: var(--eye-color-ink-strong); }
+.eye-canvas-area { stroke: var(--eye-color-ink-strong); stroke-width: 1; fill: var(--eye-color-uncertain); }
+.eye-canvas-area[data-class="0"] { fill-opacity: 0.15; } .eye-canvas-area[data-class="1"] { fill-opacity: 0.35; }
+.eye-canvas-area[data-class="2"] { fill-opacity: 0.6; } .eye-canvas-area[data-class="3"] { fill-opacity: 0.85; }
+.eye-canvas-hatch { stroke: var(--eye-color-ink-muted); stroke-width: 1; }
+.eye-canvas-area[data-class="none"] { fill-opacity: 1; }
+/* a label stays legible over a line or a band: a halo in the drawing's own surface colour */
+.eye-canvas-svg .eye-canvas-halo { paint-order: stroke; stroke: var(--eye-color-surface-primary); stroke-width: 4px; stroke-linejoin: round; }
+.eye-canvas-scalebar line { stroke: var(--eye-color-ink-strong); stroke-width: 2; }
+.eye-canvas-legend { margin: 0; }
+.eye-canvas-legend-svg { inline-size: min(100%, 260px); block-size: auto; }
+.eye-canvas-legend-svg text { fill: var(--eye-color-ink-default); }
+.eye-geo-form { display: grid; gap: var(--eye-space-8); grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); }
+@media (forced-colors: active) {
+  .eye-canvas-refused, .eye-canvas-traverse { border-color: CanvasText; }
+  .eye-canvas-node rect, .eye-canvas-link, .eye-canvas-edge path, .eye-canvas-route path, .eye-canvas-grat, .eye-canvas-scalebar line, .eye-canvas-area, .eye-canvas-tm-group { stroke: CanvasText; }
+  .eye-canvas-node[data-current="true"] rect { stroke: Highlight; }
+  .eye-canvas-svg text, .eye-canvas-arrow, .eye-canvas-sk-node rect, .eye-canvas-place[data-chokepoint="true"] path { fill: CanvasText; }
+  .eye-canvas-band, .eye-canvas-area { fill: Canvas; }
+  .eye-canvas-svg .eye-canvas-halo { stroke: Canvas; }
+}
+@media print {
+  .eye-canvas-traverse { display: none; }
+  .eye-canvas-scroll { max-block-size: none; overflow: visible; }
+  .eye-region[data-sticky="block-start"] { position: static; max-block-size: none; overflow: visible; }
+}
+/* end B82 gm */
+/* B82 cf — THE CHARTS (components/chart.tsx, chart-frame.tsx's §CF completion). Semantic tokens only (no colour is added — D5: dash,
+   marker and label tell series apart); thin 2-unit lines; a recessive grid; text in ink tokens, never a series colour; the plot is drawn
+   left-to-right (a time axis is not mirrored) while every text outside it follows the page; forced colours keep every mark (CanvasText,
+   a hatch for the band) and the focus ring (Highlight). The SVG scales to its container — no sideways page scroll at 390 px or 200 %. */
+.eye-cf-legend { display: flex; flex-wrap: wrap; gap: var(--eye-space-4) var(--eye-space-16); list-style: none; margin: 0 0 var(--eye-space-8); padding: 0; font-size: var(--eye-type-body-sm); }
+.eye-cf-legend li { display: inline-flex; align-items: center; gap: var(--eye-space-4); }
+.eye-cf-swatch { flex: none; color: var(--eye-color-ink-strong); }
+.eye-cf-swatch line { stroke: currentColor; stroke-width: 2; fill: none; }
+.eye-cf-swatch-fill { fill: currentColor; fill-opacity: 0.3; stroke: currentColor; stroke-width: 1; }
+.eye-cf-swatch .eye-cf-marker { fill: var(--eye-color-surface-primary); stroke: var(--eye-color-ink-strong); stroke-width: 1.5; }
+.eye-cf-state { margin-block: var(--eye-space-8); }
+.eye-cf-notes { margin-block: var(--eye-space-4) var(--eye-space-8); }
+.eye-cf-plot { position: relative; max-inline-size: 46rem; }
+.eye-cf-svg { display: block; inline-size: 100%; block-size: auto; overflow: visible; }
+.eye-cf-overlay { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; overflow: visible; }
+.eye-cf-svg text { fill: var(--eye-color-ink-muted); font-size: 13px; font-family: inherit; }
+.eye-cf-svg .eye-cf-strong { fill: var(--eye-color-ink-strong); font-weight: 600; }
+.eye-cf-svg .eye-cf-small { font-size: 11px; }
+.eye-cf-svg .eye-cf-direct { fill: var(--eye-color-ink-strong); font-size: 12px; }
+.eye-cf-axis line, .eye-cf-axis-line { stroke: var(--eye-color-border-strong); stroke-width: 1; }
+.eye-cf-grid, .eye-cf-axis .eye-cf-grid { stroke: var(--eye-color-border-default); stroke-width: 1; stroke-opacity: 0.6; }
+.eye-cf-series { fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.eye-cf-series-group, .eye-cf-svg { color: var(--eye-color-ink-strong); }
+.eye-cf-marker { fill: var(--eye-color-surface-primary); stroke: var(--eye-color-ink-strong); stroke-width: 1.5; }
+.eye-cf-marker[data-shape="cross"] { fill: none; stroke-width: 2; }
+.eye-cf-band { fill: currentColor; fill-opacity: 0.22; stroke: currentColor; stroke-width: 1; }
+.eye-cf-gap { fill: none; stroke: var(--eye-color-ink-muted); stroke-width: 1; stroke-dasharray: 2 3; }
+.eye-cf-cutoff line, .eye-cf-limit line { stroke: var(--eye-color-ink-default); stroke-width: 1.5; }
+.eye-cf-cutoff text, .eye-cf-limit text { fill: var(--eye-color-ink-default); font-size: 11px; }
+.eye-cf-reference, .eye-cf-reference line { fill: none; stroke: var(--eye-color-ink-muted); stroke-width: 1.5; }
+.eye-cf-reference text { fill: var(--eye-color-ink-muted); font-size: 11px; }
+.eye-cf-interval { stroke: var(--eye-color-ink-strong); stroke-width: 1.5; }
+.eye-cf-bar { fill: var(--eye-color-surface-secondary); stroke: var(--eye-color-ink-strong); stroke-width: 1.5; }
+.eye-cf-step { fill: var(--eye-color-surface-primary); stroke: var(--eye-color-ink-strong); stroke-width: 1.5; }
+.eye-cf-step[data-kind="start"], .eye-cf-step[data-kind="end"] { fill: var(--eye-color-surface-secondary); }
+.eye-cf-step[data-kind="decrease"] { fill: var(--eye-color-ink-muted); fill-opacity: 0.35; }
+.eye-cf-step[data-kind="residual"] { stroke-dasharray: 4 3; fill: none; }
+.eye-cf-zero { stroke: var(--eye-color-ink-default); stroke-width: 1; }
+.eye-cf-connector { fill: none; stroke: var(--eye-color-ink-muted); stroke-width: 1; }
+.eye-cf-cell { fill: none; stroke: var(--eye-color-border-default); stroke-width: 1; }
+.eye-cf-cell--missing { stroke-dasharray: 2 3; stroke: var(--eye-color-ink-muted); }
+.eye-cf-cell-mark { fill: var(--eye-color-surface-secondary); stroke: var(--eye-color-ink-strong); stroke-width: 1; }
+.eye-cf-hit { cursor: pointer; outline: none; }
+.eye-cf-hit-area { fill: transparent; stroke: none; }
+.eye-cf-ring { fill: none; stroke: none; stroke-width: 2.5; }
+.eye-cf-hit:focus-visible .eye-cf-ring, .eye-cf-hit[data-active="true"] .eye-cf-ring { stroke: var(--eye-color-focus); }
+.eye-cf-tooltip { position: absolute; z-index: 2; min-inline-size: 12rem; max-inline-size: min(22rem, 80vw); padding: var(--eye-space-8);
+  background: var(--eye-color-surface-elevated); color: var(--eye-color-ink-default); border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-sm);
+  font-size: var(--eye-type-body-sm); transform: translate(var(--eye-space-8), -50%); }
+.eye-cf-tooltip[data-side="before"] { transform: translate(calc(-100% - var(--eye-space-8)), -50%); }
+.eye-cf-tooltip dl { margin: 0 0 var(--eye-space-4); }
+.eye-cf-tooltip dl > div { display: flex; gap: var(--eye-space-4); flex-wrap: wrap; }
+.eye-cf-tooltip dt { color: var(--eye-color-ink-muted); }
+.eye-cf-tooltip dt::after { content: ":"; }
+.eye-cf-tooltip dd { margin: 0; overflow-wrap: anywhere; }
+@media (forced-colors: active) {
+  .eye-cf-series, .eye-cf-marker, .eye-cf-interval, .eye-cf-bar, .eye-cf-step, .eye-cf-cell, .eye-cf-cell-mark, .eye-cf-axis line, .eye-cf-axis-line,
+  .eye-cf-cutoff line, .eye-cf-limit line, .eye-cf-reference, .eye-cf-gap, .eye-cf-zero, .eye-cf-connector, .eye-cf-swatch line { stroke: CanvasText; }
+  .eye-cf-svg text { fill: CanvasText; }
+  .eye-cf-band, .eye-cf-swatch-fill { fill: none; stroke: CanvasText; stroke-dasharray: 3 2; }
+  .eye-cf-hit:focus-visible .eye-cf-ring, .eye-cf-hit[data-active="true"] .eye-cf-ring { stroke: Highlight; }
+  .eye-cf-tooltip { border-color: CanvasText; }
+}
+@media (prefers-reduced-motion: reduce) { .eye-cf-tooltip { transition: none; } }
+/* end B82 cf */
+/* B82 px — THE TRUST AND EXPLANATION LIBRARY (components/trust.tsx; F-P7-E-07 chapters 27 and 57). Semantic tokens only (no new colour, D5);
+   logical properties (RTL mirrors); every outcome is a glyph AND a word, so forced colours and 200 % zoom keep it; wide tables scroll inside
+   their own region — the page never scrolls sideways. */
+.eye-px-trust, .eye-px-trail, .eye-px-layers, .eye-px-dissent, .eye-px-method, .eye-px-compare, .eye-px-alternatives { margin-block: var(--eye-space-12); min-inline-size: 0; }
+.eye-px-trust { padding: var(--eye-space-8) var(--eye-space-12); border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-md); }
+.eye-px-trust[data-state="indeterminate"] { border-inline-start: 4px solid var(--eye-color-uncertain); }
+.eye-px-heading { font-size: var(--eye-type-heading-3); margin-block: 0 var(--eye-space-8); }
+.eye-px-subheading { font-size: var(--eye-type-body-lg); margin-block: var(--eye-space-12) var(--eye-space-4); }
+.eye-px-headline { margin-block: 0 var(--eye-space-4); overflow-wrap: anywhere; }
+.eye-px-constrained { margin-block: var(--eye-space-4); padding-inline-start: var(--eye-space-8); border-inline-start: 2px solid var(--eye-color-uncertain); overflow-wrap: anywhere; }
+.eye-px-note { color: var(--eye-color-ink-muted); font-size: var(--eye-type-body-sm); overflow-wrap: anywhere; }
+.eye-px-term { font-weight: 600; margin-block: var(--eye-space-8) var(--eye-space-2, 2px); }
+.eye-px-strength { margin-block: var(--eye-space-8) var(--eye-space-4); overflow-wrap: anywhere; }
+.eye-px-reasons, .eye-px-lines, .eye-px-items, .eye-px-attestations, .eye-px-limits ul { margin: var(--eye-space-4) 0; padding-inline-start: var(--eye-space-16); font-size: var(--eye-type-body-sm); overflow-wrap: anywhere; }
+.eye-px-scroll { max-inline-size: 100%; overflow-x: auto; }
+.eye-px-scroll:focus-visible { outline: 2px solid var(--eye-color-focus); outline-offset: 2px; }
+.eye-px-facets tr[data-outcome="FAILED"] td:nth-child(2), .eye-px-facets tr[data-outcome="UNAVAILABLE"] td:nth-child(2) { color: var(--eye-color-critical); }
+.eye-px-dl { margin: 0; display: grid; gap: var(--eye-space-4); }
+.eye-px-dl-row { display: flex; flex-wrap: wrap; gap: var(--eye-space-8); min-inline-size: 0; }
+.eye-px-dl-row dt { color: var(--eye-color-ink-muted); font-size: var(--eye-type-label-sm); text-transform: uppercase; min-inline-size: 10rem; }
+.eye-px-dl-row dd { margin: 0; overflow-wrap: anywhere; min-inline-size: 0; flex: 1 1 16rem; }
+.eye-px-dl-row[data-state="missing"] dd strong { color: var(--eye-color-critical); }
+.eye-px-forward { margin-block-start: var(--eye-space-12); }
+@media (forced-colors: active) {
+  .eye-px-trust, .eye-px-constrained { border-color: CanvasText; }
+  .eye-px-note, .eye-px-dl-row dt, .eye-px-facets tr td { color: CanvasText; }
+}
+/* end B82 px */
+/* B82 sc — THE SCENARIO, DECISION, RISK AND OPERATIONS CHARTS (components/strategic-charts.tsx). They draw with §CF's classes; the one rule
+   added: a branch or row that is NOT LIVE is faded — and always labelled "not live" / "not counted" in words (never the fade alone). */
+.eye-sc-notlive { opacity: 0.6; }
+@media (forced-colors: active) { .eye-sc-notlive { opacity: 1; } }
+/* end B82 sc */

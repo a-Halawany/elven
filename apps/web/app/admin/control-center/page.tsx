@@ -16,6 +16,8 @@ import { consequenceLines, dayText, grantStateText, grantView, isGap, latestOnly
   type ControlCenter, type Grant, type Preview, type Receipt as Rcpt } from '../../../lib/delivery-sa-b94';
 import { ErrorNote, Panel, Receipt, Td, Th, inputStyle, tableStyle } from '../../../components/ui';
 import { GovernedButton, Mono, ScrollBox, fmtInstant } from '../../../components/observation';
+/* B82 sc */ import { StatusBoard } from '../../../components/strategic-charts';
+import { isoOf, statusFromOwners, statusOrder, statusSpec } from '../../../lib/strategic-charts-b82'; /* end B82 sc */
 
 type Err = { code: string; message: string; correlationId: string } | null;
 type Row = Record<string, unknown>;
@@ -94,6 +96,12 @@ export default function ControlCenterPage() {
               : gaps.length === 0 ? 'none' : <span style={gapStyle}>{gaps.map((g) => String(g['responsibility_key'])).join(', ')} — the dependent acts stop until filled</span>}</p>
             <p>Support access: <strong>{pending.length}</strong> awaiting your decision · <strong>{live.length}</strong> live · {expiredOrEnded.length} expired or ended · open items {cc.items.length}</p>
           </Panel>
+
+          {/* B82 sc: the responsibilities as a status board (VIZ-33) — an owner resolved, a GAP or unknown, in shapes and words, worst first */}
+          <Panel title="Responsibilities — a status board">
+            <ResponsibilityBoard cc={cc} />
+          </Panel>
+          {/* end B82 sc */}
 
           <Panel title="Support access awaiting a decision">
             {pending.length === 0 ? <p>No request awaits a decision.</p> : (
@@ -212,3 +220,13 @@ export default function ControlCenterPage() {
     </>
   );
 }
+
+/* B82 sc: THE STATUS BOARD of the shared-responsibility matrix's accountable owners (the control center's own read) */
+function ResponsibilityBoard({ cc }: { cc: ControlCenter }) {
+  const approvedAt = cc.approved === null ? null : (typeof cc.approved['decided_at'] === 'string' ? String(cc.approved['decided_at']).slice(0, 10) : null);
+  const items = useMemo(() => statusOrder(statusFromOwners(cc.owners, approvedAt)), [cc.owners, approvedAt]);
+  const spec = useMemo(() => statusSpec({ title: 'Accountable owners of the responsibilities', items, asOf: isoOf(cc.read_at, new Date().toISOString()), read: 'service.read · /support/control-center/read', readLabel: 'the customer control center',
+    sloWords: 'none declared on this read — a responsibility is owned or it is a gap' }), [items, cc.read_at]);
+  return cc.approved === null ? <p style={gapStyle}>No approved matrix — no responsibility can be drawn as owned.</p> : <StatusBoard spec={spec} items={items} />;
+}
+/* end B82 sc */

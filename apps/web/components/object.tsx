@@ -27,6 +27,14 @@ import { Symbol } from './symbols';
 import { TruthBadge } from './ui';
 import { useShellBase } from './shell';
 import { effectiveLine, headerView, lifecycleOf, objectType, type ObjectHeaderInput } from '../lib/object-b81';
+/* B82 ts */
+import { TruthStateLabel, FreshnessWatermark } from './truth';
+import { ContextSwitchDialog } from './context-bar';
+import { contextApi } from '../lib/context-api-b80';
+import { refusalWords, type BarRead } from '../lib/context-b80';
+/* B82 px */ import { explainHref } from '../lib/provenance-b50'; import { trustHref } from '../lib/trust-b82'; /* end B82 px */
+import { STRIP_DIMENSIONS, dimensionIntro, freshnessView, pendingCommandsLine, stateStripView, type PendingCommand, type StripDimension } from '../lib/truth-b82';
+/* end B82 ts */
 
 function CopyReference({ value }: { value: string }) {
   const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
@@ -92,6 +100,61 @@ export function LifecycleView({ type, state, degraded, blocked }: { type: string
   );
 }
 
+/* B82 ts — THE STATE STRIP (UX-06-001/-002/-005) and the ONE-DIMENSION context entry (UX-06-003): the display truth, the freshness, the
+   policy and the authority where they change meaning; a dimension opened in B80's ContextSwitchDialog (preview → the deliberate commit) with
+   the person's pending commands named — the switch alters no approval and submits no draft. Internal to the header (not a library export). */
+function StateStrip({ input, authority }: { input: ObjectHeaderInput; authority: string }) {
+  const base = useShellBase();
+  const scope = base?.scope ?? null;
+  const items = stateStripView({
+    ...(input.displayTruth === undefined ? {} : { truth: input.displayTruth }),
+    ...(input.freshness === undefined ? {} : { freshness: input.freshness === null ? null : freshnessView(input.freshness) }),
+    ...(input.policy === undefined ? {} : { policy: input.policy }), authority,
+  });
+  const [dim, setDim] = useState<StripDimension>('objective');
+  const [bar, setBar] = useState<BarRead | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const selId = useId();
+  const pending: PendingCommand[] = input.pending ?? [];
+  return (
+    <div className="eye-object-strip">
+      <dl className="eye-state-strip" aria-label="State where it changes meaning">
+        {items.map((it) => (
+          <div key={it.key} data-strip={it.key}>
+            <dt>{it.label}</dt>
+            <dd>{it.key === 'truth' && input.displayTruth !== undefined && input.displayTruth !== null ? <TruthStateLabel truth={input.displayTruth} detail="compact" /> : it.value}
+              {it.held !== null ? <span className="eye-state-strip-held"> — held: {it.held}</span> : null}</dd>
+          </div>
+        ))}
+        {scope !== null ? (
+          <div data-strip="context">
+            <dt><label htmlFor={selId}>Context dimension</label></dt>
+            <dd>
+              <select id={selId} value={dim} onChange={(e) => setDim(e.target.value as StripDimension)}>
+                {STRIP_DIMENSIONS.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+              </select>{' '}
+              <button type="button" className="eye-state-strip-switch" aria-haspopup="dialog" onClick={() => {
+                void (async () => {
+                  const r = await contextApi.read({ tenantId: scope.tenantId, domainId: scope.domainId });
+                  if (!r.ok || r.data === undefined) { setProblem(`The operating context could not be read — ${refusalWords(r, 'no answer')}`); return; }
+                  setProblem(null); setBar(r.data.bar);
+                })();
+              }}>Inspect or change the {STRIP_DIMENSIONS.find((d) => d.key === dim)?.label}…</button>
+              {problem !== null ? <span role="alert" className="eye-state-strip-held"> {problem}</span> : null}
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+      {input.freshness !== undefined && input.freshness !== null ? <FreshnessWatermark freshness={input.freshness} label={`Freshness of this ${input.type} read`} /> : null}
+      {bar !== null && scope !== null ? (
+        <ContextSwitchDialog scope={scope} bar={bar} open onClose={() => setBar(null)} onCommitted={() => undefined}
+          intro={<><p className="eye-context-note">{dimensionIntro(dim)}</p><p className="eye-context-note">{pendingCommandsLine(pending)}</p></>} />
+      ) : null}
+    </div>
+  );
+}
+/* end B82 ts */
+
 /** CMP-017 — THE CANONICAL OBJECT HEADER. `level` 1 on an object page, 2 where the object opens inside a list page. */
 export function ObjectHeader({ input, level = 1, version, children }: {
   input: ObjectHeaderInput; level?: 1 | 2;
@@ -116,6 +179,9 @@ export function ObjectHeader({ input, level = 1, version, children }: {
           {...(versioning === 'instants' ? { note: `${input.versionCount ?? 'no'} recorded instant(s)` } : versioning === 'immutable' ? { note: 'immutable record' } : {})} />
         {children}
       </div>
+      {/* B82 ts */}
+      {input.displayTruth !== undefined || input.freshness !== undefined || input.policy !== undefined ? <StateStrip input={input} authority={v.authority} /> : null}
+      {/* end B82 ts */}
       {v.indeterminate && (
         <div className="eye-object-indeterminate" role="status">
           <Symbol id="TS-10" showLabel />{' '}
@@ -129,7 +195,7 @@ export function ObjectHeader({ input, level = 1, version, children }: {
             <dt>{f.label}</dt>
             <dd>
               {f.value === null ? <span className="eye-object-unresolved">UNRESOLVED — {f.unresolved}</span>
-                : f.key === 'truth' ? <TruthBadge state={f.value} />
+                : f.key === 'truth' ? (/* B82 ts */ input.displayTruth !== undefined && input.displayTruth !== null ? <TruthStateLabel truth={input.displayTruth} /> : /* end B82 ts */ <TruthBadge state={f.value} />)
                   : f.key === 'id' || f.key === 'owner' ? <bdi dir="ltr" className="eye-mono-wrap">{f.value}</bdi>
                     : f.value}
             </dd>
@@ -140,7 +206,10 @@ export function ObjectHeader({ input, level = 1, version, children }: {
           <div className="eye-dl-row"><dt>Relationships</dt><dd><ul className="eye-object-links">{input.relationships.map((r) => <li key={r.label}>{r.href === null ? r.label : <Link href={r.href}>{r.label}</Link>}</li>)}</ul></dd></div>
         )}
         <div className="eye-dl-row"><dt>Provenance</dt><dd>
-          {input.provenance.length === 0 ? <span className="eye-help">no provenance link on this read — the full provenance trail is B82&apos;s</span>
+          {input.provenance.length === 0 ? (/* B82 px: the slot B81 left — the provenance trail (both directions) and the trust facets of exactly this version */
+            v.ref !== null && v.ref.version !== null && /^[A-Z]{3}$/.test(v.ref.type)
+              ? <ul className="eye-object-links"><li><Link href={explainHref(v.ref.type, v.ref.id, v.ref.version)}>Open the provenance trail of this version</Link></li><li><Link href={trustHref(v.ref.type, v.ref.id, v.ref.version)}>Open its trust facets</Link></li></ul>
+              : <span className="eye-help">no provenance link on this read — this object is not versioned, so no single version&apos;s trail can be named</span>/* end B82 px */)
             : <ul className="eye-object-links">{input.provenance.map((r) => <li key={r.label}>{r.href === null ? r.label : <Link href={r.href}>{r.label}</Link>}</li>)}</ul>}
         </dd></div>
       </dl>

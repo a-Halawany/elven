@@ -8,6 +8,7 @@
  */
 import { call, type ApiResult } from './api';
 import type { Receipt, Scope } from './observation';
+/* B82 ts */ import { aiOutputLabel } from './truth-b82'; /* end B82 ts */
 
 type Row = Record<string, unknown>;
 export type AuthorKind = 'human' | 'agent';
@@ -53,7 +54,9 @@ export interface RecordPayload {
 /* ───────────── the words ───────────── */
 /** An author as words and a glyph — the AI is always named as such. */
 export function authorMark(kind: string): { glyph: string; text: string } {
-  return kind === 'agent' ? { glyph: '⚙', text: 'DECISION AGENT (AI) — drafted, never decides' } : { glyph: '●', text: 'NAMED HUMAN' };
+  /* B82 ts (CNT-08): the ONE AI-output wording (lib/truth-b82.ts aiOutputLabel) — the agent named, "not a decision" */
+  return kind === 'agent' ? { glyph: '⚙', text: `DECISION AGENT (AI) — ${aiOutputLabel('recommended', { kind: 'agent', name: 'Decision Agent' })}` } : { glyph: '●', text: 'NAMED HUMAN' };
+  /* end B82 ts */
 }
 /** A state as a glyph, a token and words — never colour alone. */
 export function stateMark(state: string): { glyph: string; token: string; text: string } {

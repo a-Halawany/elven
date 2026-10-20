@@ -1,0 +1,757 @@
+# B82-F act (the B80–B82 integration pass) — REHEARSAL on eye_demo_b82f: a restored copy of .eye-local/backups/eye_demo-pre-0122-20261019T215220Z.dump (323009306 bytes — the PRE-0122 backup of eye_demo, taken read-only with pg_dump -Fc at 0121), migrated through 0122 (0122_b80_b82_integration_corrections.sql, sha256 91f8ef13c11a8ffd…) from the b82f-act worktree at 3234853a (the integration-pass head on phase6-b82); the act scripts/phase6/act-b82f.mjs and the walk e2e/phase6-b82f.demo.spec.ts as committed beside this file on b82f/act.
+# THE RIG (runbook §14/§29 form, copied to the scratchpad's fix/act-rig with the worktree path b82 → b82f-act): restore.sh under scripts/dev/heavy-slot.sh (EYE_HEAVY_SLOTS=1); the API :3411 built from this worktree (EYE_DB_NAME=eye_demo_b82f, Redis :6392 flushed before every start, a fresh APFS vault clone under the four EYE_VAULT_*_ROOT, its own EYE_DEGRADED_DIR, the rehearsal sinks 2535/3456, EYE_EXECUTION_SYNTHETIC_LOOPBACK=on, EYE_BUILD_SHA/EYE_BUILD_HEAD_SHA = 3234853a, EYE_REPO_ROOT = the worktree); the rehearsal web built IN PLACE in the worktree's apps/web (.next, git-ignored) with NEXT_PUBLIC_EYE_API=http://localhost:3412, served on :3010 through the loopback CORS proxy :3412 → :3411. Every act, walk and probe declared EYE_ACT_TARGET=rehearsal EYE_DB_NAME=eye_demo_b82f EYE_API=http://localhost:3411 (walks + EYE_WEB_BASE=http://localhost:3010) and resolved it through scripts/act-target.mjs before any login. Never :3401, :3000, Redis :6379; eye_demo read by SELECT only (F-1's counts, read-only planning queries).
+# ORDER: (0) read-only probes on the fresh copy (impact previews of candidate evidence for a SMALL case, the MET-010 and rights reads — audit/POL rows only); then the copy was snapshotted as the template eye_demo_b82f_base (CREATE DATABASE … TEMPLATE, API stopped). (1) two attempts found the act's OWN defects, each followed by a reset of eye_demo_b82f from the template (fresh vault clone, Redis flushed): the rights register's "no payload" check matched a source NAME ("EU Financial Sanctions — CSV/XML payload") — now the keys and the evidence ids/digests are checked; C. Brenner's case read was ADMITTED (she holds strategy_owner, a graph.read role — the brief's premise does not hold on the demonstration; the act now states it and shows the refusal on the chief of staff, the owner without graph.read); the subscription consumers were acknowledged by hand while their deliveries landed (409 — now waited for: their own ledger closes them). (2) on the reset copy: RUN 1 (every write; ALL SCENES HELD, 0 ✗), RUN 2 (every scene stands; ALL SCENES HELD), the walk phase6-b82f with RUN 2's EYE_B82F_* lines (4/4, case OPEN), RUN 3 with EYE_B82F_CLOSE=1 (M. Dvořák closes the READY case; ALL SCENES HELD), RUN 4 (stands after the close; ALL SCENES HELD). (3) THE B82 REGRESSIONS on the same copy: scripts/phase6/act-b82.mjs (rerun-safe; ALL SCENES HELD, 46 ✓, 0 ✗), then e2e/phase6-b82.demo.spec.ts + e2e/phase6-b82-viz.demo.spec.ts with its EYE_B82_* lines: 11/13 in the combined run — the two that failed (B82-1 THE EVIDENCE HOP, B82-4 RIGHTS; a second combined run of phase6-b82 failed B82-1 EVIDENCE HOP and B82-4 TRUST instead) each PASS in isolation (1/1, 1/1, 1/1).
+# SAID PLAINLY: (a) the walk failures above are a PRE-EXISTING product behaviour, not this pass's code: a consequential read commits its audit row FIRST and holds the audit chain head's row lock for the whole read (pipeline.service consequentialRead: commitAudit, then the handler, in one transaction), so a long read — graph.explain / provenance_strength / trust_envelope (the drill's pages, still running server-side after the test closed them) or graph.trust_overview (~48 s here) — makes EVERY other audited request of the tenant wait (pg_stat_activity: audit.commit_event 'api.request' waiting on Lock:transactionid / Lock:tuple, eye_identity's /v1/me among them), and a page whose shell waits > 45 s renders blank. Reported, not fixed (outside §TR §RT §CC §MT). (b) C. Brenner holds strategy_owner besides decision_owner, so graph.read admits her to the case read; the affected owner refused the case read is the chief of staff (executive operator). (c) The case is LEFT OPEN and READY by default: the obligation read answers OPEN cases only, so the walk shows the owners' acknowledged obligations while it is open; the act with EYE_B82F_CLOSE=1 closes it after the walk. (d) MET-010 is NOT recomputed (the 2026-Q4 result stays definition v1 · computation v2, INDETERMINATE). (e) The F-4 case is new and SMALL: a SYNTHETIC booking uploaded by A. Hoffmann, C. Brenner's next briefing in her decision room (it rests on the upload), the chief of staff's draft board publication of it — 2 owned consumers + 8 subscription deliveries; the 2026-09-10 supersession case is untouched; the closure contract stays the ordinary v2 (nothing re-declared, nothing frozen).
+# Screenshots: b82f-*.png (12) in the rig's shots/, not committed.
+
+════════ RUN 1 ════════
+THE B82-F ACT (the B80–B82 integration pass) on eye_demo_b82f (REHEARSAL) — 2026-10-19T22:18:14.804Z — API http://localhost:3411 — target declared rehearsal
+
+F-1 THE ACT TARGET ON THE DEPLOYMENT ITSELF — this act spawned (a) with no EYE_ACT_TARGET and (b) as a rehearsal naming the LIVE API: each REFUSED (exit 2) before anything is contacted; the sessions and login audit rows of this database and of the live eye_demo unchanged
+  ✓ (a) the act spawned with NO EYE_ACT_TARGET: exit 2 — "REFUSED (act target): EYE_ACT_TARGET is not set — declare the environment: EYE_ACT_TARGET=rehearsal for a restored copy, EYE_ACT_TARGET=live for the demonstration. Nothing was contacted."
+  ✓ (b) the act spawned as a REHEARSAL naming the LIVE API http://localhost:3401 (EYE_LIVE_API left default): exit 2 — "REFUSED (act target): EYE_API http://localhost:3401 is the LIVE demonstration's API (http://localhost:3401); a rehearsal talks to its own rig. Nothing was contacted."
+  ✓ NOTHING WAS CONTACTED: eye_demo_b82f — human sessions 4953 → 4953, login audit rows 4954 → 4954; the LIVE eye_demo (read-only SELECT) — sessions 4923 → 4923, login audit rows 4924 → 4924
+  · the check is scripts/act-target.mjs (B80 integration pass): governed.mjs has no default API any more, and every act, candidate and walk resolves its target before it reads the local env or logs in (harness: apps/api/test/unit/act-target-b80.test.ts)
+
+F-0 THE CAST AND THE STATE — 0122, the build, the personas and their bindings
+  ✓ migration applied: 0122_b80_b82_integration_corrections.sql (§RT observation.rights_terms_register · §CC graph._cl_closer_basis + graph.correction_obligations)
+  ✓ j.sato holds product_analyst at the DOMAIN
+  ✓ m.okonkwo holds product_analytics_owner at the DOMAIN
+  ✓ f.aydin holds data_steward at the DOMAIN
+  ✓ a.hoffmann holds domain_analyst at the DOMAIN
+  ✓ c.brenner holds decision_owner at the DOMAIN
+  ✓ chief.of.staff holds executive_operator at the DOMAIN
+  ✓ m.dvorak holds collection_manager at the DOMAIN
+  ✓ k.mueller holds knowledge_owner at the DOMAIN
+  ✓ n.eriksen holds forecast_owner at the DOMAIN
+  ✓ l.brandt holds decision_owner at the DOMAIN
+  ✓ e.lindqvist holds auditor at the TENANT
+  ✓ t.richter holds domain_admin at the DOMAIN
+  ✓ the chief of staff (executive operator) holds no graph.read role (none); C. Brenner holds strategy_owner — a graph.read role beside decision_owner — the act grants nothing
+  · the API declares its build: head 3234853a02ea… (from env), migration head —, policy bundle bundle-v1 d2ae37a2c533…
+
+F-2 MET-010 DEFINITION v2 THROUGH THE GOVERNED PATH (§MT) — J. Satō proposes, her own decision refused, M. Okonkwo approves at the digest; definition v2 · computation v2 (0120 §CL), v1 superseded; NOT recomputed
+  · the state before: MET-010 v1 APPROVED (digest d4c75b657f92…); owner M. Okonkwo; the result 01a1…e7a374 2026-Q4: definition v1 · computation v2, INDETERMINATE
+  ✓ J. Satō (product analyst — a named human; she proposed v1 too) PROPOSED MET-010 v2: PROPOSED, k 5, floor 3, computed by met010_correction_propagation, digest d36517c79c41…; the owner stays M. Okonkwo — routed to her for approval — POL 01a1563e-90df… · audit seq 683970
+  ✓ J. Satō (the proposer) decides her own proposal REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ M. Okonkwo (product analytics owner — not the proposer) APPROVED MET-010 v2 at the digest she read (d36517c79c41…): APPROVED, effective 2026-10-19T22:18:25Z; v1 01a1…ba8c0f superseded — POL 01a1563e-986b… · audit seq 683979
+  ✓ MET-010 READ: definition v2 APPROVED · computation met010_correction_propagation v2 (registered in 0120 §CL, body digest be69c305fa01…) TOGETHER; v1 SUPERSEDED
+  ✓ the diff v1 → v2 names exactly exclusions, meaning, population (the end instant: population.closure_instant; thresholds, k, floor, dimensions and the computation key unchanged)
+  ✓ the result 01a1…e7a374 (2026-Q4) is still listed as definition v1 · computation v2 — INDETERMINATE
+  ✓ the diff read (definitions/diff v1 → v2): exclusions, meaning, population
+  ✓ the result 01a1…e7a374 READ: definition v1 (now SUPERSEDED) · computation v2 (the digest it recorded be69c305fa01…); the registry holds met010_correction_propagation v2 now (0120 §CL) — INDETERMINATE (n 1): the period 2026-Q4 is open until 2027-01-01 00:00:00+00 (as of 2026-10-19 07:22:54.057867+00): a partial period is not presented as the period, n = 1 is below the floor 3 the definition declares: the sample cannot carry a determinate value
+  · NOT RECOMPUTED here: the 2026-Q4 result stays INDETERMINATE (the period is open and n is below the floor 3); no threshold is lowered, no result forced — a new computation would name definition v2 · computation v2 and is the owner's choice
+
+F-3 RIGHTS TERMS FOR THEIR DECLARERS (§RT) — F. Aydın reads the domain's register (metadata only); evidence bytes and detail still refused to her; the other domain's register refused; A. Hoffmann (outside the declare rule) refused the new read, keeps the per-source read
+  ✓ F. Aydın (data steward — she DECLARES rights terms) READ the domain's rights-terms register (observation.rights.terms.read): 25 source contract version(s), 1 with terms declared; RIGHTS METADATA ONLY — each entry exactly source, contract, the contract's rights statement, the current terms, history and ledger; no evidence id, digest, locator, manifest, payload or bytes in the answer (none found) — POL 01a1563e-a2ac… · audit seq 683993
+  ✓ the carrier advisories (contract v1) — the terms B82 declared: "in_force · expires at 2027-10-19T12:48:03.929000Z"; history v1 expired → v2 in_force; ledger rights.declared, rights.revised
+  · a source with no terms says so: Antriebstechnik trade press reports (SYNTHETIC) v1 — "no rights terms declared for this contract version — no expiry declared" (the contract's own rights state confirmed)
+  · F. Aydın declares nothing here: the carrier advisories' terms B82 declared stand (in force); a declaration would change a decision-active state another act reads
+  ✓ F. Aydın asks for evidence BYTES — the cited span of 01a0…6f55e0@2 (the B82 segment route) REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın downloads 01a0…6f55e0 (the evidence download) REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın reads the evidence detail of 01a0…6f55e0 REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın reads the OTHER domain's register ("NORDWERK Exchange Mirror (SYNTHETIC)", the B16 mirror) REFUSED — 403 EYE-TEN-001 — principal has no binding for this domain
+  ✓ A. Hoffmann (domain analyst — outside the declare rule) reads the rights-terms register REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ A. Hoffmann KEEPS the per-source read (observation.read.rights): the carrier advisories' terms — 1 version(s) — POL 01a1563e-b1aa… · audit seq 684007
+
+F-4 CORRECTION CLOSURE FOR THE AFFECTED PRODUCT'S OWNER (§CC) — one small SYNTHETIC case: a booking uploaded, C. Brenner's briefing on it, its board publication drafted; the restatement applied and walked; graph.read unchanged (the chief of staff refused the case read); each owner reads THEIR obligations and acknowledges theirs; the case READY, closed after the walk
+  ✓ the closure contract in force: v2 ORDINARY (stale 3 d, human review 5 d, recompute 7 d) — the windows stay ordinary: nothing stalls or freezes in this scene
+  ✓ A. Hoffmann (domain analyst) UPLOADED "inbound-records-nordbearing-eta-b82f-2026-11.csv" (SYNTHETIC, 284 bytes) to nordwerk-inbound-records, its document time "mid November 2026" stated: run finished, 1 admitted → evidence 01a1…180b4e@1
+  ✓ C. Brenner (decision owner, the room's owner) COMPOSED the next briefing in "Mitigate the corridor closure — the decision room (SYNTHETIC)" 01a1…114866 since 01a1…fc4b36 (2026-10-19T22:18:16Z): the upload is an item of "what changed" and the briefing RESTS ON it (graph.dependencies) — SHE owns this product — POL 01a1563e-bc76… · audit seq 684040
+  ✓ the chief of staff (executive operator) DRAFTED "B82-F — the decision room's briefing for the supervisory board (SYNTHETIC)" 01a1…8b2862 from C. Brenner's briefing 01a1…114866 (classified internal) — HE owns this product; a draft, never delivered here — POL 01a1563e-bdb1… · audit seq 684041
+  ✓ THE READ-ONLY PREVIEW (nothing written): a restatement of the upload would reach briefings 1, publications 1 — C. Brenner's briefing among them, the board publication among them: a SMALL case
+  ✓ A. Hoffmann (domain analyst) RECEIVED the shipper's restatement of SYN-BKG-7212: case 01a1…c3da72 received — POL 01a1563e-c0a7… · audit seq 684043
+  ✓ M. Dvořák (collection manager — the correction authority) APPLIED it: 01a1…180b4e v1 → v2 — nobody calls /impact/propagate — POL 01a1563e-c0c1… · audit seq 684046
+  ✓ THE AUTOMATIC WALK: attempt complete by the propagation agent 01a1…8bc8ad (walker 1.1.0), 1 root(s) walked (read 2 s after)
+  ✓ K. Müller (knowledge owner — graph.read) reads the case: closure OPEN (opened applied 2026-10-19T22:18:35Z, contract v2); 10 material consumer(s): BRF:01a1… stale (C. Brenner, pending); PUB:01a1…@1 stale (the chief of staff, pending); SUB:01a0… null (01a0…3fd0f3, pending); SUB:01a0… null (01a0…3fd0f3, pending); SUB:01a0… null (01a0…3fd0f3, pending); SUB:01a0… null (01a0…3fd0f3, pending); SUB:01a0… null (01a0…3fd0f3, pending); SUB:01a0… null (01a0…3fd0f3, pending); SUB:01a0… null (01a0…3fd0f3, pending); SUB:01a0… null (L. Brandt, delivered)
+  ✓ C. Brenner owns a material consumer of the case: BRF:01a1563e-bc74-7711-8d05-b92d48114866 (stale)
+  ✓ no product is frozen by this case (0 freeze(s) recorded) — the windows are ordinary; the 2026-09-10 supersession case is neither adopted nor touched
+  ✓ C. Brenner reads the case (graph.read — the policy is unchanged): ADMITTED by her strategy_owner binding (not by decision_owner) — the brief's premise that she lacks graph.read does not hold on the demonstration; said, not changed
+  ✓ the chief of staff (executive operator — the affected publication's owner, no graph.read role) reads the case REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ C. Brenner READ HER OBLIGATIONS (graph.closure.obligation.read — the acknowledge / except roles, audited; NOT graph.read): 1 obligation(s) — BRF:01a1… stale pending (the accountable owner; acknowledge ALLOWED, except allowed until 2026-11-18T22:18:37Z; due 2026-10-22T22:18:37Z); ONLY what the act needs (exactly the act's fields: no path, notice, other consumer or evidence — true); the chief of staff's publication is not hers and not listed — "the correction obligations you answer for, as the acknowledge and except acts decide — never the case's graph, its other consumers or any evidence" — POL 01a1563e-c8e5… · audit seq 684061
+  ✓ C. Brenner's obligations on ANOTHER case (the B50 restatement 01a1…235fbd, CLOSED): 0 — an empty list, no existence oracle
+  ✓ C. Brenner acknowledges ANOTHER owner's consumer (PUB:01a1…@1, the chief of staff's) REFUSED — 403 EYE-AUT-001 — correction closure rejected (authority): PUB:01a1563e-bdb3-7e0a-94ff-9204c68b2862@1 is owned by 01a0f00b-81e4-718a-b7dc-178ad1f27f57; its owner closes it
+  ✓ C. Brenner acknowledges on ANOTHER case (her DEC:01a0…@1 on the CLOSED B50 case 01a1…235fbd) REFUSED — 409 EYE-STA-002 — correction closure rejected (state): correction case 01a15307-da43-7fef-a63d-afa50b235fbd is closed
+  ✓ C. Brenner ACKNOWLEDGED HER OWN obligation BRF:01a1… through the existing route (graph.closure.acknowledge, human gate) — POL 01a1563e-c921… · audit seq 684068
+  ✓ read again: ACKNOWLEDGED, the latest act by her (acknowledged), nothing left to act on (state: the consumer is already acknowledged); the state digest the Command Review binds changed (b897191fc45c… → 4d8e8883554a…)
+  ✓ N. Eriksen (forecast owner — in the read's roles, no consumer of this case) reads an EMPTY list: 0 obligation(s)
+  ✓ J. Satō (product analyst — outside the acknowledge / except roles) reads obligations REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · the subscription consumers close through their own delivery ledger: 8 — delivered 8 (3 s)
+  ✓ THE REMAINING CONSUMERS CLOSED: 1 by their own owner (each found it first in their OWN obligation read), 0 by K. Müller (no active human owner) — PUB:01a1…@1 by the chief of staff; 0 refused
+  ✓ THE READINESS: READY (projections reconciled)
+  · LEFT OPEN, said plainly: every material consumer is acknowledged by its owner and the case is READY, but it is NOT closed in this run — the obligation read answers OPEN cases only, so the walk shows the owners their acknowledged obligations while it is open; M. Dvořák closes it after the walk (this act with EYE_B82F_CLOSE=1)
+  ✓ THE CASE OPEN: 0 material consumer(s) left to act on — every owner acknowledged theirs; the close is M. Dvořák's after the walk (EYE_B82F_CLOSE=1)
+  ✓ the closure contract still v2 ORDINARY — nothing re-declared
+
+F-5 THE TRUST OVERVIEW AND EVIDENCE ACCESS (D9) — the overview for the auditor; the expired read harness-proven; L. Brandt refused the cited bytes, A. Hoffmann opens the span with the digest re-verified
+  ✓ E. Lindqvist (auditor, TENANT) read /graph/trust's OVERVIEW (48.6 s): types 5, agents 8, models 1, products 5, exceptions 0, attestations 1, verifications 3, investigations 1, policy_denials 25 — "Facets and records, never a trust score: each product's provenance strength with its reasons, and the models, agents, ri" — no score anywhere — POL 01a1563e-d6d1… · audit seq 684081
+  · THE EXPIRED READ (§TR): a consequential read whose handler THROWS after its authorization context expired answers the existing 503 EYE-DEP-001 (the result discarded, "retry"), never a 500 — HARNESS-PROVEN (phase6-b82f-tr TR1/TR2), NOT staged here: it needs a read held past the 62 s context
+  ✓ L. Brandt (decision owner) asks for the cited bytes 0–383 of 01a0…6f55e0@2 REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ A. Hoffmann (domain analyst — she reads evidence today) OPENED THE CITED SPAN of 01a0…6f55e0@2: the FULL digest re-verified on this read (verified, a71925122a71…, 383 bytes, tier hot); served 0–383, cited 0–383; custody written — POL 01a1563f-9ac7… · audit seq 684089
+  · D9 STAYS: no new evidence permission — the decision roles keep the citation's resolution short of the bytes (B82); the declarers read rights METADATA only (F-3)
+
+F-6 THE STATE, the env lines for the walk, THE LIMITS
+  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B82F_MET010_V1=01a12df1-0349-7d27-a515-36ca2bba8c0f
+  EYE_B82F_MET010_V2=01a1563e-90dc-76dc-88a7-a1ed75ef7b68
+  EYE_B82F_MET010_RESULT=01a1530a-b8e5-70e3-945e-78f2f6e7a374
+  EYE_B82F_RIGHTS_SOURCE=01a084f5-76af-711e-a291-bc110b79f394
+  EYE_B82F_RIGHTS_SOURCE_NAME=Carrier & port advisories
+  EYE_B82F_MIRROR_DOMAIN=01a0aa27-e4d3-75d0-9802-9f0f19824587
+  EYE_B82F_UPLOAD_EVD=01a1563e-b7f7-7b2b-b36b-852682180b4e
+  EYE_B82F_ROOM=01a0f00b-865a-7588-98dd-40233be92061
+  EYE_B82F_BRIEFING=01a1563e-bc74-7711-8d05-b92d48114866
+  EYE_B82F_PUBLICATION=01a1563e-bdb3-7e0a-94ff-9204c68b2862
+  EYE_B82F_CASE=01a1563e-c0a9-76a5-b911-de453cc3da72
+  EYE_B82F_BRENNER_CONSUMER=BRF:01a1563e-bc74-7711-8d05-b92d48114866
+  EYE_B82F_OPERATOR_CONSUMER=PUB:01a1563e-bdb3-7e0a-94ff-9204c68b2862@1
+  EYE_B82F_OTHER_CASE=01a15307-da43-7fef-a63d-afa50b235fbd
+  EYE_B82F_CASE_STATE=open
+  EYE_B82F_SPAN_EVD=01a084f5-7979-76cf-8e3b-a7b0e96f55e0
+  EYE_B82F_SPAN_VERSION=2
+  EYE_B82F_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B82F_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B82F_STEWARD=f.aydin
+  EYE_B82F_OWNER=c.brenner
+  EYE_B82F_OPERATOR=chief.of.staff
+  EYE_B82F_ANALYST=a.hoffmann
+  EYE_B82F_REFUSED_OWNER=chief.of.staff
+  EYE_B82F_PRODUCT_OWNER=m.okonkwo
+  EYE_B82F_KNOWLEDGE_OWNER=k.mueller
+  EYE_B82F_PRODUCT_ANALYST=j.sato
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — 0122 (§RT, §CC) and the TypeScript corrections (§TR, §MT) with their harnesses phase6-b82f-{rt,cc,tr,mt}, the web unit models, the walk. (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: the act target refusing two children before any contact; MET-010 definition v2 proposed by J. Satō, her own decision refused, approved by M. Okonkwo at the digest — definition v2 · computation v2 shown together, v1 superseded, the old result definition v1 · computation v2, NOT recomputed; F. Aydın reading the rights-terms register (metadata only) and refused evidence bytes, detail and the other domain's register, A. Hoffmann refused the new read and keeping hers; ONE small SYNTHETIC correction case (a booking uploaded, C. Brenner's briefing on it, its board publication drafted, the restatement applied and walked) in which the chief of staff (no graph.read role) was refused the case read and C. Brenner was ADMITTED to it by her strategy_owner binding (graph.read unchanged — said), C. Brenner read and acknowledged HER obligation and was refused another owner's consumer and another case, N. Eriksen read an empty list, J. Satō was refused the read, the chief of staff found and acknowledged his own through his obligation read, the case READY under the ORDINARY contract and closed by M. Dvořák only in the run with EYE_B82F_CLOSE=1 (after the walk); the trust overview read; L. Brandt refused the cited bytes and A. Hoffmann opening them. (3) REAL ACCEPTANCE — never claimed. NOT STAGED (harness-proven): the expired-read 503 (phase6-b82f-tr), an obligation's escalation instants after a stall (phase6-b82f-cc c), a bounded exception by an owner on the obligation page (the walk shows the form; the act acknowledges).
+
+ALL SCENES HELD · 1.3 min
+
+════════ RUN 2 ════════
+THE B82-F ACT (the B80–B82 integration pass) on eye_demo_b82f (REHEARSAL) — 2026-10-19T22:19:37.121Z — API http://localhost:3411 — target declared rehearsal
+
+F-1 THE ACT TARGET ON THE DEPLOYMENT ITSELF — this act spawned (a) with no EYE_ACT_TARGET and (b) as a rehearsal naming the LIVE API: each REFUSED (exit 2) before anything is contacted; the sessions and login audit rows of this database and of the live eye_demo unchanged
+  ✓ (a) the act spawned with NO EYE_ACT_TARGET: exit 2 — "REFUSED (act target): EYE_ACT_TARGET is not set — declare the environment: EYE_ACT_TARGET=rehearsal for a restored copy, EYE_ACT_TARGET=live for the demonstration. Nothing was contacted."
+  ✓ (b) the act spawned as a REHEARSAL naming the LIVE API http://localhost:3401 (EYE_LIVE_API left default): exit 2 — "REFUSED (act target): EYE_API http://localhost:3401 is the LIVE demonstration's API (http://localhost:3401); a rehearsal talks to its own rig. Nothing was contacted."
+  ✓ NOTHING WAS CONTACTED: eye_demo_b82f — human sessions 5009 → 5009, login audit rows 5010 → 5010; the LIVE eye_demo (read-only SELECT) — sessions 4923 → 4923, login audit rows 4924 → 4924
+  · the check is scripts/act-target.mjs (B80 integration pass): governed.mjs has no default API any more, and every act, candidate and walk resolves its target before it reads the local env or logs in (harness: apps/api/test/unit/act-target-b80.test.ts)
+
+F-0 THE CAST AND THE STATE — 0122, the build, the personas and their bindings
+  ✓ migration applied: 0122_b80_b82_integration_corrections.sql (§RT observation.rights_terms_register · §CC graph._cl_closer_basis + graph.correction_obligations)
+  ✓ j.sato holds product_analyst at the DOMAIN
+  ✓ m.okonkwo holds product_analytics_owner at the DOMAIN
+  ✓ f.aydin holds data_steward at the DOMAIN
+  ✓ a.hoffmann holds domain_analyst at the DOMAIN
+  ✓ c.brenner holds decision_owner at the DOMAIN
+  ✓ chief.of.staff holds executive_operator at the DOMAIN
+  ✓ m.dvorak holds collection_manager at the DOMAIN
+  ✓ k.mueller holds knowledge_owner at the DOMAIN
+  ✓ n.eriksen holds forecast_owner at the DOMAIN
+  ✓ l.brandt holds decision_owner at the DOMAIN
+  ✓ e.lindqvist holds auditor at the TENANT
+  ✓ t.richter holds domain_admin at the DOMAIN
+  ✓ the chief of staff (executive operator) holds no graph.read role (none); C. Brenner holds strategy_owner — a graph.read role beside decision_owner — the act grants nothing
+  · the API declares its build: head 3234853a02ea… (from env), migration head —, policy bundle bundle-v1 d2ae37a2c533…
+
+F-2 MET-010 DEFINITION v2 THROUGH THE GOVERNED PATH (§MT) — J. Satō proposes, her own decision refused, M. Okonkwo approves at the digest; definition v2 · computation v2 (0120 §CL), v1 superseded; NOT recomputed
+  · the state before: MET-010 v1 SUPERSEDED (digest d4c75b657f92…), v2 APPROVED (digest d36517c79c41…); owner M. Okonkwo; the result 01a1…e7a374 2026-Q4: definition v1 · computation v2, INDETERMINATE
+  · MET-010 v2 stands APPROVED (decided by M. Okonkwo) — an earlier run; read and stated below
+  ✓ MET-010 READ: definition v2 APPROVED · computation met010_correction_propagation v2 (registered in 0120 §CL, body digest be69c305fa01…) TOGETHER; v1 SUPERSEDED
+  ✓ the diff v1 → v2 names exactly exclusions, meaning, population (the end instant: population.closure_instant; thresholds, k, floor, dimensions and the computation key unchanged)
+  ✓ the result 01a1…e7a374 (2026-Q4) is still listed as definition v1 · computation v2 — INDETERMINATE
+  ✓ the diff read (definitions/diff v1 → v2): exclusions, meaning, population
+  ✓ the result 01a1…e7a374 READ: definition v1 (now SUPERSEDED) · computation v2 (the digest it recorded be69c305fa01…); the registry holds met010_correction_propagation v2 now (0120 §CL) — INDETERMINATE (n 1): the period 2026-Q4 is open until 2027-01-01 00:00:00+00 (as of 2026-10-19 07:22:54.057867+00): a partial period is not presented as the period, n = 1 is below the floor 3 the definition declares: the sample cannot carry a determinate value
+  · NOT RECOMPUTED here: the 2026-Q4 result stays INDETERMINATE (the period is open and n is below the floor 3); no threshold is lowered, no result forced — a new computation would name definition v2 · computation v2 and is the owner's choice
+
+F-3 RIGHTS TERMS FOR THEIR DECLARERS (§RT) — F. Aydın reads the domain's register (metadata only); evidence bytes and detail still refused to her; the other domain's register refused; A. Hoffmann (outside the declare rule) refused the new read, keeps the per-source read
+  ✓ F. Aydın (data steward — she DECLARES rights terms) READ the domain's rights-terms register (observation.rights.terms.read): 25 source contract version(s), 1 with terms declared; RIGHTS METADATA ONLY — each entry exactly source, contract, the contract's rights statement, the current terms, history and ledger; no evidence id, digest, locator, manifest, payload or bytes in the answer (none found) — POL 01a1563f-dae7… · audit seq 684144
+  ✓ the carrier advisories (contract v1) — the terms B82 declared: "in_force · expires at 2027-10-19T12:48:03.929000Z"; history v1 expired → v2 in_force; ledger rights.declared, rights.revised
+  · a source with no terms says so: Antriebstechnik trade press reports (SYNTHETIC) v1 — "no rights terms declared for this contract version — no expiry declared" (the contract's own rights state confirmed)
+  · F. Aydın declares nothing here: the carrier advisories' terms B82 declared stand (in force); a declaration would change a decision-active state another act reads
+  ✓ F. Aydın asks for evidence BYTES — the cited span of 01a0…6f55e0@2 (the B82 segment route) REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın downloads 01a0…6f55e0 (the evidence download) REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın reads the evidence detail of 01a0…6f55e0 REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın reads the OTHER domain's register ("NORDWERK Exchange Mirror (SYNTHETIC)", the B16 mirror) REFUSED — 403 EYE-TEN-001 — principal has no binding for this domain
+  ✓ A. Hoffmann (domain analyst — outside the declare rule) reads the rights-terms register REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ A. Hoffmann KEEPS the per-source read (observation.read.rights): the carrier advisories' terms — 1 version(s) — POL 01a1563f-df1f… · audit seq 684152
+
+F-4 CORRECTION CLOSURE FOR THE AFFECTED PRODUCT'S OWNER (§CC) — one small SYNTHETIC case: a booking uploaded, C. Brenner's briefing on it, its board publication drafted; the restatement applied and walked; graph.read unchanged (the chief of staff refused the case read); each owner reads THEIR obligations and acknowledges theirs; the case READY, closed after the walk
+  ✓ the closure contract in force: v2 ORDINARY (stale 3 d, human review 5 d, recompute 7 d) — the windows stay ordinary: nothing stalls or freezes in this scene
+  · the restatement case 01a1…c3da72 stands — an earlier run (applied, propagation complete); the upload 01a1…180b4e
+  · C. Brenner's briefing 01a1…114866 on the upload stands — an earlier run (2026-10-19T22:18:34Z)
+  · the chief of staff's draft "B82-F — the decision room's briefing for the supervisory board (SYNTHETIC)" 01a1…8b2862 stands — an earlier run (drafted)
+  ✓ THE AUTOMATIC WALK: attempt complete by the propagation agent 01a1…8bc8ad (walker 1.1.0), 1 root(s) walked (read 0 s after)
+  ✓ K. Müller (knowledge owner — graph.read) reads the case: closure OPEN (opened applied 2026-10-19T22:18:35Z, contract v2); 10 material consumer(s): BRF:01a1… stale (C. Brenner, acknowledged); PUB:01a1…@1 stale (the chief of staff, acknowledged); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (L. Brandt, delivered)
+  ✓ C. Brenner owns a material consumer of the case: BRF:01a1563e-bc74-7711-8d05-b92d48114866 (stale)
+  ✓ no product is frozen by this case (0 freeze(s) recorded) — the windows are ordinary; the 2026-09-10 supersession case is neither adopted nor touched
+  ✓ C. Brenner reads the case (graph.read — the policy is unchanged): ADMITTED by her strategy_owner binding (not by decision_owner) — the brief's premise that she lacks graph.read does not hold on the demonstration; said, not changed
+  ✓ the chief of staff (executive operator — the affected publication's owner, no graph.read role) reads the case REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ C. Brenner READ HER OBLIGATIONS (graph.closure.obligation.read — the acknowledge / except roles, audited; NOT graph.read): 1 obligation(s) — BRF:01a1… stale acknowledged (the accountable owner; acknowledge no — state: the consumer is already acknowledged, except no; due —; latest act acknowledged by you); ONLY what the act needs (exactly the act's fields: no path, notice, other consumer or evidence — true); the chief of staff's publication is not hers and not listed — "the correction obligations you answer for, as the acknowledge and except acts decide — never the case's graph, its other consumers or any evidence" — POL 01a1563f-e0ce… · audit seq 684160
+  ✓ C. Brenner's obligations on ANOTHER case (the B50 restatement 01a1…235fbd, CLOSED): 0 — an empty list, no existence oracle
+  ✓ C. Brenner acknowledges on ANOTHER case (her DEC:01a0…@1 on the CLOSED B50 case 01a1…235fbd) REFUSED — 409 EYE-STA-002 — correction closure rejected (state): correction case 01a15307-da43-7fef-a63d-afa50b235fbd is closed
+  · C. Brenner's obligation stands acknowledged — an earlier run
+  ✓ N. Eriksen (forecast owner — in the read's roles, no consumer of this case) reads an EMPTY list: 0 obligation(s)
+  ✓ J. Satō (product analyst — outside the acknowledge / except roles) reads obligations REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · the subscription consumers close through their own delivery ledger: 8 — delivered 8 (0 s)
+  ✓ THE REMAINING CONSUMERS CLOSED: 0 by their own owner (each found it first in their OWN obligation read), 0 by K. Müller (no active human owner) — none left; 0 refused
+  ✓ THE READINESS: READY (projections reconciled)
+  · LEFT OPEN, said plainly: every material consumer is acknowledged by its owner and the case is READY, but it is NOT closed in this run — the obligation read answers OPEN cases only, so the walk shows the owners their acknowledged obligations while it is open; M. Dvořák closes it after the walk (this act with EYE_B82F_CLOSE=1)
+  ✓ THE CASE OPEN: 0 material consumer(s) left to act on — every owner acknowledged theirs; the close is M. Dvořák's after the walk (EYE_B82F_CLOSE=1)
+  ✓ the closure contract still v2 ORDINARY — nothing re-declared
+
+F-5 THE TRUST OVERVIEW AND EVIDENCE ACCESS (D9) — the overview for the auditor; the expired read harness-proven; L. Brandt refused the cited bytes, A. Hoffmann opens the span with the digest re-verified
+  ✓ E. Lindqvist (auditor, TENANT) read /graph/trust's OVERVIEW (48.7 s): types 5, agents 8, models 1, products 5, exceptions 0, attestations 1, verifications 3, investigations 1, policy_denials 25 — "Facets and records, never a trust score: each product's provenance strength with its reasons, and the models, agents, ri" — no score anywhere — POL 01a1563f-e27c… · audit seq 684169
+  · THE EXPIRED READ (§TR): a consequential read whose handler THROWS after its authorization context expired answers the existing 503 EYE-DEP-001 (the result discarded, "retry"), never a 500 — HARNESS-PROVEN (phase6-b82f-tr TR1/TR2), NOT staged here: it needs a read held past the 62 s context
+  ✓ L. Brandt (decision owner) asks for the cited bytes 0–383 of 01a0…6f55e0@2 REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ A. Hoffmann (domain analyst — she reads evidence today) OPENED THE CITED SPAN of 01a0…6f55e0@2: the FULL digest re-verified on this read (verified, a71925122a71…, 383 bytes, tier hot); served 0–383, cited 0–383; custody written — POL 01a15640-a104… · audit seq 684176
+  · D9 STAYS: no new evidence permission — the decision roles keep the citation's resolution short of the bytes (B82); the declarers read rights METADATA only (F-3)
+
+F-6 THE STATE, the env lines for the walk, THE LIMITS
+  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B82F_MET010_V1=01a12df1-0349-7d27-a515-36ca2bba8c0f
+  EYE_B82F_MET010_V2=01a1563e-90dc-76dc-88a7-a1ed75ef7b68
+  EYE_B82F_MET010_RESULT=01a1530a-b8e5-70e3-945e-78f2f6e7a374
+  EYE_B82F_RIGHTS_SOURCE=01a084f5-76af-711e-a291-bc110b79f394
+  EYE_B82F_RIGHTS_SOURCE_NAME=Carrier & port advisories
+  EYE_B82F_MIRROR_DOMAIN=01a0aa27-e4d3-75d0-9802-9f0f19824587
+  EYE_B82F_UPLOAD_EVD=01a1563e-b7f7-7b2b-b36b-852682180b4e
+  EYE_B82F_ROOM=01a0f00b-865a-7588-98dd-40233be92061
+  EYE_B82F_BRIEFING=01a1563e-bc74-7711-8d05-b92d48114866
+  EYE_B82F_PUBLICATION=01a1563e-bdb3-7e0a-94ff-9204c68b2862
+  EYE_B82F_CASE=01a1563e-c0a9-76a5-b911-de453cc3da72
+  EYE_B82F_BRENNER_CONSUMER=BRF:01a1563e-bc74-7711-8d05-b92d48114866
+  EYE_B82F_OPERATOR_CONSUMER=PUB:01a1563e-bdb3-7e0a-94ff-9204c68b2862@1
+  EYE_B82F_OTHER_CASE=01a15307-da43-7fef-a63d-afa50b235fbd
+  EYE_B82F_CASE_STATE=open
+  EYE_B82F_SPAN_EVD=01a084f5-7979-76cf-8e3b-a7b0e96f55e0
+  EYE_B82F_SPAN_VERSION=2
+  EYE_B82F_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B82F_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B82F_STEWARD=f.aydin
+  EYE_B82F_OWNER=c.brenner
+  EYE_B82F_OPERATOR=chief.of.staff
+  EYE_B82F_ANALYST=a.hoffmann
+  EYE_B82F_REFUSED_OWNER=chief.of.staff
+  EYE_B82F_PRODUCT_OWNER=m.okonkwo
+  EYE_B82F_KNOWLEDGE_OWNER=k.mueller
+  EYE_B82F_PRODUCT_ANALYST=j.sato
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — 0122 (§RT, §CC) and the TypeScript corrections (§TR, §MT) with their harnesses phase6-b82f-{rt,cc,tr,mt}, the web unit models, the walk. (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: the act target refusing two children before any contact; MET-010 definition v2 proposed by J. Satō, her own decision refused, approved by M. Okonkwo at the digest — definition v2 · computation v2 shown together, v1 superseded, the old result definition v1 · computation v2, NOT recomputed; F. Aydın reading the rights-terms register (metadata only) and refused evidence bytes, detail and the other domain's register, A. Hoffmann refused the new read and keeping hers; ONE small SYNTHETIC correction case (a booking uploaded, C. Brenner's briefing on it, its board publication drafted, the restatement applied and walked) in which the chief of staff (no graph.read role) was refused the case read and C. Brenner was ADMITTED to it by her strategy_owner binding (graph.read unchanged — said), C. Brenner read and acknowledged HER obligation and was refused another owner's consumer and another case, N. Eriksen read an empty list, J. Satō was refused the read, the chief of staff found and acknowledged his own through his obligation read, the case READY under the ORDINARY contract and closed by M. Dvořák only in the run with EYE_B82F_CLOSE=1 (after the walk); the trust overview read; L. Brandt refused the cited bytes and A. Hoffmann opening them. (3) REAL ACCEPTANCE — never claimed. NOT STAGED (harness-proven): the expired-read 503 (phase6-b82f-tr), an obligation's escalation instants after a stall (phase6-b82f-cc c), a bounded exception by an owner on the obligation page (the walk shows the form; the act acknowledges).
+
+ALL SCENES HELD · 1.0 min
+
+════════ THE WALK — e2e/phase6-b82f.demo.spec.ts with RUN 2's EYE_B82F_* lines (the case OPEN) ════════
+  ✓  1 e2e/phase6-b82f.demo.spec.ts:59:7 › CP-6 B82-F — the act's walk: rights terms for their declarers, the owner's correction obligations, the impact heading, MET-010 v2 › §RT F. Aydın opens /observation/rights: one h1, the register with its form,
+  ✓  2 e2e/phase6-b82f.demo.spec.ts:86:7 › CP-6 B82-F — the act's walk: rights terms for their declarers, the owner's correction obligations, the impact heading, MET-010 v2 › §CC the affected publication's owner (no graph.read): the case page refused 
+  ✓  3 e2e/phase6-b82f.demo.spec.ts:136:7 › CP-6 B82-F — the act's walk: rights terms for their declarers, the owner's correction obligations, the impact heading, MET-010 v2 › §CC /graph/impact keeps its one h1 while it reads and when its read is refu
+  ✓  4 e2e/phase6-b82f.demo.spec.ts:158:7 › CP-6 B82-F — the act's walk: rights terms for their declarers, the owner's correction obligations, the impact heading, MET-010 v2 › §MT /graph/data/analytics?metric=MET-010: definition v2 · computation v2 t
+  4 passed (11.0s)
+
+════════ RUN 3 — EYE_B82F_CLOSE=1, after the walk (F-4 only; every other scene as RUN 2) ════════
+F-4 CORRECTION CLOSURE FOR THE AFFECTED PRODUCT'S OWNER (§CC) — one small SYNTHETIC case: a booking uploaded, C. Brenner's briefing on it, its board publication drafted; the restatement applied and walked; graph.read unchanged (the chief of staff refused the case read); each owner reads THEIR obligations and acknowledges theirs; the case READY, closed after the walk
+  ✓ the closure contract in force: v2 ORDINARY (stale 3 d, human review 5 d, recompute 7 d) — the windows stay ordinary: nothing stalls or freezes in this scene
+  · the restatement case 01a1…c3da72 stands — an earlier run (applied, propagation complete); the upload 01a1…180b4e
+  · C. Brenner's briefing 01a1…114866 on the upload stands — an earlier run (2026-10-19T22:18:34Z)
+  · the chief of staff's draft "B82-F — the decision room's briefing for the supervisory board (SYNTHETIC)" 01a1…8b2862 stands — an earlier run (drafted)
+  ✓ THE AUTOMATIC WALK: attempt complete by the propagation agent 01a1…8bc8ad (walker 1.1.0), 1 root(s) walked (read 0 s after)
+  ✓ K. Müller (knowledge owner — graph.read) reads the case: closure OPEN (opened applied 2026-10-19T22:18:35Z, contract v2); 10 material consumer(s): BRF:01a1… stale (C. Brenner, acknowledged); PUB:01a1…@1 stale (the chief of staff, acknowledged); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (L. Brandt, delivered)
+  ✓ C. Brenner owns a material consumer of the case: BRF:01a1563e-bc74-7711-8d05-b92d48114866 (stale)
+  ✓ no product is frozen by this case (0 freeze(s) recorded) — the windows are ordinary; the 2026-09-10 supersession case is neither adopted nor touched
+  ✓ C. Brenner reads the case (graph.read — the policy is unchanged): ADMITTED by her strategy_owner binding (not by decision_owner) — the brief's premise that she lacks graph.read does not hold on the demonstration; said, not changed
+  ✓ the chief of staff (executive operator — the affected publication's owner, no graph.read role) reads the case REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ C. Brenner READ HER OBLIGATIONS (graph.closure.obligation.read — the acknowledge / except roles, audited; NOT graph.read): 1 obligation(s) — BRF:01a1… stale acknowledged (the accountable owner; acknowledge no — state: the consumer is already acknowledged, except no; due —; latest act acknowledged by you); ONLY what the act needs (exactly the act's fields: no path, notice, other consumer or evidence — true); the chief of staff's publication is not hers and not listed — "the correction obligations you answer for, as the acknowledge and except acts decide — never the case's graph, its other consumers or any evidence" — POL 01a15642-8207… · audit seq 684323
+  ✓ C. Brenner's obligations on ANOTHER case (the B50 restatement 01a1…235fbd, CLOSED): 0 — an empty list, no existence oracle
+  ✓ C. Brenner acknowledges on ANOTHER case (her DEC:01a0…@1 on the CLOSED B50 case 01a1…235fbd) REFUSED — 409 EYE-STA-002 — correction closure rejected (state): correction case 01a15307-da43-7fef-a63d-afa50b235fbd is closed
+  · C. Brenner's obligation stands acknowledged — an earlier run
+  ✓ N. Eriksen (forecast owner — in the read's roles, no consumer of this case) reads an EMPTY list: 0 obligation(s)
+  ✓ J. Satō (product analyst — outside the acknowledge / except roles) reads obligations REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · the subscription consumers close through their own delivery ledger: 8 — delivered 8 (0 s)
+  ✓ THE REMAINING CONSUMERS CLOSED: 0 by their own owner (each found it first in their OWN obligation read), 0 by K. Müller (no active human owner) — none left; 0 refused
+  ✓ THE READINESS: READY (projections reconciled)
+  ✓ M. Dvořák CLOSED the case: closure 16f5…ae4d3c — 10 consumer(s), 2 act(s), 0 freeze(s) lifted; audit digest f7b58ec31bd7… — POL 01a15642-826c… · audit seq 684330
+  ✓ THE CLOSURE RECORD (eye.correction-closure/1): closed 2026-10-19T22:22:41Z by M. Dvořák; 10 consumer(s); 2 acknowledgement(s) — C. Brenner, the chief of staff; projections reconciled
+  ✓ the closure contract still v2 ORDINARY — nothing re-declared
+
+ALL SCENES HELD · 0.9 min
+
+════════ RUN 4 — after the close (F-4 only) ════════
+F-4 CORRECTION CLOSURE FOR THE AFFECTED PRODUCT'S OWNER (§CC) — one small SYNTHETIC case: a booking uploaded, C. Brenner's briefing on it, its board publication drafted; the restatement applied and walked; graph.read unchanged (the chief of staff refused the case read); each owner reads THEIR obligations and acknowledges theirs; the case READY, closed after the walk
+  ✓ the closure contract in force: v2 ORDINARY (stale 3 d, human review 5 d, recompute 7 d) — the windows stay ordinary: nothing stalls or freezes in this scene
+  · the restatement case 01a1…c3da72 stands — an earlier run (applied, propagation complete); the upload 01a1…180b4e
+  · C. Brenner's briefing 01a1…114866 on the upload stands — an earlier run (2026-10-19T22:18:34Z)
+  · the chief of staff's draft "B82-F — the decision room's briefing for the supervisory board (SYNTHETIC)" 01a1…8b2862 stands — an earlier run (drafted)
+  ✓ THE AUTOMATIC WALK: attempt complete by the propagation agent 01a1…8bc8ad (walker 1.1.0), 1 root(s) walked (read 0 s after)
+  ✓ K. Müller (knowledge owner — graph.read) reads the case: closure CLOSED (opened applied 2026-10-19T22:18:35Z, contract v2); 10 material consumer(s): BRF:01a1… stale (C. Brenner, acknowledged); PUB:01a1…@1 stale (the chief of staff, acknowledged); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (L. Brandt, delivered)
+  ✓ no product is frozen by this case (0 freeze(s) recorded) — the windows are ordinary; the 2026-09-10 supersession case is neither adopted nor touched
+  ✓ C. Brenner reads the case (graph.read — the policy is unchanged): ADMITTED by her strategy_owner binding (not by decision_owner) — the brief's premise that she lacks graph.read does not hold on the demonstration; said, not changed
+  ✓ the chief of staff (executive operator — the affected publication's owner, no graph.read role) reads the case REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ C. Brenner READ HER OBLIGATIONS (graph.closure.obligation.read — the acknowledge / except roles, audited; NOT graph.read): 0 obligation(s) — the case is CLOSED (an earlier run): nothing is left for her — none; ONLY what the act needs (exactly the act's fields: no path, notice, other consumer or evidence — true); the chief of staff's publication is not hers and not listed — "the correction obligations you answer for, as the acknowledge and except acts decide — never the case's graph, its other consumers or any evidence" — POL 01a15643-70ba… · audit seq 684369
+  ✓ C. Brenner's obligations on ANOTHER case (the B50 restatement 01a1…235fbd, CLOSED): 0 — an empty list, no existence oracle
+  ✓ C. Brenner acknowledges on ANOTHER case (her DEC:01a0…@1 on the CLOSED B50 case 01a1…235fbd) REFUSED — 409 EYE-STA-002 — correction closure rejected (state): correction case 01a15307-da43-7fef-a63d-afa50b235fbd is closed
+  ✓ C. Brenner's own act on the case stands — an earlier run: acknowledged at 2026-10-19T22:18:37Z
+  ✓ N. Eriksen (forecast owner — in the read's roles, no consumer of this case) reads an EMPTY list: 0 obligation(s)
+  ✓ J. Satō (product analyst — outside the acknowledge / except roles) reads obligations REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ THE CLOSURE RECORD (eye.correction-closure/1): closed 2026-10-19T22:22:41Z by M. Dvořák; 10 consumer(s); 2 acknowledgement(s) — C. Brenner, the chief of staff; projections reconciled
+  ✓ the closure contract still v2 ORDINARY — nothing re-declared
+
+ALL SCENES HELD · 0.9 min
+
+════════ THE B82 REGRESSIONS on eye_demo_b82f ════════
+scripts/phase6/act-b82.mjs: ALL SCENES HELD · 2.0 min (46 ✓, 0 ✗)
+e2e/phase6-b82-viz.demo.spec.ts + e2e/phase6-b82.demo.spec.ts (combined run):
+  ✓   1 e2e/phase6-b82-viz.demo.spec.ts:74:7 › CP-6 B82 — the visualization walk: the corridor map, the band, the fan, and every kind in the catalogue › B82-3 THE CORRIDOR MAP (/graph/geo): the declared references on a gra
+  ✓   2 e2e/phase6-b82-viz.demo.spec.ts:113:7 › CP-6 B82 — the visualization walk: the corridor map, the band, the fan, and every kind in the catalogue › B82-3 THE PROBABILITY BAND: the transit forecast's band with its val
+  ✓   3 e2e/phase6-b82-viz.demo.spec.ts:132:7 › CP-6 B82 — the visualization walk: the corridor map, the band, the fan, and every kind in the catalogue › B82-3 THE SCENARIO FAN: the every-kind branches with their spread, n
+  ✓   4 e2e/phase6-b82-viz.demo.spec.ts:147:7 › CP-6 B82 — the visualization walk: the corridor map, the band, the fan, and every kind in the catalogue › B82-6 THE CATALOGUE: every visual kind in a ChartFrame with its decl
+  ✓   5 e2e/phase6-b82-viz.demo.spec.ts:170:7 › CP-6 B82 — the visualization walk: the corridor map, the band, the fan, and every kind in the catalogue › THE VIEWPORT MATRIX: 390 / 800 / 1024 / 1440 / 1920 / 2560 px — no
+  ✓   6 e2e/phase6-b82-viz.demo.spec.ts:193:7 › CP-6 B82 — the visualization walk: the corridor map, the band, the fan, and every kind in the catalogue › 200 % ZOOM AND FORCED COLOURS: the declarations wrap, series stay to
+  ✓   7 e2e/phase6-b82.demo.spec.ts:58:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-0 THE CAST AND THE STATE: the B31 package, its versions and citations; no
+  ✓   8 e2e/phase6-b82.demo.spec.ts:74:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-1 THE DRILL (L. Brandt): the recommendation RECOMMENDED and advisory → 
+  ✘   9 e2e/phase6-b82.demo.spec.ts:119:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-1 THE EVIDENCE HOP UNDER D9: no new permission — L. Brandt sees the se
+  ✓  10 e2e/phase6-b82.demo.spec.ts:147:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-2 CORRECTED AND THE NOTICE: the correction linked to its preserved origi
+  ✓  11 e2e/phase6-b82.demo.spec.ts:175:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-4 TRUST (E. Lindqvist): /graph/trust — the overview, facets never a sc
+  ✘  12 e2e/phase6-b82.demo.spec.ts:193:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-4 RIGHTS (declared by F. Aydın; read by A. Hoffmann — a data steward 
+  ✓  13 e2e/phase6-b82.demo.spec.ts:205:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-5 AI NON-AUTHORITY AND THE LAYERS: the agent-authored recommendation car
+  2 failed
+  11 passed (6.1m)
+e2e/phase6-b82.demo.spec.ts (second combined run):
+  ✓  1 e2e/phase6-b82.demo.spec.ts:58:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-0 THE CAST AND THE STATE: the B31 package, its versions and citations; no 
+  ✓  2 e2e/phase6-b82.demo.spec.ts:74:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-1 THE DRILL (L. Brandt): the recommendation RECOMMENDED and advisory → t
+  ✘  3 e2e/phase6-b82.demo.spec.ts:119:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-1 THE EVIDENCE HOP UNDER D9: no new permission — L. Brandt sees the ser
+  ✓  4 e2e/phase6-b82.demo.spec.ts:147:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-2 CORRECTED AND THE NOTICE: the correction linked to its preserved origin
+  ✘  5 e2e/phase6-b82.demo.spec.ts:175:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-4 TRUST (E. Lindqvist): /graph/trust — the overview, facets never a sco
+  ✓  6 e2e/phase6-b82.demo.spec.ts:193:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-4 RIGHTS (declared by F. Aydın; read by A. Hoffmann — a data steward h
+  ✓  7 e2e/phase6-b82.demo.spec.ts:205:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-5 AI NON-AUTHORITY AND THE LAYERS: the agent-authored recommendation carr
+  2 failed
+  5 passed (5.0m)
+each failed test alone (an idle API):
+  ✓  1 e2e/phase6-b82.demo.spec.ts:119:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-1 THE EVIDENCE HOP UNDER D9: no new permiss
+  1 passed (3.4s)
+  ✓  1 e2e/phase6-b82.demo.spec.ts:175:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-4 TRUST (E. Lindqvist): /graph/trust — th
+  1 passed (1.8m)
+  ✓  1 e2e/phase6-b82.demo.spec.ts:193:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-4 RIGHTS (declared by F. Aydın; read by A.
+  1 passed (7.1s)
+
+
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+# SECOND REHEARSAL — the act corrected after the FIRST LIVE RUN (2026-10-19 ~22:50Z, eye_demo through 0122, API 8cade589, the act at 266cef81: 53 ✓, 5 ✗, all in F-4)
+# THE LIVE FAILURE: C. Brenner's decision room's last edition before the upload was the agent's of 2026-10-07T10:59Z; the briefing compose port lists the evidence/claim versions of its interval OLDEST FIRST, LIMIT 500 (executive/briefings/briefing.service.ts "what changed"), and only listed sources become dependencies (0065 executive.briefing_dependencies) — the upload was version ~#1131 of that interval, so her briefing did not rest on it; the case (SYN-BKG-7212) was nevertheless received, applied and walked and reached only subscription deliveries. My first rehearsal did not show it: on a copy whose rehearsal Redis :6392 had been FLUSHED, the room-briefing job scheduler (BullMQ, every 7 days) was created afresh at API start and fired at once (~73 s), so the agent composed in the room and made the prior fresh; on live, Redis keeps the scheduler and no briefing ran (the live briefing agent's last run 2026-10-15).
+# THE CORRECTION (act-b82f.mjs F-4): (1) ATTEMPT 1 is recognised as history — the act states its upload, its case, the briefing that did NOT rest on it and why (its position in the interval against the cap) — and M. Dvořák CLOSES it when READY with a statement (my call: every consumer it reached closed through its own delivery ledger; open, it serves no owner and stays censored in MET-010). (2) THE OWNER FLOW is a second small case (SYN-BKG-7213, a new upload name): if the room's last edition is ≥ 480 evidence/claim versions back, C. Brenner first composes a governed CATCH-UP edition (stated as such); then the upload; then her edition on the prior before the upload, with the upload's position in the interval CHECKED (< 500) before composing; the dependency (graph.dependencies) and the read-only preview (her briefing reached) are CHECKED before anything is received or applied — a case that would reach nothing of hers is never applied. The walk finds the operator's obligation by its consumer reference (the publication's title is new).
+# THE COPY: .eye-local/backups/eye_demo-pre-0122-20261019T224914Z.dump (323408765 bytes — taken minutes before the live run; the room's last edition 2026-10-07T10:59Z), restored into eye_demo_b82f and migrated through 0122 from b82f-act (restore.sh under heavy-slot.sh). The rehearsal Redis :6392 was NOT flushed this time (it holds the room-briefing schedulers, as the live Redis does): no briefing agent run happened before the old act (checked: none in the first 2 min; the old act started after).
+# ORDER: a first attempt to reproduce, on a copy whose rehearsal Redis was flushed before the API started, lost the race to the agent's briefing (it composed in the room at +73 s) (the old act HELD there — kept in the rig as r2-old-act-raced.txt, not below); the copy was restored again and: the OLD act (266cef81's act-b82f.mjs, run from a temporary copy beside it, then removed) REPRODUCED THE LIVE STATE (53 ✓, 5 ✗ — the same five as live); the corrected act RUN 1 (ALL SCENES HELD), RUN 2 (stands; it was run once more after a wording fix in the attempt-1 note — the first run 2 said "RESTS on it" of a later briefing; both held), the walk (4/4, case OPEN), RUN 3 with EYE_B82F_CLOSE=1 (closed), RUN 4 (stands after the close). THEN A VARIANT for the catch-up branch: the copy restored once more and the corrected act run directly (no attempt 1): the room 1130 versions back → the catch-up edition, the upload #1 of the new interval, her briefing resting on it, the case applied — ALL SCENES HELD; eye_demo_b82f is left in that variant state (its case OPEN).
+
+════════ THE OLD ACT (266cef81) — reproduces the live state ════════
+THE B82-F ACT (the B80–B82 integration pass) on eye_demo_b82f (REHEARSAL) — 2026-10-19T23:02:54.795Z — API http://localhost:3411 — target declared rehearsal
+
+F-1 THE ACT TARGET ON THE DEPLOYMENT ITSELF — this act spawned (a) with no EYE_ACT_TARGET and (b) as a rehearsal naming the LIVE API: each REFUSED (exit 2) before anything is contacted; the sessions and login audit rows of this database and of the live eye_demo unchanged
+  ✓ (a) the act spawned with NO EYE_ACT_TARGET: exit 2 — "REFUSED (act target): EYE_ACT_TARGET is not set — declare the environment: EYE_ACT_TARGET=rehearsal for a restored copy, EYE_ACT_TARGET=live for the demonstration. Nothing was contacted."
+  ✓ (b) the act spawned as a REHEARSAL naming the LIVE API http://localhost:3401 (EYE_LIVE_API left default): exit 2 — "REFUSED (act target): EYE_API http://localhost:3401 is the LIVE demonstration's API (http://localhost:3401); a rehearsal talks to its own rig. Nothing was contacted."
+  ✓ NOTHING WAS CONTACTED: eye_demo_b82f — human sessions 4923 → 4923, login audit rows 4924 → 4924; the LIVE eye_demo (read-only SELECT) — sessions 4979 → 4979, login audit rows 4980 → 4980
+  · the check is scripts/act-target.mjs (B80 integration pass): governed.mjs has no default API any more, and every act, candidate and walk resolves its target before it reads the local env or logs in (harness: apps/api/test/unit/act-target-b80.test.ts)
+
+F-0 THE CAST AND THE STATE — 0122, the build, the personas and their bindings
+  ✓ migration applied: 0122_b80_b82_integration_corrections.sql (§RT observation.rights_terms_register · §CC graph._cl_closer_basis + graph.correction_obligations)
+  ✓ j.sato holds product_analyst at the DOMAIN
+  ✓ m.okonkwo holds product_analytics_owner at the DOMAIN
+  ✓ f.aydin holds data_steward at the DOMAIN
+  ✓ a.hoffmann holds domain_analyst at the DOMAIN
+  ✓ c.brenner holds decision_owner at the DOMAIN
+  ✓ chief.of.staff holds executive_operator at the DOMAIN
+  ✓ m.dvorak holds collection_manager at the DOMAIN
+  ✓ k.mueller holds knowledge_owner at the DOMAIN
+  ✓ n.eriksen holds forecast_owner at the DOMAIN
+  ✓ l.brandt holds decision_owner at the DOMAIN
+  ✓ e.lindqvist holds auditor at the TENANT
+  ✓ t.richter holds domain_admin at the DOMAIN
+  ✓ the chief of staff (executive operator) holds no graph.read role (none); C. Brenner holds strategy_owner — a graph.read role beside decision_owner — the act grants nothing
+  · the API declares its build: head 266cef818829… (from env), migration head —, policy bundle bundle-v1 d2ae37a2c533…
+
+F-2 MET-010 DEFINITION v2 THROUGH THE GOVERNED PATH (§MT) — J. Satō proposes, her own decision refused, M. Okonkwo approves at the digest; definition v2 · computation v2 (0120 §CL), v1 superseded; NOT recomputed
+  · the state before: MET-010 v1 APPROVED (digest d4c75b657f92…); owner M. Okonkwo; the result 01a1…e7a374 2026-Q4: definition v1 · computation v2, INDETERMINATE
+  ✓ J. Satō (product analyst — a named human; she proposed v1 too) PROPOSED MET-010 v2: PROPOSED, k 5, floor 3, computed by met010_correction_propagation, digest d36517c79c41…; the owner stays M. Okonkwo — routed to her for approval — POL 01a15667-6055… · audit seq 684877
+  ✓ J. Satō (the proposer) decides her own proposal REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ M. Okonkwo (product analytics owner — not the proposer) APPROVED MET-010 v2 at the digest she read (d36517c79c41…): APPROVED, effective 2026-10-19T23:02:57Z; v1 01a1…ba8c0f superseded — POL 01a15667-608e… · audit seq 684879
+  ✓ MET-010 READ: definition v2 APPROVED · computation met010_correction_propagation v2 (registered in 0120 §CL, body digest be69c305fa01…) TOGETHER; v1 SUPERSEDED
+  ✓ the diff v1 → v2 names exactly exclusions, meaning, population (the end instant: population.closure_instant; thresholds, k, floor, dimensions and the computation key unchanged)
+  ✓ the result 01a1…e7a374 (2026-Q4) is still listed as definition v1 · computation v2 — INDETERMINATE
+  ✓ the diff read (definitions/diff v1 → v2): exclusions, meaning, population
+  ✓ the result 01a1…e7a374 READ: definition v1 (now SUPERSEDED) · computation v2 (the digest it recorded be69c305fa01…); the registry holds met010_correction_propagation v2 now (0120 §CL) — INDETERMINATE (n 1): the period 2026-Q4 is open until 2027-01-01 00:00:00+00 (as of 2026-10-19 07:22:54.057867+00): a partial period is not presented as the period, n = 1 is below the floor 3 the definition declares: the sample cannot carry a determinate value
+  · NOT RECOMPUTED here: the 2026-Q4 result stays INDETERMINATE (the period is open and n is below the floor 3); no threshold is lowered, no result forced — a new computation would name definition v2 · computation v2 and is the owner's choice
+
+F-3 RIGHTS TERMS FOR THEIR DECLARERS (§RT) — F. Aydın reads the domain's register (metadata only); evidence bytes and detail still refused to her; the other domain's register refused; A. Hoffmann (outside the declare rule) refused the new read, keeps the per-source read
+  ✓ F. Aydın (data steward — she DECLARES rights terms) READ the domain's rights-terms register (observation.rights.terms.read): 25 source contract version(s), 1 with terms declared; RIGHTS METADATA ONLY — each entry exactly source, contract, the contract's rights statement, the current terms, history and ledger; no evidence id, digest, locator, manifest, payload or bytes in the answer (none found) — POL 01a15667-629e… · audit seq 684883
+  ✓ the carrier advisories (contract v1) — the terms B82 declared: "in_force · expires at 2027-10-19T12:48:03.929000Z"; history v1 expired → v2 in_force; ledger rights.declared, rights.revised
+  · a source with no terms says so: Antriebstechnik trade press reports (SYNTHETIC) v1 — "no rights terms declared for this contract version — no expiry declared" (the contract's own rights state confirmed)
+  · F. Aydın declares nothing here: the carrier advisories' terms B82 declared stand (in force); a declaration would change a decision-active state another act reads
+  ✓ F. Aydın asks for evidence BYTES — the cited span of 01a0…6f55e0@2 (the B82 segment route) REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın downloads 01a0…6f55e0 (the evidence download) REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın reads the evidence detail of 01a0…6f55e0 REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın reads the OTHER domain's register ("NORDWERK Exchange Mirror (SYNTHETIC)", the B16 mirror) REFUSED — 403 EYE-TEN-001 — principal has no binding for this domain
+  ✓ A. Hoffmann (domain analyst — outside the declare rule) reads the rights-terms register REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ A. Hoffmann KEEPS the per-source read (observation.read.rights): the carrier advisories' terms — 1 version(s) — POL 01a15667-62d3… · audit seq 684888
+
+F-4 CORRECTION CLOSURE FOR THE AFFECTED PRODUCT'S OWNER (§CC) — one small SYNTHETIC case: a booking uploaded, C. Brenner's briefing on it, its board publication drafted; the restatement applied and walked; graph.read unchanged (the chief of staff refused the case read); each owner reads THEIR obligations and acknowledges theirs; the case READY, closed after the walk
+  ✓ the closure contract in force: v2 ORDINARY (stale 3 d, human review 5 d, recompute 7 d) — the windows stay ordinary: nothing stalls or freezes in this scene
+  ✓ A. Hoffmann (domain analyst) UPLOADED "inbound-records-nordbearing-eta-b82f-2026-11.csv" (SYNTHETIC, 284 bytes) to nordwerk-inbound-records, its document time "mid November 2026" stated: run finished, 1 admitted → evidence 01a1…9873ee@1
+  ✗ C. Brenner (decision owner, the room's owner) COMPOSED the next briefing in "Mitigate the corridor closure — the decision room (SYNTHETIC)" — since 01a1…8904fa (2026-10-07T10:59:04Z): the upload is an item of "what changed" and the briefing RESTS ON it (graph.dependencies) — SHE owns this product — POL 01a15667-694a… · audit seq 684903
+  ✗ THE READ-ONLY PREVIEW (nothing written): a restatement of the upload would reach nothing — C. Brenner's briefing NOT among them, the board publication not among them: a SMALL case
+  ✓ A. Hoffmann (domain analyst) RECEIVED the shipper's restatement of SYN-BKG-7212: case 01a1…78c5ff received — POL 01a15667-6e7f… · audit seq 684905
+  ✓ M. Dvořák (collection manager — the correction authority) APPLIED it: 01a1…9873ee v1 → v2 — nobody calls /impact/propagate — POL 01a15667-6e96… · audit seq 684908
+  ✓ THE AUTOMATIC WALK: attempt complete by the propagation agent 01a1…8bc8ad (walker 1.1.0), 1 root(s) walked (read 2 s after)
+  ✓ K. Müller (knowledge owner — graph.read) reads the case: closure OPEN (opened applied 2026-10-19T23:03:01Z, contract v2); 8 material consumer(s): SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (L. Brandt, delivered)
+  ✗ C. Brenner owns a material consumer of the case: NONE (—)
+  ✓ no product is frozen by this case (0 freeze(s) recorded) — the windows are ordinary; the 2026-09-10 supersession case is neither adopted nor touched
+  ✓ C. Brenner reads the case (graph.read — the policy is unchanged): ADMITTED by her strategy_owner binding (not by decision_owner) — the brief's premise that she lacks graph.read does not hold on the demonstration; said, not changed
+  ✓ the chief of staff (executive operator — the affected publication's owner, no graph.read role) reads the case REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✗ C. Brenner READ HER OBLIGATIONS (graph.closure.obligation.read — the acknowledge / except roles, audited; NOT graph.read): 0 obligation(s) — none; ONLY what the act needs (exactly the act's fields: no path, notice, other consumer or evidence — true); the chief of staff's publication is not hers and not listed — "the correction obligations you answer for, as the acknowledge and except acts decide — never the case's graph, its other consumers or any evidence" — POL 01a15667-76d7… · audit seq 684929
+  ✓ C. Brenner's obligations on ANOTHER case (the B50 restatement 01a1…235fbd, CLOSED): 0 — an empty list, no existence oracle
+  ✓ C. Brenner acknowledges on ANOTHER case (her DEC:01a0…@1 on the CLOSED B50 case 01a1…235fbd) REFUSED — 409 EYE-STA-002 — correction closure rejected (state): correction case 01a15307-da43-7fef-a63d-afa50b235fbd is closed
+  ✗ C. Brenner's own act on the case stands — an earlier run: NONE recorded
+  ✓ N. Eriksen (forecast owner — in the read's roles, no consumer of this case) reads an EMPTY list: 0 obligation(s)
+  ✓ J. Satō (product analyst — outside the acknowledge / except roles) reads obligations REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · the subscription consumers close through their own delivery ledger: 8 — delivered 8 (0 s)
+  ✓ THE REMAINING CONSUMERS CLOSED: 0 by their own owner (each found it first in their OWN obligation read), 0 by K. Müller (no active human owner) — none left; 0 refused
+  ✓ THE READINESS: READY (projections reconciled)
+  · LEFT OPEN, said plainly: every material consumer is acknowledged by its owner and the case is READY, but it is NOT closed in this run — the obligation read answers OPEN cases only, so the walk shows the owners their acknowledged obligations while it is open; M. Dvořák closes it after the walk (this act with EYE_B82F_CLOSE=1)
+  ✓ THE CASE OPEN: 0 material consumer(s) left to act on — every owner acknowledged theirs; the close is M. Dvořák's after the walk (EYE_B82F_CLOSE=1)
+  ✓ the closure contract still v2 ORDINARY — nothing re-declared
+
+F-5 THE TRUST OVERVIEW AND EVIDENCE ACCESS (D9) — the overview for the auditor; the expired read harness-proven; L. Brandt refused the cited bytes, A. Hoffmann opens the span with the digest re-verified
+  ✓ E. Lindqvist (auditor, TENANT) read /graph/trust's OVERVIEW (20.3 s): types 5, agents 8, models 1, products 5, exceptions 0, attestations 1, verifications 3, investigations 1, policy_denials 25 — "Facets and records, never a trust score: each product's provenance strength with its reasons, and the models, agents, ri" — no score anywhere — POL 01a15667-78b1… · audit seq 684937
+  · THE EXPIRED READ (§TR): a consequential read whose handler THROWS after its authorization context expired answers the existing 503 EYE-DEP-001 (the result discarded, "retry"), never a 500 — HARNESS-PROVEN (phase6-b82f-tr TR1/TR2), NOT staged here: it needs a read held past the 62 s context
+  ✓ L. Brandt (decision owner) asks for the cited bytes 0–383 of 01a0…6f55e0@2 REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ A. Hoffmann (domain analyst — she reads evidence today) OPENED THE CITED SPAN of 01a0…6f55e0@2: the FULL digest re-verified on this read (verified, a71925122a71…, 383 bytes, tier hot); served 0–383, cited 0–383; custody written — POL 01a15667-c83b… · audit seq 684942
+  · D9 STAYS: no new evidence permission — the decision roles keep the citation's resolution short of the bytes (B82); the declarers read rights METADATA only (F-3)
+
+F-6 THE STATE, the env lines for the walk, THE LIMITS
+  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B82F_MET010_V1=01a12df1-0349-7d27-a515-36ca2bba8c0f
+  EYE_B82F_MET010_V2=01a15667-6043-776a-a41b-a76d2e64272e
+  EYE_B82F_MET010_RESULT=01a1530a-b8e5-70e3-945e-78f2f6e7a374
+  EYE_B82F_RIGHTS_SOURCE=01a084f5-76af-711e-a291-bc110b79f394
+  EYE_B82F_RIGHTS_SOURCE_NAME=Carrier & port advisories
+  EYE_B82F_MIRROR_DOMAIN=01a0aa27-e4d3-75d0-9802-9f0f19824587
+  EYE_B82F_UPLOAD_EVD=01a15667-64c8-704c-92a3-a6fb089873ee
+  EYE_B82F_ROOM=01a0f00b-865a-7588-98dd-40233be92061
+  EYE_B82F_CASE=01a15667-6e82-7eb3-a869-de6dff78c5ff
+  EYE_B82F_OTHER_CASE=01a15307-da43-7fef-a63d-afa50b235fbd
+  EYE_B82F_CASE_STATE=open
+  EYE_B82F_SPAN_EVD=01a084f5-7979-76cf-8e3b-a7b0e96f55e0
+  EYE_B82F_SPAN_VERSION=2
+  EYE_B82F_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B82F_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B82F_STEWARD=f.aydin
+  EYE_B82F_OWNER=c.brenner
+  EYE_B82F_OPERATOR=chief.of.staff
+  EYE_B82F_ANALYST=a.hoffmann
+  EYE_B82F_REFUSED_OWNER=chief.of.staff
+  EYE_B82F_PRODUCT_OWNER=m.okonkwo
+  EYE_B82F_KNOWLEDGE_OWNER=k.mueller
+  EYE_B82F_PRODUCT_ANALYST=j.sato
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — 0122 (§RT, §CC) and the TypeScript corrections (§TR, §MT) with their harnesses phase6-b82f-{rt,cc,tr,mt}, the web unit models, the walk. (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: the act target refusing two children before any contact; MET-010 definition v2 proposed by J. Satō, her own decision refused, approved by M. Okonkwo at the digest — definition v2 · computation v2 shown together, v1 superseded, the old result definition v1 · computation v2, NOT recomputed; F. Aydın reading the rights-terms register (metadata only) and refused evidence bytes, detail and the other domain's register, A. Hoffmann refused the new read and keeping hers; ONE small SYNTHETIC correction case (a booking uploaded, C. Brenner's briefing on it, its board publication drafted, the restatement applied and walked) in which the chief of staff (no graph.read role) was refused the case read and C. Brenner was ADMITTED to it by her strategy_owner binding (graph.read unchanged — said), C. Brenner read and acknowledged HER obligation and was refused another owner's consumer and another case, N. Eriksen read an empty list, J. Satō was refused the read, the chief of staff found and acknowledged his own through his obligation read, the case READY under the ORDINARY contract and closed by M. Dvořák only in the run with EYE_B82F_CLOSE=1 (after the walk); the trust overview read; L. Brandt refused the cited bytes and A. Hoffmann opening them. (3) REAL ACCEPTANCE — never claimed. NOT STAGED (harness-proven): the expired-read 503 (phase6-b82f-tr), an obligation's escalation instants after a stall (phase6-b82f-cc c), a bounded exception by an owner on the obligation page (the walk shows the form; the act acknowledges).
+
+5 FAILURE(S) · 0.5 min
+
+════════ CORRECTED — RUN 1 ════════
+THE B82-F ACT (the B80–B82 integration pass) on eye_demo_b82f (REHEARSAL) — 2026-10-19T23:03:29.791Z — API http://localhost:3411 — target declared rehearsal
+
+F-1 THE ACT TARGET ON THE DEPLOYMENT ITSELF — this act spawned (a) with no EYE_ACT_TARGET and (b) as a rehearsal naming the LIVE API: each REFUSED (exit 2) before anything is contacted; the sessions and login audit rows of this database and of the live eye_demo unchanged
+  ✓ (a) the act spawned with NO EYE_ACT_TARGET: exit 2 — "REFUSED (act target): EYE_ACT_TARGET is not set — declare the environment: EYE_ACT_TARGET=rehearsal for a restored copy, EYE_ACT_TARGET=live for the demonstration. Nothing was contacted."
+  ✓ (b) the act spawned as a REHEARSAL naming the LIVE API http://localhost:3401 (EYE_LIVE_API left default): exit 2 — "REFUSED (act target): EYE_API http://localhost:3401 is the LIVE demonstration's API (http://localhost:3401); a rehearsal talks to its own rig. Nothing was contacted."
+  ✓ NOTHING WAS CONTACTED: eye_demo_b82f — human sessions 4979 → 4979, login audit rows 4980 → 4980; the LIVE eye_demo (read-only SELECT) — sessions 4979 → 4979, login audit rows 4980 → 4980
+  · the check is scripts/act-target.mjs (B80 integration pass): governed.mjs has no default API any more, and every act, candidate and walk resolves its target before it reads the local env or logs in (harness: apps/api/test/unit/act-target-b80.test.ts)
+
+F-0 THE CAST AND THE STATE — 0122, the build, the personas and their bindings
+  ✓ migration applied: 0122_b80_b82_integration_corrections.sql (§RT observation.rights_terms_register · §CC graph._cl_closer_basis + graph.correction_obligations)
+  ✓ j.sato holds product_analyst at the DOMAIN
+  ✓ m.okonkwo holds product_analytics_owner at the DOMAIN
+  ✓ f.aydin holds data_steward at the DOMAIN
+  ✓ a.hoffmann holds domain_analyst at the DOMAIN
+  ✓ c.brenner holds decision_owner at the DOMAIN
+  ✓ chief.of.staff holds executive_operator at the DOMAIN
+  ✓ m.dvorak holds collection_manager at the DOMAIN
+  ✓ k.mueller holds knowledge_owner at the DOMAIN
+  ✓ n.eriksen holds forecast_owner at the DOMAIN
+  ✓ l.brandt holds decision_owner at the DOMAIN
+  ✓ e.lindqvist holds auditor at the TENANT
+  ✓ t.richter holds domain_admin at the DOMAIN
+  ✓ the chief of staff (executive operator) holds no graph.read role (none); C. Brenner holds strategy_owner — a graph.read role beside decision_owner — the act grants nothing
+  · the API declares its build: head 266cef818829… (from env), migration head —, policy bundle bundle-v1 d2ae37a2c533…
+
+F-2 MET-010 DEFINITION v2 THROUGH THE GOVERNED PATH (§MT) — J. Satō proposes, her own decision refused, M. Okonkwo approves at the digest; definition v2 · computation v2 (0120 §CL), v1 superseded; NOT recomputed
+  · the state before: MET-010 v1 SUPERSEDED (digest d4c75b657f92…), v2 APPROVED (digest d36517c79c41…); owner M. Okonkwo; the result 01a1…e7a374 2026-Q4: definition v1 · computation v2, INDETERMINATE
+  · MET-010 v2 stands APPROVED (decided by M. Okonkwo) — an earlier run; read and stated below
+  ✓ MET-010 READ: definition v2 APPROVED · computation met010_correction_propagation v2 (registered in 0120 §CL, body digest be69c305fa01…) TOGETHER; v1 SUPERSEDED
+  ✓ the diff v1 → v2 names exactly exclusions, meaning, population (the end instant: population.closure_instant; thresholds, k, floor, dimensions and the computation key unchanged)
+  ✓ the result 01a1…e7a374 (2026-Q4) is still listed as definition v1 · computation v2 — INDETERMINATE
+  ✓ the diff read (definitions/diff v1 → v2): exclusions, meaning, population
+  ✓ the result 01a1…e7a374 READ: definition v1 (now SUPERSEDED) · computation v2 (the digest it recorded be69c305fa01…); the registry holds met010_correction_propagation v2 now (0120 §CL) — INDETERMINATE (n 1): the period 2026-Q4 is open until 2027-01-01 00:00:00+00 (as of 2026-10-19 07:22:54.057867+00): a partial period is not presented as the period, n = 1 is below the floor 3 the definition declares: the sample cannot carry a determinate value
+  · NOT RECOMPUTED here: the 2026-Q4 result stays INDETERMINATE (the period is open and n is below the floor 3); no threshold is lowered, no result forced — a new computation would name definition v2 · computation v2 and is the owner's choice
+
+F-3 RIGHTS TERMS FOR THEIR DECLARERS (§RT) — F. Aydın reads the domain's register (metadata only); evidence bytes and detail still refused to her; the other domain's register refused; A. Hoffmann (outside the declare rule) refused the new read, keeps the per-source read
+  ✓ F. Aydın (data steward — she DECLARES rights terms) READ the domain's rights-terms register (observation.rights.terms.read): 25 source contract version(s), 1 with terms declared; RIGHTS METADATA ONLY — each entry exactly source, contract, the contract's rights statement, the current terms, history and ledger; no evidence id, digest, locator, manifest, payload or bytes in the answer (none found) — POL 01a15667-f961… · audit seq 684966
+  ✓ the carrier advisories (contract v1) — the terms B82 declared: "in_force · expires at 2027-10-19T12:48:03.929000Z"; history v1 expired → v2 in_force; ledger rights.declared, rights.revised
+  · a source with no terms says so: Antriebstechnik trade press reports (SYNTHETIC) v1 — "no rights terms declared for this contract version — no expiry declared" (the contract's own rights state confirmed)
+  · F. Aydın declares nothing here: the carrier advisories' terms B82 declared stand (in force); a declaration would change a decision-active state another act reads
+  ✓ F. Aydın asks for evidence BYTES — the cited span of 01a0…6f55e0@2 (the B82 segment route) REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın downloads 01a0…6f55e0 (the evidence download) REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın reads the evidence detail of 01a0…6f55e0 REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın reads the OTHER domain's register ("NORDWERK Exchange Mirror (SYNTHETIC)", the B16 mirror) REFUSED — 403 EYE-TEN-001 — principal has no binding for this domain
+  ✓ A. Hoffmann (domain analyst — outside the declare rule) reads the rights-terms register REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ A. Hoffmann KEEPS the per-source read (observation.read.rights): the carrier advisories' terms — 1 version(s) — POL 01a15668-0324… · audit seq 684974
+
+F-4 CORRECTION CLOSURE FOR THE AFFECTED PRODUCT'S OWNER (§CC) — attempt 1 recognised and closed; the owner flow on a second small SYNTHETIC case: a catch-up edition if the room's last is too far back, a booking uploaded, C. Brenner's briefing on it (checked), its board publication drafted; the restatement applied and walked; graph.read unchanged (the chief of staff refused the case read); each owner reads THEIR obligations and acknowledges theirs; the case READY, closed after the walk
+  ✓ the closure contract in force: v2 ORDINARY (stale 3 d, human review 5 d, recompute 7 d) — the windows stay ordinary: nothing stalls or freezes in this scene
+  · ATTEMPT 1 — an earlier run, kept as history: "inbound-records-nordbearing-eta-b82f-2026-11.csv" 01a1…9873ee uploaded 2026-10-19T23:02:59Z, the case 01a1…78c5ff applied (closure OPEN). C. Brenner's briefing 01a1…1136e4 composed after it does NOT rest on it: the room's last edition before the upload was 01a1…8904fa (2026-10-07T10:59:04Z), and the upload was evidence/claim version #1131 of that interval — the compose port lists only the first 500, oldest first, so it fell outside; the walk reached 8 material consumer(s), 8 of them subscription deliveries (delivered) and NOTHING of hers. The owner flow is staged on a second case below.
+  ✓ M. Dvořák CLOSED the attempt-1 case 01a1…78c5ff — READY, 8 consumer(s) (subscription deliveries, delivered), with his statement: nothing of an owner's rested on it; leaving it open would serve no one and keep it censored in MET-010 — POL 01a15668-04e4… · audit seq 684983
+  · no catch-up needed: the room's last edition 01a1…1136e4 (human, 2026-10-19T23:03:00Z) is 1 evidence/claim version(s) back — within the compose port's first 500
+  ✓ A. Hoffmann (domain analyst) UPLOADED "inbound-records-nordbearing-eta-b82f-2026-11-r2.csv" (SYNTHETIC, 283 bytes) to nordwerk-inbound-records, its document time "mid November 2026" stated: run finished, 1 admitted → evidence 01a1…ec0033@1
+  ✓ C. Brenner (decision owner, the room's owner) COMPOSED the next edition of "Mitigate the corridor closure — the decision room (SYNTHETIC)" 01a1…82490b since 01a1…1136e4 (2026-10-19T23:03:00Z): the upload is version #2 of its interval (within the first 500) — an item of "what changed", and the briefing RESTS ON it (graph.dependencies, checked) — SHE owns this product — POL 01a15668-09c4… · audit seq 684998
+  ✓ the chief of staff (executive operator) DRAFTED "B82-F — the decision room's briefing on SYN-BKG-7213 for the supervisory board (SYNTHETIC)" 01a1…0c4dd5 from C. Brenner's briefing 01a1…82490b (classified internal) — HE owns this product; a draft, never delivered here — POL 01a15668-0b2e… · audit seq 684999
+  ✓ THE READ-ONLY PREVIEW, checked BEFORE the apply (nothing written): a restatement of the upload would reach briefings 1, publications 1 — C. Brenner's briefing among them, the board publication among them: a SMALL case
+  ✓ A. Hoffmann (domain analyst) RECEIVED the shipper's restatement of SYN-BKG-7213: case 01a1…83fd4e received — POL 01a15668-0e41… · audit seq 685001
+  ✓ M. Dvořák (collection manager — the correction authority) APPLIED it: 01a1…ec0033 v1 → v2 — nobody calls /impact/propagate — POL 01a15668-0e5a… · audit seq 685004
+  ✓ THE AUTOMATIC WALK: attempt complete by the propagation agent 01a1…8bc8ad (walker 1.1.0), 1 root(s) walked (read 2 s after)
+  ✓ K. Müller (knowledge owner — graph.read) reads the case: closure OPEN (opened applied 2026-10-19T23:03:42Z, contract v2); 10 material consumer(s): BRF:01a1… stale (C. Brenner, pending); PUB:01a1…@1 stale (the chief of staff, pending); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (L. Brandt, delivered)
+  ✓ C. Brenner owns a material consumer of the case: BRF:01a15668-09c1-75d0-a574-5e066d82490b (stale)
+  ✓ no product is frozen by this case (0 freeze(s) recorded) — the windows are ordinary; the 2026-09-10 supersession case is neither adopted nor touched
+  ✓ C. Brenner reads the case (graph.read — the policy is unchanged): ADMITTED by her strategy_owner binding (not by decision_owner) — the brief's premise that she lacks graph.read does not hold on the demonstration; said, not changed
+  ✓ the chief of staff (executive operator — the affected publication's owner, no graph.read role) reads the case REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ C. Brenner READ HER OBLIGATIONS (graph.closure.obligation.read — the acknowledge / except roles, audited; NOT graph.read): 1 obligation(s) — BRF:01a1… stale pending (the accountable owner; acknowledge ALLOWED, except allowed until 2026-11-18T23:03:44Z; due 2026-10-22T23:03:43Z); ONLY what the act needs (exactly the act's fields: no path, notice, other consumer or evidence — true); the chief of staff's publication is not hers and not listed — "the correction obligations you answer for, as the acknowledge and except acts decide — never the case's graph, its other consumers or any evidence" — POL 01a15668-1684… · audit seq 685025
+  ✓ C. Brenner's obligations on ANOTHER case (the B50 restatement 01a1…235fbd, CLOSED): 0 — an empty list, no existence oracle
+  ✓ C. Brenner acknowledges ANOTHER owner's consumer (PUB:01a1…@1, the chief of staff's) REFUSED — 403 EYE-AUT-001 — correction closure rejected (authority): PUB:01a15668-0b33-7795-902b-ddaffd0c4dd5@1 is owned by 01a0f00b-81e4-718a-b7dc-178ad1f27f57; its owner closes it
+  ✓ C. Brenner acknowledges on ANOTHER case (her DEC:01a0…@1 on the CLOSED B50 case 01a1…235fbd) REFUSED — 409 EYE-STA-002 — correction closure rejected (state): correction case 01a15307-da43-7fef-a63d-afa50b235fbd is closed
+  ✓ C. Brenner ACKNOWLEDGED HER OWN obligation BRF:01a1… through the existing route (graph.closure.acknowledge, human gate) — POL 01a15668-16c3… · audit seq 685029
+  ✓ read again: ACKNOWLEDGED, the latest act by her (acknowledged), nothing left to act on (state: the consumer is already acknowledged); the state digest the Command Review binds changed (7d08f44c1535… → cdf89d186bcd…)
+  ✓ N. Eriksen (forecast owner — in the read's roles, no consumer of this case) reads an EMPTY list: 0 obligation(s)
+  ✓ J. Satō (product analyst — outside the acknowledge / except roles) reads obligations REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · the subscription consumers close through their own delivery ledger: 8 — delivered 8 (0 s)
+  ✓ THE REMAINING CONSUMERS CLOSED: 1 by their own owner (each found it first in their OWN obligation read), 0 by K. Müller (no active human owner) — PUB:01a1…@1 by the chief of staff; 0 refused
+  ✓ THE READINESS: READY (projections reconciled)
+  · LEFT OPEN, said plainly: every material consumer is acknowledged by its owner and the case is READY, but it is NOT closed in this run — the obligation read answers OPEN cases only, so the walk shows the owners their acknowledged obligations while it is open; M. Dvořák closes it after the walk (this act with EYE_B82F_CLOSE=1)
+  ✓ THE CASE OPEN: 0 material consumer(s) left to act on — every owner acknowledged theirs; the close is M. Dvořák's after the walk (EYE_B82F_CLOSE=1)
+  ✓ the closure contract still v2 ORDINARY — nothing re-declared
+
+F-5 THE TRUST OVERVIEW AND EVIDENCE ACCESS (D9) — the overview for the auditor; the expired read harness-proven; L. Brandt refused the cited bytes, A. Hoffmann opens the span with the digest re-verified
+  ✓ E. Lindqvist (auditor, TENANT) read /graph/trust's OVERVIEW (30.2 s): types 5, agents 8, models 1, products 5, exceptions 0, attestations 1, verifications 3, investigations 1, policy_denials 25 — "Facets and records, never a trust score: each product's provenance strength with its reasons, and the models, agents, ri" — no score anywhere — POL 01a15668-1899… · audit seq 685038
+  · THE EXPIRED READ (§TR): a consequential read whose handler THROWS after its authorization context expired answers the existing 503 EYE-DEP-001 (the result discarded, "retry"), never a 500 — HARNESS-PROVEN (phase6-b82f-tr TR1/TR2), NOT staged here: it needs a read held past the 62 s context
+  ✓ L. Brandt (decision owner) asks for the cited bytes 0–383 of 01a0…6f55e0@2 REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ A. Hoffmann (domain analyst — she reads evidence today) OPENED THE CITED SPAN of 01a0…6f55e0@2: the FULL digest re-verified on this read (verified, a71925122a71…, 383 bytes, tier hot); served 0–383, cited 0–383; custody written — POL 01a15668-8e7e… · audit seq 685044
+  · D9 STAYS: no new evidence permission — the decision roles keep the citation's resolution short of the bytes (B82); the declarers read rights METADATA only (F-3)
+
+F-6 THE STATE, the env lines for the walk, THE LIMITS
+  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B82F_MET010_V1=01a12df1-0349-7d27-a515-36ca2bba8c0f
+  EYE_B82F_MET010_V2=01a15667-6043-776a-a41b-a76d2e64272e
+  EYE_B82F_MET010_RESULT=01a1530a-b8e5-70e3-945e-78f2f6e7a374
+  EYE_B82F_RIGHTS_SOURCE=01a084f5-76af-711e-a291-bc110b79f394
+  EYE_B82F_RIGHTS_SOURCE_NAME=Carrier & port advisories
+  EYE_B82F_MIRROR_DOMAIN=01a0aa27-e4d3-75d0-9802-9f0f19824587
+  EYE_B82F_ROOM=01a0f00b-865a-7588-98dd-40233be92061
+  EYE_B82F_ATTEMPT1_CASE=01a15667-6e82-7eb3-a869-de6dff78c5ff
+  EYE_B82F_UPLOAD_EVD=01a15668-055a-73b9-864c-8ec763ec0033
+  EYE_B82F_BRIEFING=01a15668-09c1-75d0-a574-5e066d82490b
+  EYE_B82F_PUBLICATION=01a15668-0b33-7795-902b-ddaffd0c4dd5
+  EYE_B82F_CASE=01a15668-0e43-70d9-927c-a52df783fd4e
+  EYE_B82F_BRENNER_CONSUMER=BRF:01a15668-09c1-75d0-a574-5e066d82490b
+  EYE_B82F_OPERATOR_CONSUMER=PUB:01a15668-0b33-7795-902b-ddaffd0c4dd5@1
+  EYE_B82F_OTHER_CASE=01a15307-da43-7fef-a63d-afa50b235fbd
+  EYE_B82F_CASE_STATE=open
+  EYE_B82F_SPAN_EVD=01a084f5-7979-76cf-8e3b-a7b0e96f55e0
+  EYE_B82F_SPAN_VERSION=2
+  EYE_B82F_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B82F_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B82F_STEWARD=f.aydin
+  EYE_B82F_OWNER=c.brenner
+  EYE_B82F_OPERATOR=chief.of.staff
+  EYE_B82F_ANALYST=a.hoffmann
+  EYE_B82F_REFUSED_OWNER=chief.of.staff
+  EYE_B82F_PRODUCT_OWNER=m.okonkwo
+  EYE_B82F_KNOWLEDGE_OWNER=k.mueller
+  EYE_B82F_PRODUCT_ANALYST=j.sato
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — 0122 (§RT, §CC) and the TypeScript corrections (§TR, §MT) with their harnesses phase6-b82f-{rt,cc,tr,mt}, the web unit models, the walk. (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: the act target refusing two children before any contact; MET-010 definition v2 proposed by J. Satō, her own decision refused, approved by M. Okonkwo at the digest — definition v2 · computation v2 shown together, v1 superseded, the old result definition v1 · computation v2, NOT recomputed; F. Aydın reading the rights-terms register (metadata only) and refused evidence bytes, detail and the other domain's register, A. Hoffmann refused the new read and keeping hers; attempt 1 (SYN-BKG-7212 — its briefing's interval exceeded the compose port's 500 evidence/claim versions, so nothing of hers rested on the upload) recognised and closed by M. Dvořák, and ONE small SYNTHETIC owner-flow case (a catch-up edition when needed, a booking uploaded, C. Brenner's briefing on it — the dependency and the preview checked before the apply —, its board publication drafted, the restatement applied and walked) in which the chief of staff (no graph.read role) was refused the case read and C. Brenner was ADMITTED to it by her strategy_owner binding (graph.read unchanged — said), C. Brenner read and acknowledged HER obligation and was refused another owner's consumer and another case, N. Eriksen read an empty list, J. Satō was refused the read, the chief of staff found and acknowledged his own through his obligation read, the case READY under the ORDINARY contract and closed by M. Dvořák only in the run with EYE_B82F_CLOSE=1 (after the walk); the trust overview read; L. Brandt refused the cited bytes and A. Hoffmann opening them. (3) REAL ACCEPTANCE — never claimed. NOT STAGED (harness-proven): the expired-read 503 (phase6-b82f-tr), an obligation's escalation instants after a stall (phase6-b82f-cc c), a bounded exception by an owner on the obligation page (the walk shows the form; the act acknowledges).
+
+ALL SCENES HELD · 0.8 min
+
+════════ CORRECTED — RUN 2 ════════
+THE B82-F ACT (the B80–B82 integration pass) on eye_demo_b82f (REHEARSAL) — 2026-10-19T23:05:40.651Z — API http://localhost:3411 — target declared rehearsal
+
+F-1 THE ACT TARGET ON THE DEPLOYMENT ITSELF — this act spawned (a) with no EYE_ACT_TARGET and (b) as a rehearsal naming the LIVE API: each REFUSED (exit 2) before anything is contacted; the sessions and login audit rows of this database and of the live eye_demo unchanged
+  ✓ (a) the act spawned with NO EYE_ACT_TARGET: exit 2 — "REFUSED (act target): EYE_ACT_TARGET is not set — declare the environment: EYE_ACT_TARGET=rehearsal for a restored copy, EYE_ACT_TARGET=live for the demonstration. Nothing was contacted."
+  ✓ (b) the act spawned as a REHEARSAL naming the LIVE API http://localhost:3401 (EYE_LIVE_API left default): exit 2 — "REFUSED (act target): EYE_API http://localhost:3401 is the LIVE demonstration's API (http://localhost:3401); a rehearsal talks to its own rig. Nothing was contacted."
+  ✓ NOTHING WAS CONTACTED: eye_demo_b82f — human sessions 5101 → 5101, login audit rows 5102 → 5102; the LIVE eye_demo (read-only SELECT) — sessions 4979 → 4979, login audit rows 4980 → 4980
+  · the check is scripts/act-target.mjs (B80 integration pass): governed.mjs has no default API any more, and every act, candidate and walk resolves its target before it reads the local env or logs in (harness: apps/api/test/unit/act-target-b80.test.ts)
+
+F-0 THE CAST AND THE STATE — 0122, the build, the personas and their bindings
+  ✓ migration applied: 0122_b80_b82_integration_corrections.sql (§RT observation.rights_terms_register · §CC graph._cl_closer_basis + graph.correction_obligations)
+  ✓ j.sato holds product_analyst at the DOMAIN
+  ✓ m.okonkwo holds product_analytics_owner at the DOMAIN
+  ✓ f.aydin holds data_steward at the DOMAIN
+  ✓ a.hoffmann holds domain_analyst at the DOMAIN
+  ✓ c.brenner holds decision_owner at the DOMAIN
+  ✓ chief.of.staff holds executive_operator at the DOMAIN
+  ✓ m.dvorak holds collection_manager at the DOMAIN
+  ✓ k.mueller holds knowledge_owner at the DOMAIN
+  ✓ n.eriksen holds forecast_owner at the DOMAIN
+  ✓ l.brandt holds decision_owner at the DOMAIN
+  ✓ e.lindqvist holds auditor at the TENANT
+  ✓ t.richter holds domain_admin at the DOMAIN
+  ✓ the chief of staff (executive operator) holds no graph.read role (none); C. Brenner holds strategy_owner — a graph.read role beside decision_owner — the act grants nothing
+  · the API declares its build: head 266cef818829… (from env), migration head —, policy bundle bundle-v1 d2ae37a2c533…
+
+F-2 MET-010 DEFINITION v2 THROUGH THE GOVERNED PATH (§MT) — J. Satō proposes, her own decision refused, M. Okonkwo approves at the digest; definition v2 · computation v2 (0120 §CL), v1 superseded; NOT recomputed
+  · the state before: MET-010 v1 SUPERSEDED (digest d4c75b657f92…), v2 APPROVED (digest d36517c79c41…); owner M. Okonkwo; the result 01a1…e7a374 2026-Q4: definition v1 · computation v2, INDETERMINATE
+  · MET-010 v2 stands APPROVED (decided by M. Okonkwo) — an earlier run; read and stated below
+  ✓ MET-010 READ: definition v2 APPROVED · computation met010_correction_propagation v2 (registered in 0120 §CL, body digest be69c305fa01…) TOGETHER; v1 SUPERSEDED
+  ✓ the diff v1 → v2 names exactly exclusions, meaning, population (the end instant: population.closure_instant; thresholds, k, floor, dimensions and the computation key unchanged)
+  ✓ the result 01a1…e7a374 (2026-Q4) is still listed as definition v1 · computation v2 — INDETERMINATE
+  ✓ the diff read (definitions/diff v1 → v2): exclusions, meaning, population
+  ✓ the result 01a1…e7a374 READ: definition v1 (now SUPERSEDED) · computation v2 (the digest it recorded be69c305fa01…); the registry holds met010_correction_propagation v2 now (0120 §CL) — INDETERMINATE (n 1): the period 2026-Q4 is open until 2027-01-01 00:00:00+00 (as of 2026-10-19 07:22:54.057867+00): a partial period is not presented as the period, n = 1 is below the floor 3 the definition declares: the sample cannot carry a determinate value
+  · NOT RECOMPUTED here: the 2026-Q4 result stays INDETERMINATE (the period is open and n is below the floor 3); no threshold is lowered, no result forced — a new computation would name definition v2 · computation v2 and is the owner's choice
+
+F-3 RIGHTS TERMS FOR THEIR DECLARERS (§RT) — F. Aydın reads the domain's register (metadata only); evidence bytes and detail still refused to her; the other domain's register refused; A. Hoffmann (outside the declare rule) refused the new read, keeps the per-source read
+  ✓ F. Aydın (data steward — she DECLARES rights terms) READ the domain's rights-terms register (observation.rights.terms.read): 25 source contract version(s), 1 with terms declared; RIGHTS METADATA ONLY — each entry exactly source, contract, the contract's rights statement, the current terms, history and ledger; no evidence id, digest, locator, manifest, payload or bytes in the answer (none found) — POL 01a15669-e663… · audit seq 685200
+  ✓ the carrier advisories (contract v1) — the terms B82 declared: "in_force · expires at 2027-10-19T12:48:03.929000Z"; history v1 expired → v2 in_force; ledger rights.declared, rights.revised
+  · a source with no terms says so: Antriebstechnik trade press reports (SYNTHETIC) v1 — "no rights terms declared for this contract version — no expiry declared" (the contract's own rights state confirmed)
+  · F. Aydın declares nothing here: the carrier advisories' terms B82 declared stand (in force); a declaration would change a decision-active state another act reads
+  ✓ F. Aydın asks for evidence BYTES — the cited span of 01a0…6f55e0@2 (the B82 segment route) REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın downloads 01a0…6f55e0 (the evidence download) REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın reads the evidence detail of 01a0…6f55e0 REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın reads the OTHER domain's register ("NORDWERK Exchange Mirror (SYNTHETIC)", the B16 mirror) REFUSED — 403 EYE-TEN-001 — principal has no binding for this domain
+  ✓ A. Hoffmann (domain analyst — outside the declare rule) reads the rights-terms register REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ A. Hoffmann KEEPS the per-source read (observation.read.rights): the carrier advisories' terms — 1 version(s) — POL 01a15669-e68d… · audit seq 685205
+
+F-4 CORRECTION CLOSURE FOR THE AFFECTED PRODUCT'S OWNER (§CC) — attempt 1 recognised and closed; the owner flow on a second small SYNTHETIC case: a catch-up edition if the room's last is too far back, a booking uploaded, C. Brenner's briefing on it (checked), its board publication drafted; the restatement applied and walked; graph.read unchanged (the chief of staff refused the case read); each owner reads THEIR obligations and acknowledges theirs; the case READY, closed after the walk
+  ✓ the closure contract in force: v2 ORDINARY (stale 3 d, human review 5 d, recompute 7 d) — the windows stay ordinary: nothing stalls or freezes in this scene
+  · ATTEMPT 1 — an earlier run, kept as history: "inbound-records-nordbearing-eta-b82f-2026-11.csv" 01a1…9873ee uploaded 2026-10-19T23:02:59Z, the case 01a1…78c5ff applied (closure CLOSED). C. Brenner's briefing 01a1…1136e4 composed after it does NOT rest on it: the room's last edition before the upload was 01a1…8904fa (2026-10-07T10:59:04Z), and the upload was evidence/claim version #1131 of that interval — the compose port lists only the first 500, oldest first, so it fell outside; the walk reached 8 material consumer(s), 8 of them subscription deliveries (delivered) and NOTHING of hers. The owner flow is staged on a second case below.
+  · the attempt-1 case 01a1…78c5ff stands CLOSED — an earlier run
+  · the SYN-BKG-7213 restatement case 01a1…83fd4e stands — an earlier run (applied, propagation complete); the upload 01a1…ec0033
+  · C. Brenner's briefing 01a1…82490b resting on the upload stands — an earlier run (2026-10-19T23:03:41Z)
+  · the chief of staff's draft "B82-F — the decision room's briefing on SYN-BKG-7213 for the supervisory board (SYNTHETIC)" 01a1…0c4dd5 stands — an earlier run (drafted)
+  ✓ THE AUTOMATIC WALK: attempt complete by the propagation agent 01a1…8bc8ad (walker 1.1.0), 1 root(s) walked (read 0 s after)
+  ✓ K. Müller (knowledge owner — graph.read) reads the case: closure OPEN (opened applied 2026-10-19T23:03:42Z, contract v2); 10 material consumer(s): BRF:01a1… stale (C. Brenner, acknowledged); PUB:01a1…@1 stale (the chief of staff, acknowledged); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (L. Brandt, delivered)
+  ✓ C. Brenner owns a material consumer of the case: BRF:01a15668-09c1-75d0-a574-5e066d82490b (stale)
+  ✓ no product is frozen by this case (0 freeze(s) recorded) — the windows are ordinary; the 2026-09-10 supersession case is neither adopted nor touched
+  ✓ C. Brenner reads the case (graph.read — the policy is unchanged): ADMITTED by her strategy_owner binding (not by decision_owner) — the brief's premise that she lacks graph.read does not hold on the demonstration; said, not changed
+  ✓ the chief of staff (executive operator — the affected publication's owner, no graph.read role) reads the case REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ C. Brenner READ HER OBLIGATIONS (graph.closure.obligation.read — the acknowledge / except roles, audited; NOT graph.read): 1 obligation(s) — BRF:01a1… stale acknowledged (the accountable owner; acknowledge no — state: the consumer is already acknowledged, except no; due —; latest act acknowledged by you); ONLY what the act needs (exactly the act's fields: no path, notice, other consumer or evidence — true); the chief of staff's publication is not hers and not listed — "the correction obligations you answer for, as the acknowledge and except acts decide — never the case's graph, its other consumers or any evidence" — POL 01a15669-e865… · audit seq 685210
+  ✓ C. Brenner's obligations on ANOTHER case (the B50 restatement 01a1…235fbd, CLOSED): 0 — an empty list, no existence oracle
+  ✓ C. Brenner acknowledges on ANOTHER case (her DEC:01a0…@1 on the CLOSED B50 case 01a1…235fbd) REFUSED — 409 EYE-STA-002 — correction closure rejected (state): correction case 01a15307-da43-7fef-a63d-afa50b235fbd is closed
+  · C. Brenner's obligation stands acknowledged — an earlier run
+  ✓ N. Eriksen (forecast owner — in the read's roles, no consumer of this case) reads an EMPTY list: 0 obligation(s)
+  ✓ J. Satō (product analyst — outside the acknowledge / except roles) reads obligations REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · the subscription consumers close through their own delivery ledger: 8 — delivered 8 (0 s)
+  ✓ THE REMAINING CONSUMERS CLOSED: 0 by their own owner (each found it first in their OWN obligation read), 0 by K. Müller (no active human owner) — none left; 0 refused
+  ✓ THE READINESS: READY (projections reconciled)
+  · LEFT OPEN, said plainly: every material consumer is acknowledged by its owner and the case is READY, but it is NOT closed in this run — the obligation read answers OPEN cases only, so the walk shows the owners their acknowledged obligations while it is open; M. Dvořák closes it after the walk (this act with EYE_B82F_CLOSE=1)
+  ✓ THE CASE OPEN: 0 material consumer(s) left to act on — every owner acknowledged theirs; the close is M. Dvořák's after the walk (EYE_B82F_CLOSE=1)
+  ✓ the closure contract still v2 ORDINARY — nothing re-declared
+
+F-5 THE TRUST OVERVIEW AND EVIDENCE ACCESS (D9) — the overview for the auditor; the expired read harness-proven; L. Brandt refused the cited bytes, A. Hoffmann opens the span with the digest re-verified
+  ✓ E. Lindqvist (auditor, TENANT) read /graph/trust's OVERVIEW (29.1 s): types 5, agents 8, models 1, products 5, exceptions 0, attestations 1, verifications 3, investigations 1, policy_denials 25 — "Facets and records, never a trust score: each product's provenance strength with its reasons, and the models, agents, ri" — no score anywhere — POL 01a15669-ea28… · audit seq 685218
+  · THE EXPIRED READ (§TR): a consequential read whose handler THROWS after its authorization context expired answers the existing 503 EYE-DEP-001 (the result discarded, "retry"), never a 500 — HARNESS-PROVEN (phase6-b82f-tr TR1/TR2), NOT staged here: it needs a read held past the 62 s context
+  ✓ L. Brandt (decision owner) asks for the cited bytes 0–383 of 01a0…6f55e0@2 REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ A. Hoffmann (domain analyst — she reads evidence today) OPENED THE CITED SPAN of 01a0…6f55e0@2: the FULL digest re-verified on this read (verified, a71925122a71…, 383 bytes, tier hot); served 0–383, cited 0–383; custody written — POL 01a1566a-5be0… · audit seq 685221
+  · D9 STAYS: no new evidence permission — the decision roles keep the citation's resolution short of the bytes (B82); the declarers read rights METADATA only (F-3)
+
+F-6 THE STATE, the env lines for the walk, THE LIMITS
+  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B82F_MET010_V1=01a12df1-0349-7d27-a515-36ca2bba8c0f
+  EYE_B82F_MET010_V2=01a15667-6043-776a-a41b-a76d2e64272e
+  EYE_B82F_MET010_RESULT=01a1530a-b8e5-70e3-945e-78f2f6e7a374
+  EYE_B82F_RIGHTS_SOURCE=01a084f5-76af-711e-a291-bc110b79f394
+  EYE_B82F_RIGHTS_SOURCE_NAME=Carrier & port advisories
+  EYE_B82F_MIRROR_DOMAIN=01a0aa27-e4d3-75d0-9802-9f0f19824587
+  EYE_B82F_ROOM=01a0f00b-865a-7588-98dd-40233be92061
+  EYE_B82F_ATTEMPT1_CASE=01a15667-6e82-7eb3-a869-de6dff78c5ff
+  EYE_B82F_UPLOAD_EVD=01a15668-055a-73b9-864c-8ec763ec0033
+  EYE_B82F_BRIEFING=01a15668-09c1-75d0-a574-5e066d82490b
+  EYE_B82F_PUBLICATION=01a15668-0b33-7795-902b-ddaffd0c4dd5
+  EYE_B82F_CASE=01a15668-0e43-70d9-927c-a52df783fd4e
+  EYE_B82F_BRENNER_CONSUMER=BRF:01a15668-09c1-75d0-a574-5e066d82490b
+  EYE_B82F_OPERATOR_CONSUMER=PUB:01a15668-0b33-7795-902b-ddaffd0c4dd5@1
+  EYE_B82F_OTHER_CASE=01a15307-da43-7fef-a63d-afa50b235fbd
+  EYE_B82F_CASE_STATE=open
+  EYE_B82F_SPAN_EVD=01a084f5-7979-76cf-8e3b-a7b0e96f55e0
+  EYE_B82F_SPAN_VERSION=2
+  EYE_B82F_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B82F_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B82F_STEWARD=f.aydin
+  EYE_B82F_OWNER=c.brenner
+  EYE_B82F_OPERATOR=chief.of.staff
+  EYE_B82F_ANALYST=a.hoffmann
+  EYE_B82F_REFUSED_OWNER=chief.of.staff
+  EYE_B82F_PRODUCT_OWNER=m.okonkwo
+  EYE_B82F_KNOWLEDGE_OWNER=k.mueller
+  EYE_B82F_PRODUCT_ANALYST=j.sato
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — 0122 (§RT, §CC) and the TypeScript corrections (§TR, §MT) with their harnesses phase6-b82f-{rt,cc,tr,mt}, the web unit models, the walk. (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: the act target refusing two children before any contact; MET-010 definition v2 proposed by J. Satō, her own decision refused, approved by M. Okonkwo at the digest — definition v2 · computation v2 shown together, v1 superseded, the old result definition v1 · computation v2, NOT recomputed; F. Aydın reading the rights-terms register (metadata only) and refused evidence bytes, detail and the other domain's register, A. Hoffmann refused the new read and keeping hers; attempt 1 (SYN-BKG-7212 — its briefing's interval exceeded the compose port's 500 evidence/claim versions, so nothing of hers rested on the upload) recognised and closed by M. Dvořák, and ONE small SYNTHETIC owner-flow case (a catch-up edition when needed, a booking uploaded, C. Brenner's briefing on it — the dependency and the preview checked before the apply —, its board publication drafted, the restatement applied and walked) in which the chief of staff (no graph.read role) was refused the case read and C. Brenner was ADMITTED to it by her strategy_owner binding (graph.read unchanged — said), C. Brenner read and acknowledged HER obligation and was refused another owner's consumer and another case, N. Eriksen read an empty list, J. Satō was refused the read, the chief of staff found and acknowledged his own through his obligation read, the case READY under the ORDINARY contract and closed by M. Dvořák only in the run with EYE_B82F_CLOSE=1 (after the walk); the trust overview read; L. Brandt refused the cited bytes and A. Hoffmann opening them. (3) REAL ACCEPTANCE — never claimed. NOT STAGED (harness-proven): the expired-read 503 (phase6-b82f-tr), an obligation's escalation instants after a stall (phase6-b82f-cc c), a bounded exception by an owner on the obligation page (the walk shows the form; the act acknowledges).
+
+ALL SCENES HELD · 0.5 min
+
+════════ THE WALK — e2e/phase6-b82f.demo.spec.ts with RUN 2's EYE_B82F_* lines (the case OPEN) ════════
+  ✓  1 e2e/phase6-b82f.demo.spec.ts:59:7 › CP-6 B82-F — the act's walk: rights terms for their declarers, the owner's correction obligations, the impact heading, MET-010 v2 › §RT F. Aydın opens /observation/rights: one h1, the register with its form,
+  ✓  2 e2e/phase6-b82f.demo.spec.ts:86:7 › CP-6 B82-F — the act's walk: rights terms for their declarers, the owner's correction obligations, the impact heading, MET-010 v2 › §CC the affected publication's owner (no graph.read): the case page refused 
+  ✓  3 e2e/phase6-b82f.demo.spec.ts:136:7 › CP-6 B82-F — the act's walk: rights terms for their declarers, the owner's correction obligations, the impact heading, MET-010 v2 › §CC /graph/impact keeps its one h1 while it reads and when its read is refu
+  ✓  4 e2e/phase6-b82f.demo.spec.ts:158:7 › CP-6 B82-F — the act's walk: rights terms for their declarers, the owner's correction obligations, the impact heading, MET-010 v2 › §MT /graph/data/analytics?metric=MET-010: definition v2 · computation v2 t
+  4 passed (20.8s)
+
+════════ CORRECTED — RUN 3, EYE_B82F_CLOSE=1, after the walk (F-4 only) ════════
+F-4 CORRECTION CLOSURE FOR THE AFFECTED PRODUCT'S OWNER (§CC) — attempt 1 recognised and closed; the owner flow on a second small SYNTHETIC case: a catch-up edition if the room's last is too far back, a booking uploaded, C. Brenner's briefing on it (checked), its board publication drafted; the restatement applied and walked; graph.read unchanged (the chief of staff refused the case read); each owner reads THEIR obligations and acknowledges theirs; the case READY, closed after the walk
+  ✓ the closure contract in force: v2 ORDINARY (stale 3 d, human review 5 d, recompute 7 d) — the windows stay ordinary: nothing stalls or freezes in this scene
+  · ATTEMPT 1 — an earlier run, kept as history: "inbound-records-nordbearing-eta-b82f-2026-11.csv" 01a1…9873ee uploaded 2026-10-19T23:02:59Z, the case 01a1…78c5ff applied (closure CLOSED). C. Brenner's briefing 01a1…1136e4 composed after it does NOT rest on it: the room's last edition before the upload was 01a1…8904fa (2026-10-07T10:59:04Z), and the upload was evidence/claim version #1131 of that interval — the compose port lists only the first 500, oldest first, so it fell outside; the walk reached 8 material consumer(s), 8 of them subscription deliveries (delivered) and NOTHING of hers. The owner flow is staged on a second case below.
+  · the attempt-1 case 01a1…78c5ff stands CLOSED — an earlier run
+  · the SYN-BKG-7213 restatement case 01a1…83fd4e stands — an earlier run (applied, propagation complete); the upload 01a1…ec0033
+  · C. Brenner's briefing 01a1…82490b resting on the upload stands — an earlier run (2026-10-19T23:03:41Z)
+  · the chief of staff's draft "B82-F — the decision room's briefing on SYN-BKG-7213 for the supervisory board (SYNTHETIC)" 01a1…0c4dd5 stands — an earlier run (drafted)
+  ✓ THE AUTOMATIC WALK: attempt complete by the propagation agent 01a1…8bc8ad (walker 1.1.0), 1 root(s) walked (read 0 s after)
+  ✓ K. Müller (knowledge owner — graph.read) reads the case: closure OPEN (opened applied 2026-10-19T23:03:42Z, contract v2); 10 material consumer(s): BRF:01a1… stale (C. Brenner, acknowledged); PUB:01a1…@1 stale (the chief of staff, acknowledged); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (01a0…3fd0f3, delivered); SUB:01a0… null (L. Brandt, delivered)
+  ✓ C. Brenner owns a material consumer of the case: BRF:01a15668-09c1-75d0-a574-5e066d82490b (stale)
+  ✓ no product is frozen by this case (0 freeze(s) recorded) — the windows are ordinary; the 2026-09-10 supersession case is neither adopted nor touched
+  ✓ C. Brenner reads the case (graph.read — the policy is unchanged): ADMITTED by her strategy_owner binding (not by decision_owner) — the brief's premise that she lacks graph.read does not hold on the demonstration; said, not changed
+  ✓ the chief of staff (executive operator — the affected publication's owner, no graph.read role) reads the case REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ C. Brenner READ HER OBLIGATIONS (graph.closure.obligation.read — the acknowledge / except roles, audited; NOT graph.read): 1 obligation(s) — BRF:01a1… stale acknowledged (the accountable owner; acknowledge no — state: the consumer is already acknowledged, except no; due —; latest act acknowledged by you); ONLY what the act needs (exactly the act's fields: no path, notice, other consumer or evidence — true); the chief of staff's publication is not hers and not listed — "the correction obligations you answer for, as the acknowledge and except acts decide — never the case's graph, its other consumers or any evidence" — POL 01a1566a-8b4f… · audit seq 685256
+  ✓ C. Brenner's obligations on ANOTHER case (the B50 restatement 01a1…235fbd, CLOSED): 0 — an empty list, no existence oracle
+  ✓ C. Brenner acknowledges on ANOTHER case (her DEC:01a0…@1 on the CLOSED B50 case 01a1…235fbd) REFUSED — 409 EYE-STA-002 — correction closure rejected (state): correction case 01a15307-da43-7fef-a63d-afa50b235fbd is closed
+  · C. Brenner's obligation stands acknowledged — an earlier run
+  ✓ N. Eriksen (forecast owner — in the read's roles, no consumer of this case) reads an EMPTY list: 0 obligation(s)
+  ✓ J. Satō (product analyst — outside the acknowledge / except roles) reads obligations REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · the subscription consumers close through their own delivery ledger: 8 — delivered 8 (0 s)
+  ✓ THE REMAINING CONSUMERS CLOSED: 0 by their own owner (each found it first in their OWN obligation read), 0 by K. Müller (no active human owner) — none left; 0 refused
+  ✓ THE READINESS: READY (projections reconciled)
+  ✓ M. Dvořák CLOSED the case: closure 2b07…f7a2d5 — 10 consumer(s), 2 act(s), 0 freeze(s) lifted; audit digest c8d2b9b0edaa… — POL 01a1566a-8ba2… · audit seq 685263
+  ✓ THE CLOSURE RECORD (eye.correction-closure/1): closed 2026-10-19T23:06:25Z by M. Dvořák; 10 consumer(s); 2 acknowledgement(s) — C. Brenner, the chief of staff; projections reconciled
+  ✓ the closure contract still v2 ORDINARY — nothing re-declared
+
+ALL SCENES HELD · 0.7 min
+
+════════ CORRECTED — RUN 4, after the close ════════
+ALL SCENES HELD · 0.5 min
+
+════════ VARIANT — the catch-up branch, on a fresh restore with no attempt 1 (F-4 only) ════════
+F-4 CORRECTION CLOSURE FOR THE AFFECTED PRODUCT'S OWNER (§CC) — attempt 1 recognised and closed; the owner flow on a second small SYNTHETIC case: a catch-up edition if the room's last is too far back, a booking uploaded, C. Brenner's briefing on it (checked), its board publication drafted; the restatement applied and walked; graph.read unchanged (the chief of staff refused the case read); each owner reads THEIR obligations and acknowledges theirs; the case READY, closed after the walk
+  ✓ the closure contract in force: v2 ORDINARY (stale 3 d, human review 5 d, recompute 7 d) — the windows stay ordinary: nothing stalls or freezes in this scene
+  · no ATTEMPT 1 here (no case "B82-F act — NORDWERK inbound-records restatement of SYN-BKG-7212 (SYNTHETIC)") — the owner flow below is the only case of this act
+  ✓ THE CATCH-UP, stated as such: the room's last edition 01a1…8904fa (agent, 2026-10-07T10:59:04Z) is 1130 evidence/claim versions back — beyond the compose port's 500 (oldest first), so an upload now would fall outside its interval; C. Brenner COMPOSED a governed CATCH-UP edition 01a1…44fd08 first (it lists the first 500 of that interval, said; its known_at is now) — POL 01a1566e-7604… · audit seq 684851
+  ✓ A. Hoffmann (domain analyst) UPLOADED "inbound-records-nordbearing-eta-b82f-2026-11-r2.csv" (SYNTHETIC, 283 bytes) to nordwerk-inbound-records, its document time "mid November 2026" stated: run finished, 1 admitted → evidence 01a1…909af5@1
+  ✓ C. Brenner (decision owner, the room's owner) COMPOSED the next edition of "Mitigate the corridor closure — the decision room (SYNTHETIC)" 01a1…c035d7 since 01a1…44fd08 (2026-10-19T23:10:42Z): the upload is version #1 of its interval (within the first 500) — an item of "what changed", and the briefing RESTS ON it (graph.dependencies, checked) — SHE owns this product — POL 01a1566e-b0f6… · audit seq 684891
+  ✓ the chief of staff (executive operator) DRAFTED "B82-F — the decision room's briefing on SYN-BKG-7213 for the supervisory board (SYNTHETIC)" 01a1…93b1df from C. Brenner's briefing 01a1…c035d7 (classified internal) — HE owns this product; a draft, never delivered here — POL 01a1566e-b21b… · audit seq 684892
+  ✓ THE READ-ONLY PREVIEW, checked BEFORE the apply (nothing written): a restatement of the upload would reach briefings 1, publications 1 — C. Brenner's briefing among them, the board publication among them: a SMALL case
+  ✓ A. Hoffmann (domain analyst) RECEIVED the shipper's restatement of SYN-BKG-7213: case 01a1…51251f received — POL 01a1566e-b4fb… · audit seq 684894
+  ✓ M. Dvořák (collection manager — the correction authority) APPLIED it: 01a1…909af5 v1 → v2 — nobody calls /impact/propagate — POL 01a1566e-b510… · audit seq 684897
+  ✓ THE AUTOMATIC WALK: attempt complete by the propagation agent 01a1…8bc8ad (walker 1.1.0), 1 root(s) walked (read 2 s after)
+  ✓ K. Müller (knowledge owner — graph.read) reads the case: closure OPEN (opened applied 2026-10-19T23:10:58Z, contract v2); 10 material consumer(s): BRF:01a1… stale (C. Brenner, pending); PUB:01a1…@1 stale (the chief of staff, pending); SUB:01a0… null (01a0…3fd0f3, pending); SUB:01a0… null (01a0…3fd0f3, pending); SUB:01a0… null (01a0…3fd0f3, pending); SUB:01a0… null (01a0…3fd0f3, pending); SUB:01a0… null (01a0…3fd0f3, pending); SUB:01a0… null (01a0…3fd0f3, pending); SUB:01a0… null (01a0…3fd0f3, pending); SUB:01a0… null (L. Brandt, delivered)
+  ✓ C. Brenner owns a material consumer of the case: BRF:01a1566e-b0f2-7b2f-91b2-d556bbc035d7 (stale)
+  ✓ no product is frozen by this case (0 freeze(s) recorded) — the windows are ordinary; the 2026-09-10 supersession case is neither adopted nor touched
+  ✓ C. Brenner reads the case (graph.read — the policy is unchanged): ADMITTED by her strategy_owner binding (not by decision_owner) — the brief's premise that she lacks graph.read does not hold on the demonstration; said, not changed
+  ✓ the chief of staff (executive operator — the affected publication's owner, no graph.read role) reads the case REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ C. Brenner READ HER OBLIGATIONS (graph.closure.obligation.read — the acknowledge / except roles, audited; NOT graph.read): 1 obligation(s) — BRF:01a1… stale pending (the accountable owner; acknowledge ALLOWED, except allowed until 2026-11-18T23:11:00Z; due 2026-10-22T23:11:00Z); ONLY what the act needs (exactly the act's fields: no path, notice, other consumer or evidence — true); the chief of staff's publication is not hers and not listed — "the correction obligations you answer for, as the acknowledge and except acts decide — never the case's graph, its other consumers or any evidence" — POL 01a1566e-bd45… · audit seq 684912
+  ✓ C. Brenner's obligations on ANOTHER case (the B50 restatement 01a1…235fbd, CLOSED): 0 — an empty list, no existence oracle
+  ✓ C. Brenner acknowledges ANOTHER owner's consumer (PUB:01a1…@1, the chief of staff's) REFUSED — 403 EYE-AUT-001 — correction closure rejected (authority): PUB:01a1566e-b21d-7a19-9715-5e3ba693b1df@1 is owned by 01a0f00b-81e4-718a-b7dc-178ad1f27f57; its owner closes it
+  ✓ C. Brenner acknowledges on ANOTHER case (her DEC:01a0…@1 on the CLOSED B50 case 01a1…235fbd) REFUSED — 409 EYE-STA-002 — correction closure rejected (state): correction case 01a15307-da43-7fef-a63d-afa50b235fbd is closed
+  ✓ C. Brenner ACKNOWLEDGED HER OWN obligation BRF:01a1… through the existing route (graph.closure.acknowledge, human gate) — POL 01a1566e-bd7b… · audit seq 684918
+  ✓ read again: ACKNOWLEDGED, the latest act by her (acknowledged), nothing left to act on (state: the consumer is already acknowledged); the state digest the Command Review binds changed (f3a00484d916… → 11bf11099b08…)
+  ✓ N. Eriksen (forecast owner — in the read's roles, no consumer of this case) reads an EMPTY list: 0 obligation(s)
+  ✓ J. Satō (product analyst — outside the acknowledge / except roles) reads obligations REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · the subscription consumers close through their own delivery ledger: 8 — delivered 8 (3 s)
+  ✓ THE REMAINING CONSUMERS CLOSED: 1 by their own owner (each found it first in their OWN obligation read), 0 by K. Müller (no active human owner) — PUB:01a1…@1 by the chief of staff; 0 refused
+  ✓ THE READINESS: READY (projections reconciled)
+  · LEFT OPEN, said plainly: every material consumer is acknowledged by its owner and the case is READY, but it is NOT closed in this run — the obligation read answers OPEN cases only, so the walk shows the owners their acknowledged obligations while it is open; M. Dvořák closes it after the walk (this act with EYE_B82F_CLOSE=1)
+  ✓ THE CASE OPEN: 0 material consumer(s) left to act on — every owner acknowledged theirs; the close is M. Dvořák's after the walk (EYE_B82F_CLOSE=1)
+  ✓ the closure contract still v2 ORDINARY — nothing re-declared
+
+ALL SCENES HELD · 2.2 min
