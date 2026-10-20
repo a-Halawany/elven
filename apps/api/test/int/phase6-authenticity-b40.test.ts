@@ -18,7 +18,7 @@
  *        expiry and the holds; a DOMAIN-bound reader is refused
  *   VA8  authenticity as a MEASURED coverage dimension (L1-C06)
  *   VA9  F47 — the authenticity check faults: recorded `unavailable`, never verified (fail closed)
- *   VA10 the V rows re-verified on this harness: V00-T-120, V00-T-122, AI-39-003, EVD, L1-I05 (custody, digests, versions, signature recorded)
+ *   VA10 the V rows re-verified on this harness: V00-T-120, V00-T-122, AI-39-003, EVD (custody, digests, versions, signature recorded)
  * Every row here is SYNTHETIC fixture data. CONSTRUCTION only — DEMONSTRATED OPERATION is the act's, REAL ACCEPTANCE never claimed.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -540,7 +540,7 @@ describe('VA9 · F47 — the authenticity check faults: fail closed (never verif
   }, 180_000);
 });
 
-describe('VA10 · the V rows re-verified on this harness (V00-T-120, V00-T-122, AI-39-003, EVD, L1-I05)', () => {
+describe('VA10 · the V rows re-verified on this harness (V00-T-120, V00-T-122, AI-39-003, EVD)', () => {
   it('original evidence preserved with its digest verified pre-store, post-store and on the candidate; versions and digests traceable; the signature recorded', async () => {
     const s = asEvd(signed);
     const adm = await one(sql`select details, content_digest, code_digest, connector, connector_version, method_ref from observation.custody_events where evd_object_id = ${s.id}::uuid and event = 'custody.admitted'`);
