@@ -31,10 +31,20 @@ import { CollectionOrchestrator } from './acquisition/orchestrator.service.js';
 import { ObservationExceptionFilter } from './observation.filter.js';
 /* B82 ev */ import { EvidenceB82Controller } from './evidence-b82/evidence-b82.controller.js'; /* end B82 ev */
 /* B40 §0 */ import { INTAKE_STAGE_PROVIDERS } from './acquisition/intake-stages.js'; /* end B40 §0 */
+/* B40 ap */
+import { AcquisitionPolicyController } from './acquisition-policy/acquisition-policy.controller.js';
+import { AcquisitionPolicyStore } from './acquisition-policy/policy-store.js';
+import { RateBucket } from './acquisition-policy/rate-bucket.js';
+import { RobotsService } from './acquisition-policy/robots.service.js';
+import { RunPolicyCache } from './acquisition-policy/run-policy.js';
+import { ContractBackoffAp } from './acquisition-policy/contract-backoff.service.js';
+import { IngressPolicyAp } from './acquisition-policy/ingress-ap.js';
+/* end B40 ap */
 
 @Module({
   imports: [PipelineModule, IdentityModule],
-  controllers: [ObservationController, UploadController, /* B82 ev: the cited evidence segment, the rights terms (0121 §EV) */ EvidenceB82Controller /* end B82 ev */],
+  controllers: [ObservationController, UploadController, /* B82 ev: the cited evidence segment, the rights terms (0121 §EV) */ EvidenceB82Controller /* end B82 ev */,
+    /* B40 ap: the acquisition policy read (0123 §AP.7) */ AcquisitionPolicyController /* end B40 ap */],
   providers: [
     SourcesService,
     SourceCredentialStore,
@@ -54,6 +64,10 @@ import { ObservationExceptionFilter } from './observation.filter.js';
     /* B40 §0: the intake seam — the composition and the four parts' stages (authorize-ap, throttle-ap, inspect-in, authenticate-va) */
     ...INTAKE_STAGE_PROVIDERS,
     /* end B40 §0 */
+    /* B40 ap: what §AP's stages and the scheduler's contract backoff use (the policy records' ports, the shared rate bucket, robots, the
+       run's cached authorization, the contract's retry, the ingress check the integrator folds into the inspect composition) */
+    AcquisitionPolicyStore, RateBucket, RobotsService, RunPolicyCache, ContractBackoffAp, IngressPolicyAp,
+    /* end B40 ap */
     // Registered AFTER the Phase 0 filter so it is consulted first for these
     // routes; a refusal a governed port raised deliberately answers as the rule
     // it is, and everything else falls through unchanged.

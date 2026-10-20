@@ -93,7 +93,16 @@ export type InjectionPoint =
   // policy columns (memory.expected_items — arrival 1 on every withdrawn read) and the absent rows' versions (arrival 2, only when the log
   // names a row the projection lacks). Fires on the first arrival, or on the nth when armed with armNth(): a caller answers by the
   // withdrawn rule — 503 EYE-DEG-001 for a read, a degraded memory source for a briefing — never a raw failure.
-  | 'b21.memory_fallback_content_unavailable';
+  | 'b21.memory_fallback_content_unavailable'
+  /* B40 ap — CP-6 B40 §AP (0123 §AP; D17): the acquisition-time policy's four boundaries, each failing CLOSED — the rate bucket unreachable
+     (F50 → the request refused `unavailable`), the Retry-After unreadable (F51 → `unparsed`: the contract's schedule applies, never sooner),
+     robots.txt not fetched (F52 → the run refused `unavailable` before any request), the residency profile not resolved (F53 → the run
+     refused `unavailable` before any request) */
+  | 'f50.rate_bucket_unavailable'
+  | 'f51.retry_after_parse'
+  | 'f52.robots_fetch_failure'
+  | 'f53.residency_lookup'
+  /* end B40 ap */;
 
 /** Raised by an armed injection point. Distinguishable from a real failure. */
 export class InjectedFault extends Error {

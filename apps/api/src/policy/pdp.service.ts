@@ -1533,6 +1533,19 @@ const BUNDLE_V1: Rule[] = [
   /* B40 in */
   /* end B40 in */
   /* B40 ap */
+  /* B40 §AP (0123 §AP.7; F-P1-04). EXACT, before the `observation.` collection prefix rule (D15). READING a source's acquisition policy —
+     the declaration, the runs' authorizations, the robots cache, the rate-limited intervals and the contract's backoff, the incomplete
+     ranges — exactly the readers of the coverage remediation read (observation.coverage_remediation.read, B28: the collection roles, the
+     coverage and decision owners an interval concerns, the tenant's administrator and auditor); never the collection agent. Metadata only
+     (D9): no evidence-content permission is added or widened; the port re-checks the bound action and the read scope. §AP adds no human act:
+     the authorization, the robots fetch, the rate-limited interval and the response fingerprint are written by the run's own machinery under
+     the scheduler's machine capability, fenced by the run's lease (0123 §AP.6). */
+  { actionPrefix: 'observation.acquisition.read', exact: true, requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' },
+      { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B40 ap */
   /* B40 cr */
   /* end B40 cr */

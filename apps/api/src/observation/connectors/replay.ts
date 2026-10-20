@@ -30,6 +30,14 @@ export interface ReplayEntry {
   acquisition_mode: 'replay';
   /** Present when the manifest deliberately plants a defect (REPLAY_DATA_MANIFEST §3). */
   planted_defect?: string;
+  /* B40 ap */
+  /**
+   * OPTIONAL: the ORDER in which several recorded answers to ONE url are served (CP-6 B40 §AP, DESIGN D10 — the port-authority set answers
+   * 429 + Retry-After, 429 + Retry-After, then 200). The nth request for the url in this process is served the entry of the nth attempt;
+   * past the last, the last is served again. A url recorded once, and every entry without `attempt`, reads exactly as before.
+   */
+  attempt?: number;
+  /* end B40 ap */
 }
 
 export interface ReplayManifest {
@@ -83,7 +91,10 @@ export class ReplayResponder {
    */
   async fetch(set: string, url: string): Promise<{ entry: ReplayEntry; body: Buffer } | null> {
     const manifest = await this.manifest(set);
-    const entry = manifest.entries.find((e) => e.url === url);
+    /* B40 ap: attempt-ordered answers (a url recorded with `attempt`) — otherwise the first entry, exactly as before */
+    const ordered = manifest.entries.filter((e) => e.url === url && typeof e.attempt === 'number').sort((a, b) => (a.attempt as number) - (b.attempt as number));
+    const entry = ordered.length > 0 ? ordered[Math.min(nextAttempt(this.root, set, url), ordered.length) - 1] : manifest.entries.find((e) => e.url === url);
+    /* end B40 ap */
     if (entry === undefined) return null;
     const body = await readFile(join(resolve(this.root), set, entry.file));
     const digest = createHash('sha256').update(body).digest('hex');
@@ -101,9 +112,24 @@ export class ReplayResponder {
     const manifest = await this.manifest(set);
     const out: Array<{ entry: ReplayEntry; body: Buffer }> = [];
     for (const entry of manifest.entries) {
+      /* B40 ap: an attempt-ordered url is enumerated once (as one request: the answer of its next attempt) */
+      if (typeof entry.attempt === 'number' && manifest.entries.some((e) => e.url === entry.url && typeof e.attempt === 'number' && e.attempt < (entry.attempt as number))) continue;
+      /* end B40 ap */
       const got = await this.fetch(set, entry.url);
       if (got !== null) out.push(got);
     }
     return out;
   }
 }
+
+/* B40 ap — the attempt counter of attempt-ordered urls, per process (replay root, set, url). */
+const attempts = new Map<string, number>();
+function nextAttempt(root: string, set: string, url: string): number {
+  const key = `${resolve(root)}\u0000${set}\u0000${url}`;
+  const n = (attempts.get(key) ?? 0) + 1;
+  attempts.set(key, n);
+  return n;
+}
+/** TEST CONTROL ONLY: start every attempt-ordered url from its first answer again (a harness case that replays the throttled set afresh). */
+export function resetReplayAttemptsForTests(): void { attempts.clear(); }
+/* end B40 ap */

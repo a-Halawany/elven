@@ -19,6 +19,18 @@ import type { AcquiredItem, AcquisitionContext, AcquisitionOutput, BackfillDecla
 // B23 (0084) stream: the stream form's types.
 import { StreamPlanRefused, type AcquiredSegment, type SegmentGap, type StreamCursor, type StreamPlan,
   type StreamPlanRequest, type StreamPullRequest } from './sdk.js';
+/* B40 ap */ import { reportAnswer } from '../acquisition-policy/run-policy.js';
+/**
+ * B40 §AP: a publisher's 429 is REPORTED to the throttle seam before the connector does anything else with it — §AP's stage decides (an
+ * SRC@v4 contract: the Retry-After read, the rate-limited interval and the contract's backoff recorded, the request refused `rate_limited`
+ * — it throws). When the seam lets it through (a v1–v3 contract, or no throttle — a caller outside the lifecycle) the connector's RECORDED
+ * path follows unchanged (D8: a 429 stays the transport failure, the replayed answer what it was). No method this connector stamps on an
+ * item changes, so its code digest does not (the B40 §0 throttle call's precedent).
+ */
+async function reportThrottled(ctx: AcquisitionContext, endpoint: string, status: number, retryAfter: string | undefined): Promise<void> {
+  if (status === 429 && ctx.throttle !== undefined) await ctx.throttle(reportAnswer(endpoint, status, retryAfter));
+}
+/* end B40 ap */
 
 /**
  * 1.2.0 adds the CLOSED-RANGE BACKFILL (Phase 4 §4a). The framing method refs
@@ -146,6 +158,7 @@ export class RestConnector implements Connector {
         // The SAME connector, the SAME framing, recorded bytes instead of the wire.
         const got = await replay.fetch(binding.replaySet, endpoint);
         if (got === null) continue;
+        /* B40 ap */ await reportThrottled(ctx, endpoint, got.entry.status, got.entry.retained_headers['retry-after']); /* end B40 ap */
         ctx.budget.spendBytes(got.body.byteLength);
         bytesTransferred += got.body.byteLength;
         const transport = {
@@ -192,6 +205,7 @@ export class RestConnector implements Connector {
           });
           continue;
         }
+        /* B40 ap */ await reportThrottled(ctx, endpoint, res.status, res.headers['retry-after']); /* end B40 ap */
         if (res.status < 200 || res.status >= 300) {
           throw new EgressRefused('transport_failure', `endpoint answered ${res.status}`);
         }
@@ -269,6 +283,7 @@ export class RestConnector implements Connector {
       await ctx.throttle?.({ endpoint: step.url }); // B40 §0 throttle (§AP)
       requests += 1;
       const res = await this.egress({ url: step.url, headers: {}, ...credentialsOf(ctx), policy: binding.egress });
+      /* B40 ap */ await reportThrottled(ctx, step.url, res.status, res.headers['retry-after']); /* end B40 ap */
       if (res.status < 200 || res.status >= 300) {
         throw new EgressRefused('transport_failure', `backfill endpoint answered ${res.status}`);
       }
@@ -396,6 +411,7 @@ export class RestConnector implements Connector {
         }
         await ctx.throttle?.({ endpoint: page.url }); // B40 §0 throttle (§AP)
         const got = await replay.fetch(binding.replaySet, page.url);
+        /* B40 ap */ if (got !== null) await reportThrottled(ctx, page.url, got.entry.status, got.entry.retained_headers['retry-after']); /* end B40 ap */
         if (got === null || got.entry.status < 200 || got.entry.status >= 300) {
           yield { ...base, items: [], gap: { reasonClass: 'publisher_gap', detail: got === null ? 'the replay set holds no recorded response for this page' : `the recorded page answered ${got.entry.status}` }, requests: 1, bytes: 0 };
           continue;
@@ -439,6 +455,7 @@ export class RestConnector implements Connector {
       let gap: SegmentGap | null = null;
       try {
         res = await this.egress({ url: step.url, headers: {}, ...credentialsOf(ctx), policy: binding.egress });
+        /* B40 ap */ await reportThrottled(ctx, step.url, res.status, res.headers['retry-after']); /* end B40 ap */
         if (res.status < 200 || res.status >= 300) gap = { reasonClass: 'publisher_gap', detail: `the publisher answered ${res.status} for this window` };
         else {
           const envelope = errorEnvelope(res.body);
