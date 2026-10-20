@@ -34,6 +34,7 @@ import { isForbiddenAddress } from '../connectors/http-client.js';
 import { redactUrl } from '../connectors/redaction.js';
 import type { ReplayResponder } from '../connectors/replay.js';
 import * as fault from '../fault-injection.js';
+/* B40 integration */ import { reportAnswer } from '../acquisition-policy/run-policy.js'; /* end B40 integration */
 
 export const GATEWAY_PATH = '/v1/fetch';
 export const GATEWAY_TOKEN_HEADER = 'x-eye-cell-token';
@@ -397,6 +398,19 @@ export class EgressGateway {
     this.receipt({ requested_at: requestedAt, method, url_redacted: f.url_redacted, host: f.host, purpose, data_class: dataClass, decision: 'allowed', refusal_class: null,
       reason: null, request_digest: f.request_digest, request_bytes: reqBytes, response_status: answer.status, response_digest: sha256Hex(answer.body),
       response_bytes: answer.body.byteLength, destination: answer.destination, credentialInjected: this.policy.credential !== null && this.transport.mode === 'live' });
+    /* B40 integration: a publisher's 429 is REPORTED to §AP's throttle stage through the same seam the rest connector reports through
+       (run-policy.ts reportAnswer: the status and the raw Retry-After). For an SRC@v4 contract the stage records the rate-limited interval and
+       the contract's backoff and refuses (it throws): the RUN's error, rethrown by the cell connector as the lifecycle records it; the cell is
+       told the request was refused. The receipt above already records the exchange (the 429 the publisher answered, its digest and bytes). */
+    if (answer.status === 429 && this.hooks.throttle !== undefined) {
+      try { await this.hooks.throttle(reportAnswer(url.toString(), answer.status, answer.headers['retry-after'] ?? null)); }
+      catch (e) {
+        if (this.runError === null) this.runError = e;
+        this.reply(res, 429, { ok: false, class: 'throttle', reason: e instanceof Error ? e.message.slice(0, 1000) : 'the rate stage refused after the publisher answered 429' });
+        return;
+      }
+    }
+    /* end B40 integration */
     this.reply(res, 200, { ok: true, status: answer.status, headers: answer.headers, body_b64: answer.body.toString('base64') });
   }
 }

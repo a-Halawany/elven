@@ -13,6 +13,7 @@ import { AuthorizeStageAp } from './stages/authorize-ap.js';
 import { ThrottleStageAp } from './stages/throttle-ap.js';
 import { InspectStageIn } from './stages/inspect-in.js';
 import { AuthenticateStageVa } from './stages/authenticate-va.js';
+/* B40 integration */ import { IngressPolicyAp } from '../acquisition-policy/ingress-ap.js'; /* end B40 integration */
 
 export * from './intake-stage-types.js';
 
@@ -27,11 +28,19 @@ export class IntakeStages implements AuthorizeStage, ThrottleStage {
     private readonly throttleAp: ThrottleStageAp,
     private readonly inspectIn: InspectStageIn,
     private readonly authenticateVa: AuthenticateStageVa,
+    /* B40 integration: §AP's ingress check (residency at ingress, response manipulation / duplicate detection) */ private readonly ingressAp: IngressPolicyAp,
   ) {}
 
   authorize(ctx: IntakeStageContext): Promise<AuthorizeDecision> { return this.authorizeAp.authorize(ctx); }
   throttle(ctx: IntakeStageContext, request: ThrottleRequest): Promise<ThrottleDecision> { return this.throttleAp.throttle(ctx, request); }
-  inspect(ctx: IntakeStageContext, input: InspectInput): Promise<InspectDecision> { return this.inspectIn.inspect(ctx, input); }
+  /** B40 integration: §AP's ingress check AHEAD of §IN's engines (V03-T-072 `record` → residency_conflict, DP-10-005 → response_anomaly):
+   *  a v1–v3 contract, an upload and a consistent response answer null and reach the engines unchanged; a held item is quarantined with
+   *  §AP's class and no engine verdict (nothing scanned is claimed). */
+  async inspect(ctx: IntakeStageContext, input: InspectInput): Promise<InspectDecision> {
+    const ap = await this.ingressAp.evaluate(ctx, input.item);
+    if (ap !== null) return { kind: 'quarantine', reasonClass: ap.reasonClass, reason: ap.reason, verdicts: [] };
+    return this.inspectIn.inspect(ctx, input);
+  }
   authenticate(ctx: IntakeStageContext, input: AuthenticateInput): Promise<AuthenticityDecision> { return this.authenticateVa.authenticate(ctx, input); }
   /** Both record hooks of the point, in a fixed order (inspection, then authenticity). */
   async recordAt(cap: AcquisitionWrites, ctx: IntakeStageContext, at: IntakeRecordPoint, d: { inspect: InspectDecision | null; authenticate: AuthenticityDecision | null }): Promise<void> {

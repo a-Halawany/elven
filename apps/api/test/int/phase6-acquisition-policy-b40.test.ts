@@ -38,10 +38,8 @@ import { resetReplayAttemptsForTests } from '../../src/observation/connectors/re
 import * as fault from '../../src/observation/fault-injection.js';
 import { RateBucket } from '../../src/observation/acquisition-policy/rate-bucket.js';
 import { RobotsService } from '../../src/observation/acquisition-policy/robots.service.js';
-import { IngressPolicyAp } from '../../src/observation/acquisition-policy/ingress-ap.js';
 import { ContractBackoffAp } from '../../src/observation/acquisition-policy/contract-backoff.service.js';
 import { AcquisitionPolicyController } from '../../src/observation/acquisition-policy/acquisition-policy.controller.js';
-import { InspectStageIn } from '../../src/observation/acquisition/stages/inspect-in.js';
 import { CollectionOrchestrator } from '../../src/observation/acquisition/orchestrator.service.js';
 import { SchedulerService, type CollectionJobPayload } from '../../src/observation/scheduling/scheduler.service.js';
 import { EvidenceB82Controller } from '../../src/observation/evidence-b82/evidence-b82.controller.js';
@@ -518,15 +516,9 @@ describe('LB · D10: a LOOPBACK throttling publisher through B14\'s one transpor
   }, 120_000);
 });
 
-describe('IG · the ingress check, composed as the integrator folds it into the inspect stage (DP-10-005, V03-T-072)', () => {
-  const compose = () => {
-    const inspect = app(InspectStageIn);
-    const original = inspect.inspect.bind(inspect);
-    vi.spyOn(inspect, 'inspect').mockImplementation(async (ctx, input) => {
-      const ap = await app(IngressPolicyAp).evaluate(ctx, input.item);
-      return ap === null ? original(ctx, input) : { kind: 'quarantine', reasonClass: ap.reasonClass, reason: ap.reason, verdicts: [] };
-    });
-  };
+describe('IG · the ingress check, folded into the inspect stage (IntakeStages.inspect, ahead of §IN\'s engines) (DP-10-005, V03-T-072)', () => {
+  // B40 integration: the check is FOLDED into IntakeStages.inspect ahead of §IN's engines (intake-stages.ts); the harness no longer composes it
+  const compose = () => undefined;
   it('a response whose shape departs from the last consistent one is quarantined `response_anomaly`; the fingerprints recorded (never content)', async () => {
     compose();
     await v4();

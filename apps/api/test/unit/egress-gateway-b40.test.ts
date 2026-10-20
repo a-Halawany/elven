@@ -135,6 +135,28 @@ describe('B40 §CR · the egress gateway — every decision leaves a receipt', (
       expect((g.runError as Error).message).toBe('probe: the bucket is empty');
     } finally { await g.stop(); }
   });
+  it('B40 integration: a publisher\'s 429 is REPORTED to the throttle stage (reportAnswer: the status and the raw Retry-After); its refusal is the run\'s, the exchange receipted', async () => {
+    const reports: Array<Record<string, unknown>> = [];
+    class Throttled extends FakeTransport {
+      override async fetch(req: TransportRequest): Promise<TransportAnswer> {
+        const a = await super.fetch(req);
+        return { ...a, status: 429, headers: { ...a.headers, 'retry-after': '7' } };
+      }
+    }
+    const t = new Throttled();
+    const g = new EgressGateway(policy(), t, { throttle: async (r) => {
+      reports.push({ ...r });
+      if ((r as { answered?: unknown }).answered !== undefined) throw Object.assign(new Error('throttle refused (rate_limited): the publisher answered 429 (SYNTHETIC)'), { reasonClass: 'rate_limited' });
+    } });
+    const at = await g.start();
+    try {
+      expect(await ask(g, at, PAGE1)).toMatchObject({ ok: false });
+      expect(reports).toEqual([{ endpoint: PAGE1 }, { endpoint: PAGE1, answered: { status: 429, retryAfter: '7' } }]);
+      expect(t.seen).toHaveLength(1);
+      expect((g.runError as Error).message).toMatch(/^throttle refused \(rate_limited\)/);
+      expect(g.receipts.map((r) => [r.decision, r.response_status])).toEqual([['allowed', 429]]);
+    } finally { await g.stop(); }
+  });
   it('the run budget is spent per request and per byte; a breach refuses the request and is the run\'s error', async () => {
     let n = 0;
     const g = new EgressGateway(policy(), new FakeTransport(), { spendRequest: () => { n += 1; if (n > 1) throw new Error('run exceeded its 1-request budget'); } });
