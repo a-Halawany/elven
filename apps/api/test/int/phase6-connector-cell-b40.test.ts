@@ -41,7 +41,7 @@ import { VaultService } from '../../src/observation/vault/vault.service.js';
 import * as fault from '../../src/observation/fault-injection.js';
 import { Phase4Harness } from './phase4-helpers.js';
 import { inCommitContext } from './phase1-helpers.js';
-import { evaluateForApproval, B40_FIXTURES, B40_HOSTS, B40_REPLAY_ROOT, adapterPackage, sha256, srcV4Contract } from './phase6-b40-fixtures.js';
+import { evaluateForApproval, v4Blocks, B40_FIXTURES, B40_HOSTS, B40_REPLAY_ROOT, adapterPackage, sha256, srcV4Contract } from './phase6-b40-fixtures.js';
 
 process.env['EYE_CONNECTOR_REPLAY_ROOT'] = B40_REPLAY_ROOT;
 
@@ -88,7 +88,11 @@ const bind = (p: Row) => ({ package_id: String(p['package_id']), version: String
 async function adapterSource(label: string, pkg: { package_id: string; version: string; digest: string },
                              o: { mode?: 'replay' | 'live'; endpoints?: string[]; credentialRef?: string; credentialHeader?: string } = {}): Promise<string> {
   const key = `b40-cr-${label}-${uuidv7().slice(-8)}`;
-  const c = srcV4Contract({ sourceKey: key, kind: 'adapter', endpoints: o.endpoints ?? [B40_HOSTS.partner], replaySet: 'nordwerk-logistics-partner', mode: o.mode ?? 'replay', adapter: pkg });
+  const c = srcV4Contract({ sourceKey: key, kind: 'adapter', endpoints: o.endpoints ?? [B40_HOSTS.partner], replaySet: 'nordwerk-logistics-partner', mode: o.mode ?? 'replay', adapter: pkg,
+    /* B40 integration: §AP's authorize stage evaluates robots.txt for a LIVE v4 contract through the vetted client, which cannot reach this
+       harness's loopback partner (its synthetic name resolves nowhere — the gateway's transport substitution is the cell's, not robots');
+       a partner API under a bilateral agreement declares robots NOT APPLICABLE with its reason (the contract's own statement, D10's rule) */
+    ...(o.mode === 'live' ? { blocks: { acquisition_policy: { ...v4Blocks().acquisition_policy, robots: { mode: 'not_applicable' as const, reason: 'a partner API under a bilateral data agreement (SYNTHETIC) — no crawler policy governs it' } } } } : {}) });
   if (o.credentialRef !== undefined) {
     const so = c['security_and_operations'] as Row;
     c['security_and_operations'] = { ...so, credential_ref: o.credentialRef, credential_header: o.credentialHeader ?? 'authorization', authentication_method: 'a partner key, injected by the egress gateway' };
