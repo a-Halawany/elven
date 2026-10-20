@@ -13,10 +13,14 @@ import { LIBRARY } from '../../../../../lib/b80-seams';
 /* B80 cld */
 import { CldCatalogue } from './cld-fixtures';
 /* end B80 cld */
+/* B81 re */
+import { RE_RENDERED, ReCatalogue } from './re-fixtures';
+/* end B81 re */
 
 /** The library exports each folded part renders here (a part adds its names with its section). */
 const RENDERED = new Set<string>([
   /* B80 cld */ ...LIBRARY.data.exports, ...LIBRARY.layers.exports, /* end B80 cld */
+  /* B81 re */ ...RE_RENDERED, /* end B81 re */
 ]);
 
 export default function CataloguePage() {
@@ -39,6 +43,9 @@ export default function CataloguePage() {
       {/* B80 cld */}
       <CldCatalogue />
       {/* end B80 cld */}
+      {/* B81 re */}
+      <ReCatalogue />
+      {/* end B81 re */}
     </>
   );
 }

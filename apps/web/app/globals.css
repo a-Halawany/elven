@@ -588,3 +588,315 @@ button[aria-busy='true'] { --eye-button-cursor: progress; }
 }
 @media print { .eye-context-actions { display: none; } }
 /* end B80 cb */
+/* B81 ct — TERM and HELP PANEL (components/help.tsx; F-P7-E-18). Semantic tokens only; logical properties (the tooltip mirrors under RTL);
+   a border carries the layer in forced colours and print (no shadow-only edge). The term's underline is a border, never colour alone. */
+.eye-term-anchor { position: relative; display: inline; }
+.eye-term { display: inline-flex; align-items: baseline; gap: var(--eye-space-2); border-block-end: 1px dotted var(--eye-color-ink-muted); cursor: help; }
+.eye-term:focus-visible { outline: 2px solid var(--eye-border-focus); outline-offset: 2px; }
+.eye-term-tip { position: absolute; inset-block-start: calc(100% + var(--eye-space-4)); inset-inline-start: 0; z-index: 30; display: flex; flex-direction: column; gap: var(--eye-space-4);
+  min-inline-size: 14rem; max-inline-size: min(90vw, 26rem); background: var(--eye-color-surface-elevated); color: var(--eye-color-ink-default);
+  border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-md); box-shadow: var(--eye-elevation-2); padding: var(--eye-space-8) var(--eye-space-12);
+  font-size: var(--eye-type-body-sm); line-height: var(--eye-type-body-sm-line); white-space: normal; }
+.eye-term-tip[hidden] { display: none; }
+.eye-term-tip-label { font-weight: 650; color: var(--eye-color-ink-strong); }
+.eye-term-tip-definition, .eye-term-tip-version { color: var(--eye-color-ink-muted); }
+.eye-term-tip-mark { color: var(--eye-color-ink-strong); border-inline-start: 3px solid var(--eye-color-warning); padding-inline-start: var(--eye-space-4); }
+.eye-help { border: 1px solid var(--eye-color-border-default); border-inline-start: 4px solid var(--eye-color-accent-strong); border-radius: var(--eye-radius-md);
+  background: var(--eye-color-surface-secondary); padding: var(--eye-space-8) var(--eye-space-12); margin-block: var(--eye-space-8); font-size: var(--eye-type-body-sm); }
+.eye-help-title { margin-block: 0 var(--eye-space-4); font-size: var(--eye-type-label-md); color: var(--eye-color-ink-strong); }
+.eye-help-text, .eye-help-example, .eye-help-terms { margin-block: var(--eye-space-4); }
+.eye-help-key { font-weight: 600; color: var(--eye-color-ink-strong); }
+.eye-help-conditions ul { margin-block: var(--eye-space-2); padding-inline-start: var(--eye-space-24); }
+.eye-help-problem { color: var(--eye-color-ink-strong); border-inline-start: 3px solid var(--eye-color-warning); padding-inline-start: var(--eye-space-4); }
+.eye-help-detail > summary { cursor: pointer; }
+.eye-ct-registry-row[data-state='published'] { border-inline-start: 4px solid var(--eye-color-accent-strong); }
+@media (forced-colors: active) {
+  .eye-term { border-block-end-color: CanvasText; }
+  .eye-term-tip, .eye-help { border: 1px solid CanvasText; }
+  .eye-term-tip-mark, .eye-help-problem { border-inline-start-color: Mark; }
+}
+@media print { .eye-term-tip { display: none; } .eye-term { border-block-end: none; } }
+/* end B81 ct */
+/* B81 lyg */
+/* ── B81 §LY-G: THE RESPONSIVE GRID, DENSITY AND REGIONS (components/layout.tsx; the contract lib/layout-b81.ts). Semantic tokens only,
+   logical properties only (RTL mirrors). The breakpoints are lib/layout-b81 BREAKPOINTS: BP-01 < 640 (one column, the bottom navigation),
+   BP-02 640–959 (one canvas, the rail as glyphs), BP-03 960–1439 (the 12-column grid, the collapsible rail, one supporting panel), BP-04
+   1440–1919 (the persistent rail), BP-05 ≥ 1920. A region carries NO elevation — meaning is stated, never implied by depth (UX-19-004;
+   the elevation lint in layout-b81.test.ts reads this file). ── */
+
+/* BP-03: the rail shows its labels from 960 px (B80 collapsed them below 1024); below 960 the narrow class keeps the glyphs. */
+@media (min-width: 960px) and (max-width: 1023px) {
+  .eye-nav-label { position: static; inline-size: auto; block-size: auto; overflow: visible; clip-path: none; white-space: normal; }
+}
+/* BP-03: the person's collapsed rail (960–1439 only — persistent above, glyphs below); the toggle exists only there. */
+.eye-rail-toggle { display: none; }
+@media (min-width: 960px) and (max-width: 1439px) {
+  .eye-rail-toggle { display: inline-flex; }
+  [data-rail="collapsed"] .eye-nav-label { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  [data-rail="collapsed"] .eye-rail { inline-size: 3.5rem; }
+}
+
+/* BP-01: the compact navigation. The rail yields to it below 640 px ONLY while the shell renders it as its direct child (none: the rail
+   stays). A catalogue specimen shows at every width, in the page's flow. */
+.eye-bottom-nav { display: none; }
+.eye-bottom-nav--specimen { display: block; max-inline-size: 26rem; border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-md); }
+@media (max-width: 639px) {
+  .eye-shell:has(> .eye-bottom-nav) .eye-rail { display: none; }
+  .eye-bottom-nav {
+    display: block; position: sticky; inset-block-end: 0; z-index: 6;
+    background: var(--eye-color-surface-primary); border-block-start: 1px solid var(--eye-color-border-strong);
+  }
+}
+.eye-bottom-nav.eye-bottom-nav--specimen { position: static; }
+.eye-bottom-nav-list { display: flex; list-style: none; margin: 0; padding: 0; }
+.eye-bottom-nav-list > li { flex: 1 1 0; min-inline-size: 0; }
+.eye-bottom-nav-link {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--eye-space-2);
+  inline-size: 100%; min-block-size: var(--eye-size-control-lg); padding: var(--eye-space-4);
+  border: none; border-block-start: 3px solid transparent; background: transparent; color: var(--eye-color-ink-default);
+  font: inherit; font-size: var(--eye-type-label-sm); text-decoration: none; cursor: pointer;
+}
+.eye-bottom-nav-link[aria-current="page"] {
+  color: var(--eye-color-accent-strong); background: var(--eye-color-selection); border-block-start-color: var(--eye-color-accent-strong); font-weight: 650;
+}
+.eye-bottom-nav-label { max-inline-size: 100%; text-align: center; overflow-wrap: anywhere; }
+.eye-bottom-nav-more {
+  list-style: none; margin: 0; padding: var(--eye-space-8); display: grid; gap: var(--eye-space-4);
+  border-block-end: 1px solid var(--eye-color-border-default);
+}
+.eye-bottom-nav-more .eye-bottom-nav-link { flex-direction: row; justify-content: flex-start; }
+
+/* CMP-005…008: the primitives on the space tokens and the 12-column grid. */
+.eye-container { inline-size: 100%; margin-inline: auto; }
+.eye-stack { display: flex; flex-direction: column; margin: 0; padding: 0; min-inline-size: 0; }
+ul.eye-stack, ol.eye-stack { list-style: none; }
+.eye-cluster { display: flex; flex-wrap: wrap; min-inline-size: 0; }
+.eye-cluster--justify-start { justify-content: flex-start; }
+.eye-cluster--justify-end { justify-content: flex-end; }
+.eye-cluster--justify-between { justify-content: space-between; }
+.eye-cluster--justify-center { justify-content: center; }
+.eye-cluster--align-start { align-items: flex-start; }
+.eye-cluster--align-center { align-items: center; }
+.eye-cluster--align-baseline { align-items: baseline; }
+.eye-cluster--align-end { align-items: flex-end; }
+.eye-gap-4 { gap: var(--eye-space-4); }
+.eye-gap-8 { gap: var(--eye-space-8); }
+.eye-gap-12 { gap: var(--eye-space-12); }
+.eye-gap-16 { gap: var(--eye-space-16); }
+.eye-gap-24 { gap: var(--eye-space-24); }
+.eye-gap-32 { gap: var(--eye-space-32); }
+.eye-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); min-inline-size: 0; }
+.eye-grid[data-columns="1"] { grid-template-columns: minmax(0, 1fr); }
+.eye-span-1 { grid-column: span 1; } .eye-span-2 { grid-column: span 2; } .eye-span-3 { grid-column: span 3; } .eye-span-4 { grid-column: span 4; }
+.eye-span-5 { grid-column: span 5; } .eye-span-6 { grid-column: span 6; } .eye-span-7 { grid-column: span 7; } .eye-span-8 { grid-column: span 8; }
+.eye-span-9 { grid-column: span 9; } .eye-span-10 { grid-column: span 10; } .eye-span-11 { grid-column: span 11; } .eye-span-12 { grid-column: span 12; }
+@media (max-width: 959px) {
+  .eye-grid { grid-template-columns: minmax(0, 1fr); }
+  .eye-grid > [class*="eye-span-"] { grid-column: 1 / -1; }
+}
+
+/* REG-01…08: the regions and the composition (one reading order; the deferred inspector behind a named opener). No elevation here. */
+.eye-preferences-scope { display: contents; }
+.eye-composition { display: grid; gap: var(--eye-space-12); min-inline-size: 0; }
+.eye-region { min-inline-size: 0; }
+.eye-composition-problem { margin: 0; color: var(--eye-color-critical); font-weight: 600; }
+.eye-deferred { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--eye-space-4); }
+.eye-deferred-opener {
+  inline-size: 100%; min-block-size: var(--eye-size-control-lg); padding-inline: var(--eye-space-12); text-align: start;
+  border: 1px dashed var(--eye-color-border-strong); border-radius: var(--eye-radius-md); background: var(--eye-color-surface-secondary);
+  color: var(--eye-color-accent-default); font: inherit; cursor: pointer; overflow-wrap: anywhere;
+}
+
+/* DEN-01…03: the density in force on everything inside its scope; the NEAREST scope wins (an inspection table inside a strategic page).
+   DEN-02's values are today's rendering exactly (md controls, sm small controls, the 8 px cell padding). A consequential control
+   (.eye-button--lg, the 44 px consequential size) is never resized by a density (LAY-003). */
+[data-density="DEN-01"] { --eye-density-control: var(--eye-size-control-lg); --eye-density-control-small: var(--eye-size-control-lg); --eye-density-row: var(--eye-size-control-lg); --eye-density-pad: var(--eye-space-12); }
+[data-density="DEN-02"] { --eye-density-control: var(--eye-size-control-md); --eye-density-control-small: var(--eye-size-control-sm); --eye-density-row: auto; --eye-density-pad: var(--eye-space-8); }
+[data-density="DEN-03"] { --eye-density-control: var(--eye-size-control-sm); --eye-density-control-small: var(--eye-size-control-sm); --eye-density-row: var(--eye-size-control-sm); --eye-density-pad: var(--eye-space-4); }
+/* :where() keeps these at the specificity of the scope attribute alone, so the order below decides: ordinary, then small; never --lg */
+[data-density] :where(.eye-button:not(.eye-button--lg), .eye-input, .eye-cld-btn, .eye-cld-btn-quiet, .eye-cld-input, .eye-density-select) {
+  block-size: var(--eye-density-control);
+}
+[data-density] :where(.eye-button--sm:not(.eye-button--lg), .eye-cld-btn-sm) { block-size: var(--eye-density-control-small); }
+@media (min-width: 768px) {
+  [data-density] .eye-table td { padding-block: var(--eye-density-pad); block-size: var(--eye-density-row); }
+}
+.eye-density-switch { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: var(--eye-space-4); }
+.eye-density-label { font-size: var(--eye-type-label-sm); color: var(--eye-color-ink-muted); }
+.eye-density-select {
+  block-size: var(--eye-size-control-md); border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-md);
+  background: var(--eye-color-surface-primary); color: var(--eye-color-ink-default); font: inherit; padding-inline: var(--eye-space-4);
+}
+@media (forced-colors: active) {
+  .eye-bottom-nav-link[aria-current="page"] { forced-color-adjust: none; background: Highlight; color: HighlightText; border-block-start-color: HighlightText; }
+  .eye-deferred-opener, .eye-bottom-nav { border-color: CanvasText; }
+}
+@media print {
+  .eye-bottom-nav, .eye-rail-toggle, .eye-density-switch, .eye-deferred { display: none; }
+}
+/* end B81 lyg */
+/* B81 ha — the human-authority components (components/authority.tsx): semantic tokens only, logical properties only (RTL mirrors); every
+   state is a glyph and a word as well as a border (forced colours keep the borders with SYSTEM colours; print keeps the record, drops nothing). */
+.eye-authority-small { font-size: var(--eye-type-label-sm); color: var(--eye-color-ink-muted); }
+.eye-authority-line { margin-block: var(--eye-space-4); }
+.eye-authority-gate { border: 1px solid; border-radius: var(--eye-radius-sm); padding-inline: var(--eye-space-4); font-size: var(--eye-type-label-sm); font-weight: 650; white-space: nowrap; }
+.eye-authority-banner, .eye-authority-digest, .eye-authority-review, .eye-authority-contest {
+  border: 1px solid var(--eye-color-border-default); border-inline-start: 3px solid var(--eye-color-accent-default); border-radius: var(--eye-radius-md);
+  padding-block: var(--eye-space-8); padding-inline: var(--eye-space-12); margin-block: var(--eye-space-8); font-size: var(--eye-type-label-sm);
+}
+.eye-authority-banner[data-eligible='no'] { border-inline-start-color: var(--eye-color-warning); }
+.eye-authority-consequence { border-inline-start: 3px solid var(--eye-color-border-default); padding-inline-start: var(--eye-space-8); margin-block: var(--eye-space-8); font-size: var(--eye-type-label-sm); }
+.eye-authority-consequence p { margin-block: var(--eye-space-4); }
+.eye-authority-list { margin-block: 0; padding-inline-start: var(--eye-space-16); }
+.eye-authority-warn { color: var(--eye-color-warning); font-weight: 600; }
+.eye-authority-critical { color: var(--eye-color-critical); }
+.eye-authority-tag { border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-sm); padding-inline: var(--eye-space-4); font-size: var(--eye-type-label-sm); }
+.eye-authority-typed { display: grid; gap: var(--eye-space-4); max-inline-size: 40rem; margin-block: var(--eye-space-8); }
+.eye-authority-input { block-size: var(--eye-size-control-md); border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-md); padding-inline: var(--eye-space-8);
+  background: var(--eye-color-surface-primary); color: var(--eye-color-ink-default); font: inherit; }
+.eye-authority-input[aria-invalid='true'] { border-color: var(--eye-color-critical); border-width: 2px; }
+.eye-authority-wide { inline-size: min(28rem, 100%); }
+.eye-authority-record { border-block-end: 1px solid var(--eye-color-border-default); padding-block: var(--eye-space-4); }
+.eye-authority-signature { display: inline; }
+.eye-authority-details { display: inline-block; margin-inline-start: var(--eye-space-8); }
+.eye-authority-details[open] { display: block; margin-block: var(--eye-space-4); }
+@media (forced-colors: active) {
+  .eye-authority-banner, .eye-authority-digest, .eye-authority-review, .eye-authority-contest, .eye-authority-consequence, .eye-authority-gate, .eye-authority-tag { border-color: CanvasText; }
+  .eye-authority-input { border-color: ButtonText; }
+  .eye-authority-input[aria-invalid='true'] { border-color: Mark; }
+}
+/* end B81 ha */
+/* B81 ob — THE CANONICAL OBJECT HEADER (components/object.tsx: ObjectHeader, IdentityChip, VersionBadge, LifecycleView). Tokens only; logical
+   properties (RTL mirrors); the header WRAPS (no sideways scroll at 390 px or 200% zoom). UX-25-004: no selector here keys emphasis, elevation or
+   colour on a lifecycle, truth or approval state — every object header looks the same whatever it says. */
+.eye-object-header { border-block-end: 1px solid var(--eye-color-border-default); padding-block-end: var(--eye-space-12); margin-block-end: var(--eye-space-16); min-inline-size: 0; }
+.eye-object-title { font-size: var(--eye-type-heading-1); margin-block: var(--eye-space-4); overflow-wrap: anywhere; }
+.eye-object-title-2 { font-size: var(--eye-type-heading-2); }
+.eye-identity-chip { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--eye-space-8); font-size: var(--eye-type-label-sm); color: var(--eye-color-ink-muted); max-inline-size: 100%; }
+.eye-identity-ref { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--eye-space-4); min-inline-size: 0; }
+.eye-object-states { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--eye-space-8) var(--eye-space-16); font-size: var(--eye-type-body-sm); }
+.eye-lifecycle { overflow-wrap: anywhere; }
+.eye-lifecycle-term { color: var(--eye-color-ink-muted); font-size: var(--eye-type-label-sm); text-transform: uppercase; }
+.eye-lifecycle-label { font-weight: 600; }
+.eye-lifecycle-code, .eye-lifecycle-def, .eye-lifecycle-server { color: var(--eye-color-ink-muted); }
+.eye-version-number { font-family: var(--eye-font-mono); font-size: var(--eye-type-mono-sm); }
+.eye-object-unresolved { color: var(--eye-color-uncertain); font-weight: 600; }
+.eye-object-indeterminate { display: flex; flex-wrap: wrap; gap: var(--eye-space-8); align-items: baseline; border: 1px solid var(--eye-color-uncertain); border-radius: var(--eye-radius-md); padding: var(--eye-space-8) var(--eye-space-12); margin-block: var(--eye-space-8); }
+.eye-object-fields { margin-block: var(--eye-space-8); }
+.eye-object-links { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--eye-space-4) var(--eye-space-16); }
+.eye-object-commands { margin-block-start: var(--eye-space-8); }
+.eye-object-cmd-off { color: var(--eye-color-ink-muted); }
+.eye-object-absent summary { cursor: pointer; color: var(--eye-color-ink-muted); font-size: var(--eye-type-label-sm); margin-block-start: var(--eye-space-8); }
+.eye-object-absent ul { display: block; }
+.eye-object-absent li { padding-block: var(--eye-space-2); }
+.eye-object-versions caption { text-align: start; color: var(--eye-color-ink-muted); }
+.eye-object-pick { display: flex; flex-wrap: wrap; gap: var(--eye-space-8); align-items: end; margin-block: var(--eye-space-8); }
+@media (forced-colors: active) {
+  .eye-object-unresolved, .eye-object-cmd-off { color: GrayText; }
+  .eye-object-indeterminate { border-color: CanvasText; }
+}
+@media print { .eye-object-commands { display: none; } }
+/* end B81 ob */
+/* B81 re — B80's residues (§RE). Tokens only; logical properties.
+   THE ELEVATION BINDING (LAY-009 / -010 / -011): a layer's shadow is its USE alias — raised (elevation.1), overlay (elevation.2: drawer,
+   popover), blocking (elevation.3: dialog) — read from `data-elevation` (lib/controls-b81.ts ELEVATION_BINDING); never a raw level. Shadows
+   vanish in forced colours and print (the borders carry the layer there). */
+[data-elevation='none'] { box-shadow: none; }
+[data-elevation='raised'] { box-shadow: var(--eye-elevation-raised); }
+[data-elevation='overlay'] { box-shadow: var(--eye-elevation-overlay); }
+[data-elevation='blocking'] { box-shadow: var(--eye-elevation-blocking); }
+/* THE CONSEQUENTIAL TARGET (LAY-003): a Button from C2 is the 44px consequential control (size.control.lg via its use alias). */
+.eye-button[data-consequence='C2'], .eye-button[data-consequence='C3'], .eye-button[data-consequence='C4'] {
+  min-block-size: var(--eye-size-control-consequential); min-inline-size: var(--eye-size-control-consequential);
+}
+/* A governed control HELD by a frozen shell states why, beside it. */
+.eye-held-reason { color: var(--eye-color-warning); }
+/* The re-verification lapse: the page stays (its last valid read), its controls held, the way back that returns here. */
+.eye-shell-lapsed {
+  border-block-end: 2px solid var(--eye-color-warning); background: var(--eye-color-surface-secondary); color: var(--eye-color-ink-default);
+  padding-block: var(--eye-space-8); padding-inline: var(--eye-space-16);
+}
+.eye-truth-glyph { vertical-align: -1px; }
+.eye-re-bar-fixture { margin-block-end: var(--eye-space-12); }
+/* An upload source's evidence upload (CMP-040): a raised panel on the source page. */
+.eye-upload-panel {
+  background: var(--eye-color-surface-primary); border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-lg);
+  padding: var(--eye-space-16); margin-block-start: var(--eye-space-16); display: grid; gap: var(--eye-space-8); justify-items: start;
+}
+/* The person's saved table view (UX-22-002): one quiet line above the table, its two controls. */
+.eye-saved-view { display: flex; flex-wrap: wrap; align-items: center; gap: var(--eye-space-8); margin-block: var(--eye-space-8); }
+.eye-saved-view > .eye-help { flex: 1 1 24rem; }
+@media (forced-colors: active) {
+  [data-elevation] { box-shadow: none; }
+  .eye-shell-lapsed { border-block-end-color: CanvasText; }
+}
+@media print {
+  [data-elevation] { box-shadow: none; }
+}
+/* end B81 re */
+/* B81 lym */
+/* ── B81 §LY-M: THE COMMAND ENVIRONMENT (components/command-environment.tsx; the contract lib/windows-b81.ts). The operations room composes
+   on §LY-G's regions (above); these classes style its rows, its window commands and the presentation-only display. Semantic tokens only,
+   logical properties only (RTL mirrors), no elevation (meaning is stated in words: CONTROL SURFACE / MIRROR / PRESENTATION, FROZEN,
+   DIVERGED). Forced colours: the borders and the selected row keep system colours. ── */
+.eye-cmdenv-h1 { font-size: var(--eye-type-heading-1); margin-block-start: 0; }
+.eye-cmdenv-band { display: grid; gap: var(--eye-space-4); min-inline-size: 0; }
+.eye-cmdenv-band > p { margin: 0; }
+.eye-cmdenv-section { min-inline-size: 0; }
+.eye-cmdenv-title { font-size: var(--eye-type-heading-3); margin-block: 0 var(--eye-space-4); }
+.eye-cmdenv-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--eye-space-4); }
+.eye-cmdenv-rows > li { padding-block: var(--eye-space-4); padding-inline: var(--eye-space-8); border-inline-start: 3px solid transparent; overflow-wrap: anywhere; }
+.eye-cmdenv-rows > li[data-selected="true"] { border-inline-start-color: var(--eye-color-accent-strong); background: var(--eye-color-selection); }
+button.eye-cmdenv-row {
+  font: inherit; color: var(--eye-color-ink-default); background: transparent; border: 1px solid var(--eye-color-border-default);
+  border-radius: var(--eye-radius-sm); padding-block: var(--eye-space-2); padding-inline: var(--eye-space-8); min-block-size: var(--eye-size-control-md); cursor: pointer; text-align: start;
+}
+button.eye-cmdenv-row[aria-pressed="true"] { border-color: var(--eye-color-accent-strong); font-weight: 650; }
+.eye-cmdenv-commands { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--eye-space-8); }
+.eye-cmdenv-frozen { margin: 0; padding: var(--eye-space-8); border: 1px solid var(--eye-color-warning); border-inline-start-width: 4px; color: var(--eye-color-ink-strong); background: var(--eye-color-surface-secondary); }
+.eye-cmdenv-receipt { padding: var(--eye-space-8); border: 1px solid var(--eye-color-border-strong); background: var(--eye-color-surface-secondary); }
+[data-diverged="true"] { font-weight: 650; color: var(--eye-color-ink-strong); border-inline-start: 4px solid var(--eye-color-warning); padding-inline-start: var(--eye-space-8); }
+/* the presentation-only display: large type, no control, the banner always first */
+.eye-presentation-page { padding: var(--eye-space-24); background: var(--eye-color-canvas); color: var(--eye-color-ink-default); min-block-size: 100vh; }
+.eye-presentation { display: grid; gap: var(--eye-space-12); font-size: var(--eye-type-body-md); }
+.eye-presentation-banner { margin: 0; padding: var(--eye-space-12); border: 2px solid var(--eye-color-border-strong); background: var(--eye-color-surface-primary); font-size: var(--eye-type-heading-3); }
+.eye-presentation-withheld { padding: var(--eye-space-16); border: 2px dashed var(--eye-color-border-strong); color: var(--eye-color-ink-strong); }
+.eye-presentation-grid { display: grid; gap: var(--eye-space-16); grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); }
+@media (forced-colors: active) {
+  .eye-cmdenv-rows > li[data-selected="true"] { border-inline-start-color: Highlight; forced-color-adjust: none; background: Canvas; color: CanvasText; }
+  .eye-cmdenv-frozen, [data-diverged="true"], .eye-presentation-banner, .eye-presentation-withheld { border-color: CanvasText; }
+}
+/* end B81 lym */
+/* B81 si — the palette's four modes (Go to · Search · Ask · Command) and the federated search page. Tokens only; logical properties; the
+   mode is said in words and by its tab, never by colour alone; a command row is drawn apart (it opens a review, it never runs). */
+/* the palette inside the library's Dialog: never wider than the dialog's body (no sideways scroll at any width or at 200% zoom) */
+.eye-dialog-body > .eye-palette { inline-size: auto; max-inline-size: 100%; box-sizing: border-box; }
+.eye-palette-modes { display: flex; flex-wrap: wrap; gap: var(--eye-space-4); border-block-end: 1px solid var(--eye-color-border-default); margin-block-end: var(--eye-space-8); }
+.eye-palette-mode {
+  min-block-size: var(--eye-size-control-md); padding-inline: var(--eye-space-12); border: 0; border-block-end: 3px solid transparent; background: none;
+  color: var(--eye-color-ink-default); font: inherit; cursor: pointer;
+}
+.eye-palette-mode[aria-selected="true"] { border-block-end-color: var(--eye-color-accent-strong); color: var(--eye-color-accent-strong); font-weight: 650; }
+.eye-palette-mode:focus-visible { outline: 2px solid var(--eye-color-focus); outline-offset: 2px; }
+.eye-palette-prefix { font-family: var(--eye-font-mono); color: var(--eye-color-ink-muted); }
+.eye-palette-panel { display: grid; gap: var(--eye-space-8); min-inline-size: 0; }
+.eye-palette-panel .eye-palette-input { box-sizing: border-box; max-inline-size: 100%; }
+.eye-palette-option bdi { overflow-wrap: anywhere; }
+.eye-palette-reading { margin: 0; min-block-size: 1.25em; }
+.eye-palette-reason { margin: 0; padding: var(--eye-space-8); border-inline-start: 3px solid var(--eye-color-warning); background: var(--eye-color-surface-secondary); }
+.eye-palette-kind { font-size: var(--eye-type-label-sm); font-weight: 650; padding-inline: var(--eye-space-4); border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-sm); }
+.eye-palette-option[data-kind="command"] { border-inline-start-style: dashed; border-inline-start-color: var(--eye-color-border-strong); }
+.eye-palette-option[data-kind="command"] .eye-palette-kind { border-style: dashed; }
+.eye-search-clarify { border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-md); padding: var(--eye-space-12); }
+.eye-search-clarify fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: var(--eye-space-4); }
+.eye-search-hits { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--eye-space-8); }
+.eye-search-hit { border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-md); padding: var(--eye-space-8) var(--eye-space-12); }
+.eye-search-legs { display: flex; flex-wrap: wrap; gap: var(--eye-space-8); margin: 0; padding: 0; list-style: none; }
+.eye-search-legs li { border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-sm); padding-inline: var(--eye-space-8); }
+.eye-search-legs li[data-state="refused"], .eye-search-legs li[data-state="failed"] { border-style: dashed; }
+.eye-search-columns { display: grid; gap: var(--eye-space-16); grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); }
+@media (forced-colors: active) {
+  .eye-palette-mode[aria-selected="true"] { border-block-end-color: Highlight; }
+  .eye-palette-option[data-kind="command"], .eye-search-hit, .eye-search-clarify { border-color: CanvasText; }
+}
+/* end B81 si */

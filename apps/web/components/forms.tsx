@@ -67,14 +67,21 @@ function FieldFrame({ c, children, extraDescribed }: { c: ControlBase; children:
   );
 }
 
-/** CMP-033 — a text field (or number / email / url input). */
-export function Field(p: ControlBase & { value: string; onChange: (v: string) => void; type?: 'text' | 'number' | 'email' | 'url' | 'search' | 'date'; inputMode?: 'text' | 'numeric' | 'decimal'; autoComplete?: string; min?: number; max?: number }) {
+/* B81 re (UX-ADR-011): THE CONTROL SLOT — a page's own native control (a <select>, a <textarea>, a datetime-local, a checkbox group) inside
+   the library's field: the library owns the label (`<label htmlFor>` — its text the field's name, as the hosted suites select it), the
+   required mark, the help, the proposal, the error and their aria wiring (handed to the slot); the page supplies only the control. The 20
+   pre-B80 local `Field` helpers (the dg-lint-2 ratchet) migrate onto it. The input mode (value / onChange) is unchanged. */
+type FieldInputMode = { value: string; onChange: (v: string) => void; type?: 'text' | 'number' | 'email' | 'url' | 'search' | 'date'; inputMode?: 'text' | 'numeric' | 'decimal'; autoComplete?: string; min?: number; max?: number; children?: undefined };
+type FieldSlotMode = { children: (id: string, aria: Record<string, string | boolean | undefined>) => ReactNode; value?: undefined; onChange?: undefined; type?: undefined; inputMode?: undefined; autoComplete?: undefined; min?: undefined; max?: undefined };
+/* end B81 re */
+/** CMP-033 — a text field (or number / email / url input); B81 re: or the library's frame around a page's own control (the slot). */
+export function Field(p: ControlBase & (FieldInputMode | FieldSlotMode)) {
   return (
     <FieldFrame c={p}>
-      {(aria) => (
+      {(aria) => (p.children !== undefined ? p.children(p.id, aria) : (
         <input id={p.id} className="eye-input" type={p.type ?? 'text'} value={p.value} onChange={(e) => p.onChange(e.target.value)} disabled={p.disabled}
           inputMode={p.inputMode} autoComplete={p.autoComplete ?? 'off'} min={p.min} max={p.max} {...aria} />
-      )}
+      ))}
     </FieldFrame>
   );
 }

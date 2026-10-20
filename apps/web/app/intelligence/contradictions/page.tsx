@@ -16,13 +16,14 @@
  * Nothing here predicts a result: every row, assertion, case and receipt is rendered as the server returned it, and a
  * refusal is shown with the code and the message the server stated (UX-ADR-017).
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useShell } from '../layout';
 import { intelligence, type Adjudication, type ClaimRow, type ContradictionRow, type ReviewCase } from '../../../lib/intelligence';
 import { Empty, GovernedButton, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote,
   fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt, TruthBadge, LifecycleBadge } from '../../../components/ui';
+/* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../components/forms';
 
 type Row = Record<string, unknown>;
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
@@ -52,9 +53,6 @@ const critical = { color: 'var(--eye-color-critical)' } as const;
 const rowStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: 'var(--eye-space-8)' } as const;
 const linkButton = { font: 'inherit', background: 'none', border: 'none', color: 'var(--eye-color-accent-strong)', cursor: 'pointer', padding: 0, textDecoration: 'underline' } as const;
 
-function Field({ id, label, children }: { id: string; label: string; children: (id: string) => ReactNode }) {
-  return <div><label htmlFor={id} style={{ display: 'block' }}>{label}</label>{children(id)}</div>;
-}
 
 /**
  * One assertion of the pair, as the contradiction row names it and as the claim route served it. The version the row

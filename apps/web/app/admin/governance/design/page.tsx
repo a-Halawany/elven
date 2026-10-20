@@ -11,12 +11,13 @@
  * digest and the consequence, and needs a deliberate confirmation; a proposal is never styled like an approval. On a demonstration every
  * persona and record is SYNTHETIC; real acceptance by named independent authorities is R2 / H3. MET-034 stays unsupported (B108 → H3).
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ErrorNote, Panel, Receipt, Td, Th, inputStyle, tableStyle } from '../../../../components/ui';
 import { GovernedButton, Mono, fmtInstant } from '../../../../components/observation';
 import { LoopStageHeader } from '../../../../components/loop-stage-b107';
 import { acceptanceStateText, ageText, assetOwnerText, baselineStateText, conformanceText, dayText, dg, endOfDay, exceptionStateText, isId, latestOnly, shortDigest, stageText,
   type DomainRead, type Preview, type Receipt as Rcpt, type Workspace } from '../../../../lib/governance-dg-b107';
+/* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../../components/forms';
 
 type Row = Record<string, unknown>;
 type Err = { code: string; message: string; correlationId: string } | null;
@@ -26,9 +27,6 @@ const inForceStyle = { borderInlineStart: '4px solid var(--eye-color-accent-stro
 const gapStyle = { color: 'var(--eye-color-critical)', fontWeight: 600 };
 const muted = { color: 'var(--eye-color-ink-muted)', fontSize: 'var(--eye-type-body-sm)' };
 
-function Field({ id, label, children }: { id: string; label: string; children: (id: string) => ReactNode }) {
-  return <div style={{ marginBlockEnd: 'var(--eye-space-8)' }}><label htmlFor={id} style={{ display: 'block' }}>{label}</label>{children(id)}</div>;
-}
 
 export default function DesignGovernancePage() {
   const [ws, setWs] = useState<Workspace | null>(null);

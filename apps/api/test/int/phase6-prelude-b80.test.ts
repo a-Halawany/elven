@@ -28,7 +28,7 @@ describe('§0.1–§0.3 · the schema, the role, the vocabularies', () => {
     const v = await one(sql`select governance.artifact_kinds() as a, governance.signature_kinds() as s`);
     expect(v['a']).toEqual(expect.arrayContaining(['theme', 'design_asset', 'acceptance_record', 'requirement', 'role']));
     expect(v['s']).toEqual(expect.arrayContaining(['theme_certification', 'design_acceptance', 'acceptance_attestation', 'baseline_decision']));
-    expect((v['a'] as string[]).length).toBe(31);
+    expect((v['a'] as string[]).length).toBeGreaterThanOrEqual(31);   // B81 (0119) adds 'terminology'
     expect((v['s'] as string[]).length).toBe(12);
   });
 });

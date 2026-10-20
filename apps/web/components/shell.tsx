@@ -15,7 +15,8 @@
  *   HistoryNavigator  the tab's own back stack, the recent places, the last verified location, the person's SAVED place (the server's —
  *                     read when the panel opens, saved only when the person asks: `shell.navigation.save`), a copyable link. Rendered only
  *                     while open, so nothing of it competes with a page's own names.
- *   CommandPalette    Ctrl/⌘+K: navigation ONLY (B81 adds search and intent) — it hands off to the page, whose governed control acts.
+ *   CommandPalette    Ctrl/⌘+K: B81 §SI's modes — Go to · Search · Ask · Command; it navigates or hands a command off to its page's Command
+ *                     Review — it executes nothing (the page's governed control acts).
  *
  * THE BOUNDARY (PR-05-003, UX-09-004, UX-11-004, UX-15-004): the shell READS (identity.self.read, shell.navigation.read, prediction.read) and
  * writes nothing but the person's own navigation state when asked; navigation, dismissal and a link change presentation and focus only.
@@ -29,7 +30,10 @@ import { getSession, health, setSession } from '../lib/api';
 import { whoAmI, type Me } from '../lib/observation';
 import { clearWorkingDomain, readWorkingDomain, workingDomainFor, type WorkingDomain } from '../lib/working-domain';
 import { t, defaultLocale } from '../lib/i18n';
-import type { NavItem, ShellBase, WorkspaceKey, WorkspaceSpec } from '../lib/b80-seams';
+import type { NavItem, ShellBase, /* B81 si */ ShellScope, /* end B81 si */ WorkspaceKey, WorkspaceSpec } from '../lib/b80-seams';
+/* B81 si: the palette's modes and the deterministic interpreter's reading (pure — it calls nothing) */
+import { MODE_SPEC, PALETTE_MODES, interpret, modeItems, parseModePrefix, previewLine, type PaletteMode } from '../lib/intent-b81';
+/* end B81 si */
 import {
   EMPTY_HISTORY, activeHref, assertNavigationOnly, breadcrumbOf, decodeReturnToken, filterPalette, historyBack, historyForward, historyVerify,
   historyVisit, lastVerifiedLocation, movePaletteIndex, nextTabIndex, paletteEntries, parseHistory, readNavigation, safeLocation, saveNavigation,
@@ -40,7 +44,13 @@ import { DegradedBanner, ErrorNote, Receipt } from './ui';
 import { WorkingDomainChooser, WorkingDomainMark } from './working-domain';
 import { GlobalContextBar } from './context-bar';
 import { ThemeScope } from './theme';
+/* B81 integration (§LY-G): the person's density and rail, the compact navigation below 640 px */ import { BottomNavigation, DensitySwitch, PreferencesScope, RailToggle } from './layout'; /* end B81 integration */
 import { Dialog } from './layers';
+/* B81 re: the sign-in / deep-link return (UX-11-005) */
+import { loginHref } from '../lib/signin-return-b81';
+import { carriedViews } from '../lib/tableview-b81';
+import { ShellStatusContext } from '../lib/shell-status-b81';
+/* end B81 re */
 
 /* ── THE SLOTS (b80-seams AppShellSlots): §CB's context bar under the banner, §TK's ThemeScope around the surface ── */
 export interface ShellSlots {
@@ -57,11 +67,29 @@ export const SHELL_SLOTS: ShellSlots = {
 
 /* ── THE SHELL'S OWN CONTEXT (the per-layout `useShell()` wrappers stay the pages' API; these serve the library) ── */
 const BaseCtx = createContext<ShellBase | null>(null);
-const StatusCtx = createContext<ShellStatus | null>(null);
+/* B81 re: the status context lives in a leaf module (lib/shell-status-b81.ts) so the governed control can read it without an import cycle */
+const StatusCtx = ShellStatusContext;
+/* end B81 re */
 /** The shell's base (workspace, me, scope, roles, context) — null in the PLATFORM workspace and outside a shell. */
 export function useShellBase(): ShellBase | null { return useContext(BaseCtx); }
 /** What the shell can say about itself (phase, frozen, regions) — for a library control that must not act on an unverified state. */
 export function useShellStatus(): ShellStatus | null { return useContext(StatusCtx); }
+
+/* B81 re — THE SHELL'S RECOVERY SEAMS (PR-05-005, UX-09-005, UX-11-005):
+ *   · useShellRecovery(): what a page's own refusal offers (§DG's RecoveryPanel composes it) — the shell's LAST VERIFIED LOCATION and the
+ *     sign-in href that RETURNS HERE (`/login?next=<this place>`); null outside a shell.
+ *   · FreezeScope (lib/shell-status-b81.ts, re-exported here): a region that can only be MORE frozen than the shell, never less.
+ *   · the RE-VERIFICATION: when the tab becomes visible again (at most once a minute) the shell asks the server again who this is; a session
+ *     the server no longer confirms — or one that now names another principal — FREEZES the page in place (the last valid context kept on
+ *     screen, consequential controls held, the way back to sign-in that returns here), never a silent continue. */
+export interface ShellRecovery { lastVerified: { route: string; title: string } | null; signInHref: string }
+const RecoveryCtx = createContext<ShellRecovery | null>(null);
+export function useShellRecovery(): ShellRecovery | null { return useContext(RecoveryCtx); }
+export { FreezeScope } from '../lib/shell-status-b81';
+const REVERIFY_MS = 60_000;
+/** The place the person is on, for the sign-in return (the as-of query and its return token kept). */
+const hereHref = (pathname: string): string => (typeof window === 'undefined' ? loginHref(pathname).href : loginHref(window.location.pathname, window.location.search).href);
+/* end B81 re */
 
 const HISTORY_KEY = 'eye.shell.history';
 const FOCUS_KEY = 'eye.shell.focus';
@@ -101,23 +129,54 @@ export function AppShell({ workspace, children, provide, adapt, slots }: AppShel
   const mainRef = useRef<HTMLElement | null>(null);
   const slotSet = slots ?? SHELL_SLOTS;
 
-  useEffect(() => {
-    if (getSession() === null) { router.replace('/login'); return; }
-    setReady(true);
-    if (!platform) {
-      void (async () => {
-        const r = await whoAmI();
-        if (!r.ok || r.data === undefined) { setProblem(r.error?.message ?? 'the server did not confirm this session’s scope'); return; }
-        // The stored choice is read once the server has said who this is (never in a state initialiser: the shell pre-renders on the server).
-        setWorking(readWorkingDomain());
-        setMe(r.data.me);
-      })();
+  /* B81 re: ONE verification, run at entry and again on re-verification (the server is asked who this is; nothing else is called) */
+  const [lapsed, setLapsed] = useState<string | null>(null);
+  const verifiedAt = useRef(0);
+  const meRef = useRef<Me | null>(null);
+  useEffect(() => { meRef.current = me; }, [me]);
+  const verify = useCallback(async (mode: 'entry' | 'recheck') => {
+    if (getSession() === null) { router.replace(hereHref(pathname)); return; }
+    const r = await whoAmI();
+    verifiedAt.current = Date.now();
+    if (!r.ok || r.data === undefined) {
+      const why = r.error?.message ?? 'the server did not confirm this session’s scope';
+      if (mode === 'entry') setProblem(why); else setLapsed(`the server no longer confirms this session (${why})`);
+      return;
     }
+    if (mode === 'entry') {
+      // The stored choice is read once the server has said who this is (never in a state initialiser: the shell pre-renders on the server).
+      setWorking(readWorkingDomain());
+      setMe(r.data.me);
+      return;
+    }
+    const opened = meRef.current;
+    setLapsed(opened !== null && opened.principalId !== r.data.me.principalId ? 'this tab’s session now names another principal than the one this page was opened for' : null);
+  }, [router, pathname]);
+  /* end B81 re */
+  useEffect(() => {
+    /* B81 re: no session → the sign-in page, carrying the place asked for (`/login?next=…`; honoured there only as an in-app path) */
+    if (getSession() === null) { router.replace(loginHref(window.location.pathname, window.location.search).href); return; }
+    /* end B81 re */
+    setReady(true);
+    if (!platform) void verify('entry');
     const check = async () => { const h = await health(); setDegraded(h.status !== 'ok'); setHealthState(h.status); };
     void check();
     const id = setInterval(() => void check(), platform ? 10000 : 15000);
     return () => clearInterval(id);
-  }, [router, platform]);
+  }, [router, platform]); // eslint-disable-line react-hooks/exhaustive-deps -- `verify` is read at entry only
+
+  /* B81 re: RE-VERIFICATION when the tab is shown again (throttled); a lapse freezes the page in place */
+  useEffect(() => {
+    if (platform || me === null) return;
+    const recheck = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - verifiedAt.current < REVERIFY_MS) return;
+      void verify('recheck');
+    };
+    document.addEventListener('visibilitychange', recheck);
+    window.addEventListener('focus', recheck);
+    return () => { document.removeEventListener('visibilitychange', recheck); window.removeEventListener('focus', recheck); };
+  }, [platform, me, verify]);
+  /* end B81 re */
 
   // THE HISTORY STACK and THE ARRIVAL: each location is recorded in the tab's own stack; a `from=` token names the route back (PAT-26).
   useEffect(() => {
@@ -162,7 +221,10 @@ export function AppShell({ workspace, children, provide, adapt, slots }: AppShel
   // ONE base object per (principal, working domain): a page's effects keyed on its scope do not re-run on every shell render
   const base = useMemo<ShellBase | null>(() => (platform || me === null || me.homeTenantId === null || domainId === null ? null
     : { workspace, me, scope: { tenantId: me.homeTenantId, domainId }, roles: me.bindings.map((b) => b.roleCode), context: null }), [platform, me, domainId, workspace]);
-  const status = shellStatus({ session: ready, verified: platform ? ready : (me === null ? null : verified), problem, health: healthState });
+  /* B81 re: a lapsed re-verification FREEZES (unverified) while the page stays on screen with its last valid context */
+  const status = lapsed !== null ? shellStatus({ session: ready, verified: null, problem: lapsed, health: healthState })
+    : shellStatus({ session: ready, verified: platform ? ready : (me === null ? null : verified), problem, health: healthState });
+  /* end B81 re */
   useEffect(() => {
     if (!verified) return;
     setHistory((prev) => { const next = historyVerify(prev); store.write(HISTORY_KEY, JSON.stringify(next)); return next; });
@@ -177,7 +239,7 @@ export function AppShell({ workspace, children, provide, adapt, slots }: AppShel
         <p className="eye-shell-meta">
           Nothing of this workspace is shown until the server confirms who this is.{' '}
           {back !== null && <>The last verified location was <Link href={back.route}>{back.title || back.route}</Link>. </>}
-          <Link href="/login">Sign in again</Link>.
+          {/* B81 re: signing in again returns here */}<Link href={hereHref(pathname)}>Sign in again</Link>{/* end B81 re */}.
         </p>
       </main>
     );
@@ -214,6 +276,8 @@ export function AppShell({ workspace, children, provide, adapt, slots }: AppShel
   };
 
   const shell = (
+    /* B81 integration (§LY-G): the person's own presentation preferences (density, rail) — presentation never changes meaning */
+    <PreferencesScope scope={scope} roles={base?.roles ?? []}>
     <div className="eye-shell">
       <a className="eye-skip-link" href="#eye-main">Skip to main content</a>
       <DegradedBanner visible={degraded} detail={platform ? t('shell.degraded.api', defaultLocale) : 'the API reports degraded audit availability'} />
@@ -232,13 +296,22 @@ export function AppShell({ workspace, children, provide, adapt, slots }: AppShel
         )}
         {adapted.banner}
         <span className="eye-shell-end">
-          <button type="button" className="eye-link-button" aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K" title="Go to a place (Ctrl+K / ⌘K) — navigation only" onClick={() => setPaletteOpen(true)}>
-            Go to…
-          </button>
+          {/* B81 integration (§LY-G) */}<DensitySwitch compact /><RailToggle />{/* end B81 integration */}
+          {/* B81 si: the palette's four modes — nothing runs from it */}<button type="button" className="eye-link-button" aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K" title="Go to a place, search, ask or find a command (Ctrl+K / ⌘K) — nothing runs from the palette" onClick={() => setPaletteOpen(true)}>
+            Go to or search…
+          </button>{/* end B81 si */}
           <button type="button" className="eye-link-button" onClick={signOut}>{platform ? t('shell.logout', defaultLocale) : 'Sign out'}</button>
         </span>
       </header>
       {slotSet.contextBar?.(base)}
+      {/* B81 re: the lapse, stated where the page is — its controls held, the way back that returns here */}
+      {lapsed !== null && (
+        <div role="alert" className="eye-shell-lapsed" id="eye-shell-lapsed">
+          <strong>HELD — this session could not be re-verified.</strong> {lapsed}. What is shown is the last valid read; consequential controls on
+          this page are held until the server confirms who this is. <Link href={hereHref(pathname)}>Sign in again and return here</Link>.
+        </div>
+      )}
+      {/* end B81 re */}
       <div className="eye-shell-body">
         <WorkspaceRail spec={spec} nav={nav} pathname={pathname} caption={platform ? `WS-19 · ${t('app.workspace', defaultLocale)}` : undefined} />
         <main id="eye-main" ref={mainRef} tabIndex={-1} className="eye-shell-main">
@@ -255,16 +328,25 @@ export function AppShell({ workspace, children, provide, adapt, slots }: AppShel
           {children}
         </main>
       </div>
-      {paletteOpen && <CommandPalette entries={paletteEntries()} current={pathname} onNavigate={navigate} onClose={() => setPaletteOpen(false)} />}
+      {/* B81 integration (§LY-G): the compact navigation — a DIRECT child of .eye-shell (the rail yields to it only below 640 px) */}
+      <BottomNavigation spec={spec} nav={nav} pathname={pathname} />
+      {paletteOpen && <CommandPalette entries={paletteEntries()} current={pathname} onNavigate={navigate} onClose={() => setPaletteOpen(false)} /* B81 si */ scope={scope} /* end B81 si */ />}
     </div>
+    </PreferencesScope>
   );
   const Theme = slotSet.themeScope;
   const surface = Theme === undefined ? shell : <Theme {...themeScopeOf(scope)}>{shell}</Theme>;
+  /* B81 re: the recovery seam (the last verified location, the sign-in that returns here) beside the status */
+  const lastOk = lastVerifiedLocation(history, route);
+  const recovery: ShellRecovery = { lastVerified: lastOk === null ? null : { route: lastOk.route, title: lastOk.title }, signInHref: hereHref(pathname) };
   const inner = (
     <StatusCtx.Provider value={status}>
-      <BaseCtx.Provider value={base}>{surface}</BaseCtx.Provider>
+      <RecoveryCtx.Provider value={recovery}>
+        <BaseCtx.Provider value={base}>{surface}</BaseCtx.Provider>
+      </RecoveryCtx.Provider>
     </StatusCtx.Provider>
   );
+  /* end B81 re */
   return base !== null && provide !== undefined ? <>{provide(base, inner)}</> : inner;
 }
 
@@ -377,7 +459,9 @@ export function HistoryNavigator({ history, current, scope, workspace, onGo }: {
     const [path, query] = current.split('?');
     const r = await saveNavigation(scope, {
       workspace, expectedVersion: mine?.current.version ?? 0,
-      location: { route: path ?? current, ...(query ? { query } : {}), title: (history.entries[history.index]?.title ?? '').slice(0, 160) || undefined },
+      location: { route: path ?? current, ...(query ? { query } : {}), title: (history.entries[history.index]?.title ?? '').slice(0, 160) || undefined,
+        /* B81 re: saving a place keeps the person's saved table views (UX-22-002 — lib/tableview-b81.ts) */
+        ...(Object.keys(carriedViews(mine?.current)).length > 0 ? { filters: carriedViews(mine?.current) } : {}) },
       returnPath: back !== null && safeLocation(back.route) !== null ? back.route : null, focus: null,
       recent: history.entries.filter((e) => safeLocation(e.route) !== null).slice(-20).map((e) => ({ route: e.route, ...(e.title ? { title: e.title.slice(0, 160) } : {}) })),
       favorites: mine?.current.favorites ?? [],
@@ -437,36 +521,88 @@ export function HistoryNavigator({ history, current, scope, workspace, onGo }: {
   );
 }
 
-/** THE COMMAND PALETTE (CMP-015 at B80): navigation only; the active option follows the arrows; Escape closes (the library's Dialog, §CL-D). */
-export function CommandPalette({ entries, current, onNavigate, onClose }: { entries: PaletteEntry[]; current: string; onNavigate: (e: PaletteEntry) => void; onClose: () => void }) {
+/* B81 si — THE COMMAND PALETTE'S MODES (F-P7-E-02: UX-13-001, UX-13-003, UX-13-004, UX-13-005; B80's CMP-015 kept): Go to · Search · Ask ·
+   Command — four visibly and behaviourally distinct modes, chosen by the person (the tabs, or a typed prefix — `/` Search, `?` Ask, `>`
+   Command — said as the switch it is, never inferred silently). Go to navigates (B80's entries); Search hands the words as typed to the
+   federated search page (the governed reads run THERE, each its own audited read); Ask shows the deterministic interpreter's reading FIRST
+   (lib/intent-b81 — no model) and hands it to that page, where the reading is checked against what the person may see and an ambiguity
+   asks with nothing preselected; Command finds a command and HANDS IT OFF to its page's Command Review (§HA, `review=`). The palette
+   EXECUTES NOTHING and calls nothing: every item is checked by the evolved guard (lib/shell-b80 assertNavigationOnly → §HA's
+   assertNoExecution) and every pick is a navigation. The props contract is B80's, the additions optional (the compatibility gate). */
+type PaletteScope = ShellScope | null;
+type PaletteRow = { kind: string; href: string; label: string; detail: string; current: boolean };
+const KIND_WORD: Readonly<Record<string, string>> = { navigate: 'Go to', search: 'Search', ask: 'Ask', command: 'Command review' };
+/** THE COMMAND PALETTE (CMP-015; B81 §SI's modes): it navigates or hands off — nothing runs here; Escape closes (the library's Dialog, §CL-D). */
+export function CommandPalette({ entries, current, onNavigate, onClose, scope, initialMode }: { entries: PaletteEntry[]; current: string; onNavigate: (e: PaletteEntry) => void; onClose: () => void; scope?: PaletteScope; initialMode?: PaletteMode }) {
   assertNavigationOnly(entries);
+  const [mode, setMode] = useState<PaletteMode>(initialMode ?? 'goto');
   const [q, setQ] = useState('');
   const [index, setIndex] = useState(0);
-  const shown = filterPalette(entries, q);
-  const onKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) { e.preventDefault(); setIndex((i) => movePaletteIndex(i, e.key, shown.length)); }
-    else if (e.key === 'Enter') { e.preventDefault(); const pick = shown[Math.min(index, shown.length - 1)]; if (pick !== undefined) onNavigate(pick); }
+  const [switched, setSwitched] = useState<string | null>(null);
+  const tabs = useRef<Array<HTMLButtonElement | null>>([]);
+  const inDomain = scope !== undefined && scope !== null;
+  const modal = mode === 'goto' ? null : modeItems(mode, q, inDomain);
+  const rows: PaletteRow[] = mode === 'goto'
+    ? filterPalette(entries, q).map((e) => ({ kind: 'navigate', href: e.href, label: e.label, detail: e.detail, current: e.href === current }))
+    : (modal?.items ?? []).map((x) => ({ kind: x.kind, href: x.href, label: x.label, detail: x.detail, current: false }));
+  assertNavigationOnly([...rows.map((r) => ({ kind: r.kind, href: r.href, label: r.label, detail: r.detail, ...(r.kind === 'command' ? { action: modal?.items.find((i) => i.href === r.href)?.action ?? '' } : {}) }))]);
+  const reading = mode === 'ask' || mode === 'command' ? interpret(q, { mode }) : null;
+  const preview = reading !== null && q.trim() !== '' ? previewLine(reading) : null;
+  const pick = (r: PaletteRow) => onNavigate({ kind: 'navigate', href: r.href, label: r.label, detail: r.detail, workspace: shellOfPath(r.href), registry: null });
+  const choose = (m: PaletteMode, said: string | null = null) => { setMode(m); setIndex(0); setSwitched(said); };
+  const onChange = (raw: string) => {
+    const p = parseModePrefix(raw, mode);
+    if (p.switched) choose(p.mode, `Switched to ${MODE_SPEC[p.mode].label} (you typed “${MODE_SPEC[p.mode].prefix}”).`);
+    setQ(p.text); setIndex(0);
   };
-  const activeId = shown.length > 0 ? `eye-palette-opt-${Math.min(index, shown.length - 1)}` : undefined;
+  const onKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) { e.preventDefault(); setIndex((i) => movePaletteIndex(i, e.key, rows.length)); }
+    else if (e.key === 'Enter') { e.preventDefault(); const r = rows[Math.min(index, rows.length - 1)]; if (r !== undefined) pick(r); }
+  };
+  const onTabKey = (e: ReactKeyboardEvent<HTMLButtonElement>, i: number) => {
+    const rtl = typeof document !== 'undefined' && getComputedStyle(e.currentTarget).direction === 'rtl';
+    const next = nextTabIndex(i, e.key, PALETTE_MODES.map(() => false), { rtl });
+    if (next !== i && next >= 0) { e.preventDefault(); choose(PALETTE_MODES[next]!); tabs.current[next]?.focus(); }
+  };
+  const activeId = rows.length > 0 ? `eye-palette-opt-${Math.min(index, rows.length - 1)}` : undefined;
+  const spec = MODE_SPEC[mode];
   return (
-    <Dialog open title="Go to a place" onClose={() => onClose()} initialFocusId="eye-palette-input">
-      <div className="eye-palette">
+    <Dialog open title="Go to, search, ask or find a command" onClose={() => onClose()} initialFocusId="eye-palette-input">
+      <div className="eye-palette" data-mode={mode}>
+      <div role="tablist" aria-label="Palette mode" className="eye-palette-modes">
+        {PALETTE_MODES.map((m, i) => (
+          <button key={m} ref={(el) => { tabs.current[i] = el; }} type="button" role="tab" id={`eye-palette-mode-${m}`} aria-controls="eye-palette-panel" aria-selected={m === mode}
+            tabIndex={m === mode ? 0 : -1} className="eye-palette-mode" data-mode={m} onClick={() => choose(m)} onKeyDown={(e) => onTabKey(e, i)}
+            title={MODE_SPEC[m].prefix === '' ? MODE_SPEC[m].says : `${MODE_SPEC[m].says} (type “${MODE_SPEC[m].prefix}” to switch)`}>
+            {MODE_SPEC[m].label}{MODE_SPEC[m].prefix === '' ? null : <span className="eye-palette-prefix" aria-hidden="true"> {MODE_SPEC[m].prefix}</span>}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" id="eye-palette-panel" aria-labelledby={`eye-palette-mode-${mode}`} className="eye-palette-panel">
       <input
-        role="combobox" aria-label="Go to — type a place or a workspace" aria-expanded="true" aria-controls="eye-palette-list" aria-autocomplete="list"
+        role="combobox" aria-label={spec.inputLabel} aria-expanded="true" aria-controls="eye-palette-list" aria-autocomplete="list"
         id="eye-palette-input" aria-activedescendant={activeId} className="eye-palette-input" value={q}
-        onChange={(e) => { setQ(e.target.value); setIndex(0); }} onKeyDown={onKey}
+        onChange={(e) => onChange(e.target.value)} onKeyDown={onKey}
       />
-      <p className="eye-shell-meta">Navigation only — going to a place changes nothing; actions stay on their page, behind their own governed control.</p>
-      <ul role="listbox" id="eye-palette-list" aria-label="Places" className="eye-palette-list">
-        {shown.length === 0 && <li role="option" aria-selected={false} aria-disabled="true" className="eye-shell-meta">no place matches</li>}
-        {shown.map((e, i) => (
-          <li key={e.href} id={`eye-palette-opt-${i}`} role="option" aria-selected={i === Math.min(index, shown.length - 1)} aria-current={e.href === current ? 'page' : undefined}
-            className="eye-palette-option" onClick={() => onNavigate(e)} onMouseEnter={() => setIndex(i)}>
-            <span>{e.label}</span> <span className="eye-shell-meta">{e.detail} · <bdi className="eye-mono">{e.href}</bdi></span>
+      <p className="eye-shell-meta">{spec.says}</p>
+      <p role="status" aria-live="polite" className="eye-palette-reading">
+        {switched === null ? null : <>{switched} </>}
+        {preview === null ? null : <><strong>The reading:</strong> {preview}</>}
+        {reading !== null && q.trim() !== '' && reading.uncertainty.length > 0 ? <span className="eye-shell-meta"> — {reading.uncertainty.join('; ')}</span> : null}
+      </p>
+      {modal?.reason ? <p className="eye-palette-reason">{modal.reason}</p> : null}
+      <ul role="listbox" id="eye-palette-list" aria-label={mode === 'goto' ? 'Places' : mode === 'command' ? 'Commands — each opens its Command Review' : 'Searches'} className="eye-palette-list">
+        {rows.length === 0 && <li role="option" aria-selected={false} aria-disabled="true" className="eye-shell-meta">{mode === 'goto' ? 'no place matches' : 'nothing to offer yet'}</li>}
+        {rows.map((r, i) => (
+          <li key={`${r.kind}:${r.href}`} id={`eye-palette-opt-${i}`} role="option" aria-selected={i === Math.min(index, rows.length - 1)} aria-current={r.current ? 'page' : undefined}
+            className="eye-palette-option" data-kind={r.kind} onClick={() => pick(r)} onMouseEnter={() => setIndex(i)}>
+            <span className="eye-palette-kind">{KIND_WORD[r.kind] ?? r.kind}</span> <span>{r.label}</span> <span className="eye-shell-meta">{r.detail} · <bdi className="eye-mono">{r.href}</bdi></span>
           </li>
         ))}
       </ul>
       </div>
+      </div>
     </Dialog>
   );
 }
+/* end B81 si */

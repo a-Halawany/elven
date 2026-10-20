@@ -46,7 +46,8 @@ export interface GateReads {
 }
 export interface GateActWrites extends GateReads {
   gateAct(a: { actionId: string; tenantId: string; domainId: string; packageId: string; version: number; act: string; rationale: string; nextReviewAt: string | null;
-               infoRequest: string | null; packageDigest: string | null; actor: string; eventId: string; correlationId: string }): Promise<Row>;
+               infoRequest: string | null; packageDigest: string | null; actor: string; eventId: string; correlationId: string;
+               /* B81 ha: the defer's conditions and owner (0119 §HA; null = none stated / the deferring person) */ conditions?: string[] | null; owner?: string | null }): Promise<Row>;
 }
 export interface OverrideWrites extends GateReads {
   grantOverride(a: { overrideId: string; tenantId: string; domainId: string; packageId: string; version: number; kind: string; rationale: string; actor: string; eventId: string; correlationId: string }): Promise<Row>;
@@ -85,7 +86,8 @@ class GateCapabilityImpl extends GateCore implements GateActWrites, OverrideWrit
   }
   gateAct(a: Parameters<GateActWrites['gateAct']>[0]): Promise<Row> {
     return this.one(sql`select decision.gate_act(${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.packageId}::uuid, ${a.version}::int, ${a.act}, ${a.rationale},
-      ${a.nextReviewAt}::timestamptz, ${a.infoRequest}, ${a.packageDigest}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`, 'gate_act');
+      ${a.nextReviewAt}::timestamptz, ${a.infoRequest}, ${a.packageDigest}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid,
+      /* B81 ha */ ${a.conditions === undefined || a.conditions === null ? null : JSON.stringify(a.conditions)}::jsonb, ${a.owner ?? null}::uuid /* end B81 ha */) as r`, 'gate_act');
   }
   grantOverride(a: Parameters<OverrideWrites['grantOverride']>[0]): Promise<Row> {
     return this.one(sql`select decision.grant_override(${a.overrideId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.packageId}::uuid, ${a.version}::int, ${a.kind}, ${a.rationale},

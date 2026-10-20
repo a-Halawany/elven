@@ -2877,6 +2877,42 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B80 tk */
+  /* B81 ct */
+  /* B81 §CT (0119_b81_x_ct; F-P7-E-18: UX-69-001…006, UX-ADR-021, GLB-20, CNT-*). EXACT rules — no earlier rule's prefix is a prefix of
+     `governance.design.term.` (B80's `governance.design.theme.*` and B107's design rules are exact). THE PRODUCT LANGUAGE is the vendor's
+     (PLATFORM): a contributor of the design system (the Design System Authority, the product authority, the conformance steward, the
+     operations authority) PROPOSES and CORRECTS; the Design System Authority or the conformance steward REVIEWS (never the proposer — the
+     port re-checks); the Design System Authority APPROVES, PUBLISHES and RETIRES (the ports re-check the approver test: a named human, never
+     the proposer, never an agent). Every act human-gated. THE REGISTRY READ (drafts, reviews, the ledger) by the same four. THE PUBLISHED
+     CATALOGUE (what Term and HelpPanel render) by every human role of every context (B80's theme-in-force list, the PLATFORM authorities and
+     administrator) — an agent renders no page. The content lint (dg-lint-3) is B107's governance.design.evaluate. */
+  ...(() => {
+    const P = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'PLATFORM' });
+    const T = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'TENANT' });
+    const S = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'DOMAIN' });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    const dsa = [P('design_system_authority')];
+    const contributors = [P('design_system_authority'), P('product_authority'), P('conformance_steward'), P('operations_authority')];
+    const reviewers = [P('design_system_authority'), P('conformance_steward')];
+    const readers = [...contributors, P('platform_admin'), T('branding_authority'), T('tenant_admin'), T('auditor'), T('customer_sponsor'), T('onboarding_authority'), T('implementation_lead'),
+      T('retention_authority'), ...['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'extraction_manager',
+        'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner', 'record_authority', 'retention_steward', 'ontology_steward',
+        'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward', 'executive_operator', 'board_member', 'data_steward', 'domain_specialist',
+        'product_analytics_owner', 'privacy_officer', 'product_analyst'].map(S)];
+    return [
+      r('governance.design.term.read', contributors),
+      r('governance.design.term.catalogue.read', readers),
+      r('governance.design.term.propose', contributors, gate),
+      r('governance.design.term.correct', contributors, gate),
+      r('governance.design.term.review', reviewers, gate),
+      r('governance.design.term.approve', dsa, gate),
+      r('governance.design.term.publish', dsa, gate),
+      r('governance.design.term.retire', dsa, gate),
+    ];
+  })(),
+  /* end B81 ct */
   /* B80 clf */
   /* B80 §CL-F (0118_b80_x_clf; PAT-03, UX-21-002/-003). EXACT rules — no `shell` prefix rule exists. A FORM DRAFT is a person's own work in
      progress: every HUMAN role that authors anything may keep one (the identity.self.read list less the agents and the external
@@ -3114,6 +3150,116 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B80 sh */
+  /* B81 dg */
+  /* B81 §DG (0119_b81_x_dg; F-P7-E-19: HX-16, REL-12, UX-ADR-018, PAT-30). EXACT rules — no earlier rule is a prefix of shell.degraded.* (no
+     `shell` prefix rule exists). THE STATE (`shell.degraded.read`: the platform's and the domain's contracts with their live signals, the
+     undeclared degraded dependencies, the unavailable functions in force — what every page's banner and disabled actions read) by every HUMAN
+     role at its own scope (B80 §SH's list), audited. THE DECLARATION (`shell.degraded.contract.declare`): the operations authority (PLATFORM)
+     and the domain administrator (DOMAIN) — human-gated; the port re-checks the role at the dependency's scope (a platform dependency is the
+     operations authority's alone), the owner and the version. THE EXIT (`shell.degraded.exit`): a contract's OWNER may be any named person of
+     the scope, so every human role reaches the route — human-gated; the PORT admits only the owner and only once the signal reads recovered.
+     No agent role appears here. */
+  ...((): Rule[] => {
+    const platform = ['platform_admin', 'commercial_authority', 'product_authority', 'design_system_authority', 'independent_assurance', 'operations_authority', 'conformance_steward']
+      .map((role) => ({ role, atScope: 'PLATFORM' as Scope }));
+    const tenant = ['tenant_admin', 'auditor', 'retention_authority', 'branding_authority', 'customer_sponsor', 'implementation_lead', 'onboarding_authority']
+      .map((role) => ({ role, atScope: 'TENANT' as Scope }));
+    const domain = ['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'executive_operator',
+      'board_member', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner',
+      'record_authority', 'retention_steward', 'ontology_steward', 'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward',
+      'data_steward', 'domain_specialist', 'product_analytics_owner', 'privacy_officer', 'product_analyst', 'enablement_assessor', 'support_engineer']
+      .map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const people = [...platform, ...tenant, ...domain];
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    return [
+      { actionPrefix: 'shell.degraded.read', exact: true, requiredAnyRole: people, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.degraded.contract.declare', exact: true, requiredAnyRole: [{ role: 'operations_authority', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.degraded.exit', exact: true, requiredAnyRole: people, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B81 dg */
+  /* B81 lyg */
+  /* B81 §LY-G (0119_b81_x_lyg; F-P7-E-04: UX-14-002, DEN-01…03, UX-14-004). EXACT rules — no earlier rule is a prefix of shell.preferences.*
+     (no `shell` prefix rule exists). A LAYOUT PREFERENCE (density, the saved layout per composition) is the principal's OWN presentation
+     state: saved and read by the same HUMAN roles as B80 §SH's navigation state (the lists copied, not shared — each part's block stands
+     alone), at their own scope — PLATFORM, TENANT, DOMAIN — and by no agent, subscriber or external collaborator (the port re-checks that
+     the actor is the bound principal AND an active human). Not human-gated: choosing how things are shown is presentation, never a
+     consequential act (the port's human check and the region boundary are the rules). */
+  ...((): Rule[] => {
+    const platform = ['platform_admin', 'commercial_authority', 'product_authority', 'design_system_authority', 'independent_assurance', 'operations_authority', 'conformance_steward']
+      .map((role) => ({ role, atScope: 'PLATFORM' as Scope }));
+    const tenant = ['tenant_admin', 'auditor', 'retention_authority', 'branding_authority', 'customer_sponsor', 'implementation_lead', 'onboarding_authority']
+      .map((role) => ({ role, atScope: 'TENANT' as Scope }));
+    const domain = ['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'executive_operator',
+      'board_member', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner',
+      'record_authority', 'retention_steward', 'ontology_steward', 'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward',
+      'data_steward', 'domain_specialist', 'product_analytics_owner', 'privacy_officer', 'product_analyst', 'enablement_assessor', 'support_engineer']
+      .map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const people = [...platform, ...tenant, ...domain];
+    return [
+      { actionPrefix: 'shell.preferences.save', exact: true, requiredAnyRole: people, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.preferences.read', exact: true, requiredAnyRole: people, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B81 lyg */
+  /* B81 lym */
+  /* B81 §LY-M (0119_b81_x_lym; F-P7-E-04: UX-16-001…005, PAT-45, PAT-46, BP-05). EXACT rules — no earlier rule is a prefix of
+     shell.handoff.* or shell.presentation.* (no `shell` prefix rule exists). A SESSION HANDOFF moves a person's OWN review context between
+     their OWN signed-in sessions, and a PRESENTATION STATE is the person's OWN display: offered, claimed, revoked, published and read by the
+     same HUMAN roles as B80 §SH's navigation state (the lists copied, not shared — each part's block stands alone), at their own scope, and
+     by no agent, subscriber or external collaborator. The handoff's three acts are HUMAN-GATED (a transfer of the control surface is a
+     named person's deliberate act; the claim additionally requires the claiming device's own password session, re-checked in the port);
+     a publication is presentation, not a consequential act (the port's human, session and one-control-surface checks are the rules). None
+     of these grants anything: the claiming session acts under its own role bindings, re-read at the claim. */
+  ...((): Rule[] => {
+    const platform = ['platform_admin', 'commercial_authority', 'product_authority', 'design_system_authority', 'independent_assurance', 'operations_authority', 'conformance_steward']
+      .map((role) => ({ role, atScope: 'PLATFORM' as Scope }));
+    const tenant = ['tenant_admin', 'auditor', 'retention_authority', 'branding_authority', 'customer_sponsor', 'implementation_lead', 'onboarding_authority']
+      .map((role) => ({ role, atScope: 'TENANT' as Scope }));
+    const domain = ['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'executive_operator',
+      'board_member', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner',
+      'record_authority', 'retention_steward', 'ontology_steward', 'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward',
+      'data_steward', 'domain_specialist', 'product_analytics_owner', 'privacy_officer', 'product_analyst', 'enablement_assessor', 'support_engineer']
+      .map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const people = [...platform, ...tenant, ...domain];
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    return [
+      { actionPrefix: 'shell.handoff.offer', exact: true, requiredAnyRole: people, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.handoff.claim', exact: true, requiredAnyRole: people, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.handoff.revoke', exact: true, requiredAnyRole: people, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.handoff.read', exact: true, requiredAnyRole: people, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.presentation.publish', exact: true, requiredAnyRole: people, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.presentation.read', exact: true, requiredAnyRole: people, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B81 lym */
+  /* B81 si */
+  /* B81 §SI (0119_b81_x_si; F-P7-E-02: UX-13-002, UX-13-004, UX-13-005, PAT-15). EXACT rules — no earlier rule is a prefix of shell.search.* or
+     shell.intent.* (no `shell` prefix rule exists). A SAVED SEARCH (the exact result set of the person's own governed reads, with its policy
+     version and cutoff) and an INTENT RECORD (what was typed, how the deterministic interpreter read it, the alternatives offered, the
+     clarification and the person's choice) are the principal's OWN records: saved, recorded and read by the same HUMAN roles as B80 §SH's
+     navigation state (the lists copied, not shared — each part's block stands alone). The ports re-check that the actor is the bound
+     principal AND an active human, and that the context is a DOMAIN (search is a domain's reads). Not human-gated: recording what one
+     searched for or how one's words were read is a personal record, never a consequential act — a command found by the palette is only a
+     hand-off to its page's Command Review, whose own governed, human-gated action decides. */
+  ...((): Rule[] => {
+    const platform = ['platform_admin', 'commercial_authority', 'product_authority', 'design_system_authority', 'independent_assurance', 'operations_authority', 'conformance_steward']
+      .map((role) => ({ role, atScope: 'PLATFORM' as Scope }));
+    const tenant = ['tenant_admin', 'auditor', 'retention_authority', 'branding_authority', 'customer_sponsor', 'implementation_lead', 'onboarding_authority']
+      .map((role) => ({ role, atScope: 'TENANT' as Scope }));
+    const domain = ['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'executive_operator',
+      'board_member', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner',
+      'record_authority', 'retention_steward', 'ontology_steward', 'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward',
+      'data_steward', 'domain_specialist', 'product_analytics_owner', 'privacy_officer', 'product_analyst', 'enablement_assessor', 'support_engineer']
+      .map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const people = [...platform, ...tenant, ...domain];
+    return [
+      { actionPrefix: 'shell.search.save', exact: true, requiredAnyRole: people, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.search.read', exact: true, requiredAnyRole: people, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.intent.record', exact: true, requiredAnyRole: people, requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B81 si */
 ];
 
 /* B107 conformance */

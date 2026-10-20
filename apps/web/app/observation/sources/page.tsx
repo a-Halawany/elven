@@ -23,6 +23,7 @@ import { ErrorNote } from '../../../components/ui';
 import { BulkSelection, DataTable, type DataColumn } from '../../../components/data';
 import { Dialog } from '../../../components/layers';
 import { applyView, defaultView, type TableView } from '../../../lib/table-b80';
+/* B81 re: the register's view saved per person (UX-22-002) */ import { SavedViewControl } from './saved-view-b81'; /* end B81 re */
 import {
   acceptCommitted, acceptCurrent, actionGate, assess, clearRows, consequenceDigest, emptySelection, headerState, isSelected, runPerItem, selectExactly, toggle,
   type Candidate, type ItemOutcome, type Selection,
@@ -221,6 +222,10 @@ export default function SourcesPage() {
               </div>
             </BulkSelection>
           )}
+          {/* B81 re: the person's own view of this register — restored on arrival, saved when they ask (never the selection) */}
+          <SavedViewControl scope={scope} workspace="observation" route="/observation/sources" title="Registered sources" tableKey="sources"
+            columnKeys={COLUMNS.map((c) => c.key)} view={view} onRestore={setView} />
+          {/* end B81 re */}
           <DataTable
             label="Registered sources"
             caption={<>

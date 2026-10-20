@@ -29,13 +29,14 @@
  * forms are not prefilled from it. A retrieval refused while the projection is withdrawn AND the content tier does not
  * answer (503 EYE-DEG-001) is shown as every refusal is — `not served — HTTP 503 EYE-DEG-001 — …`, verbatim.
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
 import { graph, projectionNote, type MemoryDeriveIntake, type MemoryDerived, type MemoryIntake, type MemoryRetrieval, type MemoryRow } from '../../../lib/graph';
 import { CONTEXT_SUBJECT_KINDS, type ContextSubjectKind, type MemoryContext } from '../../../lib/graph';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton,
   fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+/* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../components/forms';
 
 type Row = Record<string, unknown>;
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
@@ -193,9 +194,6 @@ const h3 = { fontSize: 'var(--eye-type-heading-3)' } as const;
 const muted = { color: 'var(--eye-color-ink-muted)' } as const;
 const rowStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: 'var(--eye-space-8)' } as const;
 
-function Field({ id, label, children }: { id: string; label: string; children: (id: string) => ReactNode }) {
-  return <div><label htmlFor={id} style={{ display: 'block' }}>{label}</label>{children(id)}</div>;
-}
 const sel = (id: string, value: string, options: readonly string[], onChange: (v: string) => void) => (
   <select id={id} style={{ ...inputStyle, inlineSize: '100%' }} value={value} onChange={(e) => onChange(e.target.value)}>
     {options.map((o) => <option key={o} value={o}>{o}</option>)}

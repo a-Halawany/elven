@@ -67,7 +67,7 @@ test.describe('B80 §CL-D — the catalogue walk (data, layers, foundation)', ()
     ]);
     await page.getByRole('combobox', { name: 'Group by' }).first().selectOption('corridor');
     await expect(region.getByRole('rowheader').or(region.getByRole('columnheader', { name: /Corridor: Red Sea — 12 fixture rows/ })).first()).toBeVisible();
-    await page.getByRole('combobox', { name: 'Density' }).first().selectOption('compact');
+    await page.getByRole('main').getByRole('combobox', { name: 'Density', exact: true }).first().selectOption('compact');   // B81: the table's own (the shell carries "Display density")
     await shot(page, '01-table');
   });
 

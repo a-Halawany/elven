@@ -10,12 +10,20 @@
  * chunk, convergence or an operator: the run is diagnostic only and says what is missing) or FAILED. Compare the produced runs below.
  * Everything is read from the server and worded here; nothing is computed on the client. Every figure is SYNTHETIC.
  */
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useShell } from '../../layout';
 import { twins as twinsApi, type Twin } from '../../../../lib/twins';
 import { orchestration, stateMark, budgetUseLine, progressLine, stabilityLine, admissionLine, runLine, eventLine, type Experiment } from '../../../../lib/orchestration-b31';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant, textareaStyle } from '../../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../../components/ui';
+/* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../../components/forms';
+/* B81 har: the CANCEL through the library's COMMAND REVIEW with the TYPED confirmation (PAT-16), and §DG's RESIDUAL STATE after it (PAT-22) */
+import { CommandReview } from '../../../../components/authority';
+import { ResidualState } from '../../../../components/recovery';
+import { eligibility, rolesIn, typedPhrase } from '../../../../lib/authority-b81';
+import { HAR_ACT_ROLES, statedConsequence } from '../../../../lib/authority-har-b81';
+import { residualOf } from '../../../../lib/degraded-b81';
+/* end B81 har */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const muted = { color: 'var(--eye-color-ink-muted)' } as const;
@@ -27,9 +35,6 @@ const refusal = (r: { status: number; error?: { code: string; message: string } 
 const short = (id: string | null | undefined) => (id ? `${id.slice(0, 8)}…${id.slice(-6)}` : '—');
 const money = (v: unknown): string => (typeof v === 'string' ? `€${Number(v).toLocaleString('en-GB', { minimumFractionDigits: 2 })}` : '—');
 
-function Field({ id, label, children }: { id: string; label: string; children: (id: string) => ReactNode }) {
-  return <div><label htmlFor={id} style={{ display: 'block' }}>{label}</label>{children(id)}</div>;
-}
 const txt = (id: string, value: string, onChange: (v: string) => void, type = 'text') => (
   <input id={id} type={type} style={{ ...inputStyle, inlineSize: '100%' }} value={value} onChange={(e) => onChange(e.target.value)} />
 );
@@ -159,6 +164,7 @@ export default function SimulationCenterPage() {
   const [receipt, setReceipt] = useState<ReceiptT>(null);
   const [note, setNote] = useState('');
   const [reason, setReason] = useState('');
+  /* B81 har */ const [cancelReason, setCancelReason] = useState(''); /* end B81 har */
 
   const loadList = async (pick?: string) => {
     const r = await orchestration.list(scope);
@@ -217,6 +223,9 @@ export default function SimulationCenterPage() {
         <section aria-labelledby="exp-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
           <h2 id="exp-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>{v.title}</h2>
           <div><StateMark state={v.state} /></div>
+          {/* B81 har: after a cancellation, what stays (PAT-22): new work stopped; the completed paths stay recorded — nothing is rolled back */}
+          <ResidualState residual={residualOf(v as unknown as Record<string, unknown>)} />
+          {/* end B81 har */}
           <p>{v.question}</p>
           <DefinitionRow term="Contract">{v.method_ref} on twin <Mono>{short(v.twin_id)}</Mono> v{v.twin_version}{v.scenario_id ? <> · scenario <Mono>{short(v.scenario_id)}</Mono> branch <Mono>{short(v.scenario_branch_id)}</Mono></> : ' · no scenario (a shock is hypothetical)'} · seed {v.seed} · {v.paths} paths in chunks of {v.chunk_size}</DefinitionRow>
           <DefinitionRow term="Budget"><span aria-label="budget use">{budgetUseLine(v.budget_use)}</span> · digest <Mono>{v.budget_digest.slice(0, 12)}…</Mono>{v.approved_by ? <span aria-label="approval"> · approved by <Mono>{short(v.approved_by)}</Mono> {fmtInstant(v.approved_at)} — {v.approval_note}</span> : <span aria-label="approval"> · NOT APPROVED</span>}</DefinitionRow>
@@ -271,13 +280,25 @@ export default function SimulationCenterPage() {
           {v.state === 'approved' && canOperate ? (
             <div style={{ marginBlockStart: 'var(--eye-space-12)' }}><GovernedButton label="Start (admission, then the run opens)" pendingLabel="starting" onRun={() => act('the start', () => orchestration.start(scope, v.experiment_id) as never)} /></div>
           ) : null}
-          {['declared', 'approved', 'running', 'paused'].includes(v.state) && canOperate ? (
+          {['running', 'paused'].includes(v.state) && canOperate ? (
             <div style={{ ...grid, marginBlockStart: 'var(--eye-space-12)', alignItems: 'end' }}>
-              <Field id="op-reason" label="Reason (a pause 4+, a cancellation 8+ characters)">{(id) => txt(id, reason, setReason)}</Field>
+              <Field id="op-reason" label="Reason (a pause 4+ characters)">{(id) => txt(id, reason, setReason)}</Field>
               {v.state === 'running' ? <GovernedButton label="Pause" pendingLabel="pausing" variant="quiet" disabled={reason.trim().length < 4} onRun={() => act('the pause', () => orchestration.pause(scope, v.experiment_id, reason.trim()) as never)} /> : null}
               {v.state === 'paused' ? <GovernedButton label="Resume" pendingLabel="resuming" onRun={() => act('the resumption', () => orchestration.resume(scope, v.experiment_id, reason.trim()) as never)} /> : null}
-              <GovernedButton label="Cancel the experiment" pendingLabel="cancelling" variant="critical" disabled={reason.trim().length < 8} onRun={() => act('the cancellation', () => orchestration.cancel(scope, v.experiment_id, reason.trim()) as never)} />
             </div>
+          ) : null}
+          {['declared', 'approved', 'running', 'paused'].includes(v.state) ? (
+            /* B81 har: the cancellation through the COMMAND REVIEW — the approved budget's digest (its short form is the typed phrase), the stated
+               consequence (it cannot be undone; the completed paths stay recorded, nothing is rolled back), the operator's eligibility, the reason */
+            <div style={{ marginBlockStart: 'var(--eye-space-12)' }}>
+              <CommandReview action="simulation.experiment.cancel" object={{ type: 'experiment', id: v.experiment_id, version: null, title: v.title, state: v.state }}
+                digest={v.budget_digest} eligibility={eligibility({ action: 'simulation.experiment.cancel', me: me.principalId, isHuman: true, roles: rolesIn(me.bindings, scope), requiredRoles: HAR_ACT_ROLES['simulation.experiment.cancel']!, state: v.state, openStates: ['declared', 'approved', 'running', 'paused'] })}
+                consequence={statedConsequence('simulation.experiment.cancel')} typedPhrase={typedPhrase({ digest: v.budget_digest, name: v.title })}
+                rationale={{ value: cancelReason, onChange: setCancelReason, min: 8, label: 'Reason for the cancellation (8+ characters)' }}
+                actionLabel="Cancel the experiment" pendingLabel="cancelling" variant="critical"
+                onRun={async () => { await act('the cancellation', () => orchestration.cancel(scope, v.experiment_id, cancelReason.trim()) as never); setCancelReason(''); }} />
+            </div>
+            /* end B81 har */
           ) : null}
         </section>
       )}

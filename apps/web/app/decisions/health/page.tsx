@@ -14,7 +14,7 @@
  * becomes real only as a new definition version two people approve. The forms are shown to everyone; the server decides who may, and its
  * refusal is shown as it states it.
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
 import {
   health as api, APPROVER_ROLES, CHALLENGE_KINDS, PROPOSER_ROLES, barPercent, changeMark, coverageWords, freshnessBadge, gamingFlagWords, parseModel, scoreWords, sensitivityWords,
@@ -25,6 +25,7 @@ import {
 } from '../../../lib/health';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+/* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../components/forms';
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 type Detail = HealthSnapshot & { result: HealthResult; components: HealthComponent[]; changes: HealthChange[] };
@@ -42,9 +43,6 @@ const num = (v: number | null | undefined, digits = 2) => (typeof v === 'number'
 function Mark({ m }: { m: { glyph: string; token: string; text: string } }) {
   return <span style={{ color: `var(${m.token})`, border: `1px solid var(${m.token})`, borderRadius: 'var(--eye-radius-sm)', paddingInline: 'var(--eye-space-4)', fontSize: 'var(--eye-type-label-sm)', fontWeight: 650, whiteSpace: 'nowrap' }}>
     <span aria-hidden="true">{m.glyph}</span> {m.text}</span>;
-}
-function Field({ id, label, children }: { id: string; label: string; children: (id: string) => ReactNode }) {
-  return <div><label htmlFor={id} style={{ display: 'block' }}>{label}</label>{children(id)}</div>;
 }
 
 /** The 0–100 bar with the band floors marked; no bar at all for an indeterminate value. The words beside it carry the same facts. */

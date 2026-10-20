@@ -14,17 +14,30 @@
 import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
 import { intelligence, type ReviewCase } from '../../../lib/intelligence';
-import { Empty, GovernedButton, LiveStatus, Mono, ScrollBox, cardStyle,
+import { Empty, LiveStatus, Mono, ScrollBox, cardStyle,
   textareaStyle, fmtInstant } from '../../../components/observation';
+/* B81 har (PAT-06): the decision through the library's COMMAND REVIEW, labelled with the authority its PDP rule gives it — extraction review
+   authority, never decision authority — and the decided case as a REVIEW RECORD */
+import { CommandReview, ReviewRecord } from '../../../components/authority';
+import { eligibility, rolesIn, type ReviewRecordModel } from '../../../lib/authority-b81';
+import { HAR_ACT_ROLES, INTELLIGENCE_DECISIONS, INTELLIGENCE_LABEL, INTELLIGENCE_REVIEW_AUTHORITY, extractionReviewRecord, statedConsequence, type IntelligenceDecision } from '../../../lib/authority-har-b81';
+import { reviewDigest } from '../../../lib/forms-b80';
+/* end B81 har */
 
 export default function ReviewPage() {
-  const { scope, isExtractionManager } = useShell();
+  const { scope, me, isExtractionManager } = useShell();
   const [queue, setQueue] = useState<ReviewCase[] | null>(null);
   const [active, setActive] = useState<ReviewCase | null>(null);
   const [reason, setReason] = useState('');
   const [value, setValue] = useState('');
   const [receipt, setReceipt] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  /* B81 har: the decision chosen (approve, correct, reject — distinct acts, HX-12), the digest of the case AS SHOWN, the last decided record */
+  const [decision, setDecision] = useState<IntelligenceDecision>('approve');
+  const [caseDigest, setCaseDigest] = useState<string | null>(null);
+  const [record, setRecord] = useState<ReviewRecordModel | null>(null);
+  useEffect(() => { setCaseDigest(null); if (active !== null) void reviewDigest(active).then(setCaseDigest); }, [active]);
+  /* end B81 har */
 
   const load = async () => {
     const r = await intelligence.reviewQueue(scope);
@@ -44,9 +57,13 @@ export default function ReviewPage() {
       ? { object_value: value.trim() } : undefined;
     const r = await intelligence.decideReview(scope, active.case_id, decision, reason, corrected);
     if (!r.ok || r.data === undefined) {
-      setProblem(r.error?.message ?? 'the decision was refused');
-      return;
+      const m = r.error?.message ?? 'the decision was refused';
+      setProblem(m);
+      throw new Error(m);
     }
+    /* B81 har: the decided case as a review record — the reviewer is the acting principal the receipt binds; the state is the server's */
+    setRecord(extractionReviewRecord(active, r.data.review, me.principalId, reason.trim(), caseDigest));
+    /* end B81 har */
     setReceipt(
       `${r.data.review.state}${r.data.review.newVersion === null ? ''
         : ` — the claim is now version ${r.data.review.newVersion}; the prior version is unchanged`}`
@@ -68,6 +85,7 @@ export default function ReviewPage() {
       </p>
 
       {receipt === null ? null : <LiveStatus>{receipt}</LiveStatus>}
+      {/* B81 har */}{record === null ? null : <ReviewRecord record={record} />}{/* end B81 har */}
       {problem === null ? null : <LiveStatus assertive>{problem}</LiveStatus>}
 
       {queue.length === 0 ? (
@@ -107,7 +125,7 @@ export default function ReviewPage() {
                 <td data-label="Decide">
                   <button
                     type="button"
-                    onClick={() => { setActive(c); setReason(''); setValue(''); }}
+                    onClick={() => { setActive(c); setReason(''); setValue(''); setDecision('approve'); }}
                     disabled={!isExtractionManager}
                     title={isExtractionManager ? undefined
                       : 'deciding a review case needs the extraction_manager role in this domain'}
@@ -148,26 +166,27 @@ export default function ReviewPage() {
               />
             </>
           )}
-          <div style={{ display: 'flex', gap: 'var(--eye-space-8)', marginBlockStart: 'var(--eye-space-16)', flexWrap: 'wrap' }}>
-            <GovernedButton
-              label="Approve as extracted" pendingLabel="approving…"
-              onRun={() => decide('approve')} disabled={reason.trim().length < 8}
-            />
-            {active.claim_object_id === null ? null : (
-              <GovernedButton
-                label="Correct — admits a new version" pendingLabel="correcting…"
-                onRun={() => decide('correct')} disabled={reason.trim().length < 8}
-              />
-            )}
-            <GovernedButton
-              label="Reject" pendingLabel="rejecting…" variant="critical"
-              onRun={() => decide('reject')} disabled={reason.trim().length < 8}
-            />
-            <button type="button" onClick={() => setActive(null)}
-              style={{ background: 'none', border: 'none', color: 'var(--eye-color-accent-default)', cursor: 'pointer' }}>
-              Cancel
-            </button>
-          </div>
+          {/* B81 har: the decision through the COMMAND REVIEW — the case as shown (its digest), the stated consequence of the chosen act,
+              the authority its PDP rule gives (extraction review — NOT decision authority), eligibility; the reason the server requires */}
+          <p className="eye-authority-small"><strong>Authority:</strong> {INTELLIGENCE_REVIEW_AUTHORITY.label} ({INTELLIGENCE_REVIEW_AUTHORITY.rule} — {INTELLIGENCE_REVIEW_AUTHORITY.basis}). {INTELLIGENCE_REVIEW_AUTHORITY.scope}.</p>
+          <CommandReview action={INTELLIGENCE_REVIEW_AUTHORITY.rule} object={{ type: 'review case', id: active.case_id, version: active.claim_version, title: active.queued_reason === 'abstained' ? 'An abstention (no claim was made)' : `A claim ${active.queued_reason.replace(/_/g, ' ')}`, state: active.state }}
+            digest={caseDigest} eligibility={eligibility({ action: INTELLIGENCE_REVIEW_AUTHORITY.rule, me: me.principalId, isHuman: true, roles: rolesIn(me.bindings, scope), requiredRoles: HAR_ACT_ROLES[INTELLIGENCE_REVIEW_AUTHORITY.rule]!, state: active.state, openStates: ['queued'] })}
+            consequence={statedConsequence(`${INTELLIGENCE_REVIEW_AUTHORITY.rule}:${decision}`)}
+            extraReasons={reason.trim().length < 8 ? ['state your reason (at least 8 characters)'] : []}
+            actionLabel={INTELLIGENCE_LABEL[decision]} pendingLabel="deciding…" variant={decision === 'reject' ? 'critical' : 'primary'}
+            onRun={() => decide(decision)}>
+            <fieldset style={{ border: 'none', padding: 0, marginBlockStart: 'var(--eye-space-8)' }}>
+              <legend>The decision (each is its own recorded act)</legend>
+              {INTELLIGENCE_DECISIONS.filter((d) => d !== 'correct' || active.claim_object_id !== null).map((d) => (
+                <label key={d} style={{ marginInlineEnd: 'var(--eye-space-12)' }}><input type="radio" name="review-decision" checked={decision === d} onChange={() => setDecision(d)} /> {INTELLIGENCE_LABEL[d]}</label>
+              ))}
+            </fieldset>
+          </CommandReview>
+          <button type="button" onClick={() => setActive(null)}
+            style={{ background: 'none', border: 'none', color: 'var(--eye-color-accent-default)', cursor: 'pointer' }}>
+            Cancel
+          </button>
+          {/* end B81 har */}
         </section>
       )}
     </>

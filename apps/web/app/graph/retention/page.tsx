@@ -44,7 +44,7 @@
  * expired package, an unbound credential reference — is shown in the server's own words with its code. No credential VALUE
  * is ever shown, sent or held here: a reference's name and its readiness only.
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
 import {
   retention, RETENTION_CLASSIFICATIONS, RETENTION_DESTINATION_KINDS, RETENTION_KEY_PURPOSES, RETENTION_KINDS, RETENTION_TARGET_KINDS,
@@ -55,6 +55,7 @@ import {
 } from '../../../lib/graph';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+/* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../components/forms';
 
 type Row = Record<string, unknown>;
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
@@ -267,9 +268,6 @@ const rowStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minma
 const controlRow = { marginBlockStart: 'var(--eye-space-8)' } as const;
 const wide = { ...inputStyle, inlineSize: '100%' } as const;
 
-function Field({ id, label, children }: { id: string; label: string; children: (id: string) => ReactNode }) {
-  return <div><label htmlFor={id} style={{ display: 'block' }}>{label}</label>{children(id)}</div>;
-}
 function Sel<T extends string>({ id, value, options, onChange }: { id: string; value: T; options: readonly T[]; onChange: (v: T) => void }) {
   return (
     <select id={id} style={wide} value={value} onChange={(e) => onChange(e.target.value as T)}>
