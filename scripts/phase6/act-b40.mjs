@@ -1050,8 +1050,11 @@ console.log('\nB40-6 THE RECORDS — B40\'s components owned and approved by the
     DBL = await q1(`select baseline_id::text id, version, state, digest from governance.design_baselines where title = $1 order by version desc limit 1`, [DBL_TITLE]);
   } else if (DBL) note(`the B40 design baseline ${short(DBL.id)} v${DBL.version} stands — an earlier run (${DBL.state})`);
   if (DBL?.state === 'attested' && EVAL) {
-    const exercises = [
-      ['scripts/phase6/act-b40.mjs', 'the B40 act — the journeys of both chapters'], ['e2e/phase6-b40.demo.spec.ts', 'the B40 walk'],
+    const REQUIRED = [['apps/api/test/int/phase6-acceptance-b40.test.ts', 'THE JOURNEY HARNESS of ch9 and ch16 (§AC): positive, refusal, stale, unauthorized-role, cross-tenant, correction, replay and fault journeys; the corpus, quarantine-escape, custody, downstream non-use, evidence-restore and revocation exercises'],
+      ['e2e/phase6-b40.demo.spec.ts', 'the B40 walk — scenes B40-1 … B40-5 in the browser']];
+    for (const [f] of REQUIRED) if (!existsSync(join(SELF_ROOT, f))) bad(`the journey-harness evidence ${f} is not in this tree — the acceptance records cite it`);
+    const exercises = [...REQUIRED,
+      ['scripts/phase6/act-b40.mjs', 'the B40 act — the journeys of both chapters, demonstrated'],
       ['apps/api/test/int/phase6-registry-b40.test.ts', 'ch9: registration, approval, revocation and downstream impact; the revocation drill (rights revoked while an export is queued, A9)'],
       ['apps/api/test/int/phase6-intake-b40.test.ts', 'ch16: positive and adversarial intake, reviewer separation, the upload approval, fail closed (F48/F49)'],
       ['apps/api/test/unit/content-inspector-b40.test.ts', 'ch16: the active-content corpus (the inspector\'s rule set)'],
@@ -1085,7 +1088,9 @@ console.log('\nB40-6 THE RECORDS — B40\'s components owned and approved by the
     }
     const recs = await q(`select acceptance_id::text id, tuple ->> 'journey' j, state, claim from governance.design_acceptances a where tenant_id = $1 and domain_id = $2 and (tuple ->> 'journey', tuple ->> 'capability') in (($3, $4), ($5, $6))
         and version = (select max(version) from governance.design_acceptances x where x.acceptance_id = a.acceptance_id)`, [T, D, ...CHAPTERS.flatMap((c) => [c[0], c[1]])]);
-    (recs.length === CHAPTERS.length && recs.every((r) => r.state === 'accepted' && r.claim === 'demonstration') ? ok : bad)(`the design acceptance DEMONSTRATION records ch9 (F-P1-01) and ch16 (F-P1-03), each attested by L. Haddad (design), H. Achterberg (assurance) and W. Zielińska (customer): ${lines.join(', ')} — ${recs.length} records, claim ${[...new Set(recs.map((r) => r.claim))].join('/')}; ${fileEv.length} exercise harness(es) linked as evidence; the signed scope-specific records are B111 → H3/R2`);
+    const cited = recs.length ? await q(`select e ->> 'ref' ref from governance.design_acceptances a, jsonb_array_elements(a.evidence) e where a.acceptance_id = any($1::uuid[]) and e ->> 'kind' = 'journey_harness'`, [recs.map((r) => r.id)]) : [];
+    const citesAll = REQUIRED.every(([f]) => recs.every(() => cited.filter((c) => String(c.ref).startsWith(f)).length >= recs.length));
+    (recs.length === CHAPTERS.length && recs.every((r) => r.state === 'accepted' && r.claim === 'demonstration') && citesAll ? ok : bad)(`the design acceptance DEMONSTRATION records ch9 (F-P1-01) and ch16 (F-P1-03), each attested by L. Haddad (design), H. Achterberg (assurance) and W. Zielińska (customer): ${lines.join(', ')} — ${recs.length} records, claim ${[...new Set(recs.map((r) => r.claim))].join('/')}; ${fileEv.length} journey-harness evidence item(s) linked (the §AC harness phase6-acceptance-b40 and the walk among them${citesAll ? '' : ' — NOT cited by every record'}); the signed scope-specific records are B111 → H3/R2`);
     for (const r of recs) ENV_OUT[`EYE_B40_ACCEPTANCE_${r.j.toUpperCase()}`] = r.id;
     ENV_OUT.EYE_B40_BASELINE = DBL.id;
   } else bad('no attested B40 baseline or lint evaluation — the acceptance demonstration records were not proposed');
