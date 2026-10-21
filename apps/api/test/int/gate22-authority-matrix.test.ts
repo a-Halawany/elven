@@ -118,6 +118,12 @@ const LATER_SCENARIO_COVERAGE: Record<string, string> = {
   'objects.author_work_object': 'phase6-lifecycle-b50.test.ts', // 0120
   'objects.propose_lifecycle': 'phase6-lifecycle-b50.test.ts', // 0120
   'objects.decide_lifecycle_proposal': 'phase6-lifecycle-b50.test.ts', // 0120
+  // 0123 (B40 §VA): the transformation-rule register — PROPOSED by a data steward, DECIDED and RETIRED by the privacy officer (never the
+  // proposer, never an agent; the person, the role and the separation re-checked in the port); the refusals and the relaxation proved in
+  // phase6-authenticity-b40 (VA6).
+  'objects.propose_transformation_rule': 'phase6-authenticity-b40.test.ts', // 0123
+  'objects.decide_transformation_rule': 'phase6-authenticity-b40.test.ts', // 0123
+  'objects.retire_transformation_rule': 'phase6-authenticity-b40.test.ts', // 0123
 };
 
 /**
