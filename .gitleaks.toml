@@ -197,6 +197,31 @@ paths = ['''(^|/)infra/images/official/20261009/govulncheck/gosu-(amd64|arm64)\.
 regexTarget = "line"
 regexes = ['''go\.googlesource\.com/[a-z]+/\+/[0-9a-f]{40}''']
 
+# ── 6c. The same FALSE POSITIVE in the 2026-10-21 govulncheck reports ─────────
+[[allowlists]]
+description = """
+FALSE POSITIVE, the same one as §6/§6b and scoped the same way — ONE rule, the TWO named
+files, the upstream FIX-commit URL shapes (condition = AND).
+
+`infra/images/official/20261021/gosu-{amd64,arm64}.govulncheck.json` are the `-json` output of
+govulncheck v1.1.4 on the two pinned gosu binaries (2026-10-21, the qualification behind
+SCX-0016/0017, docs/SCANNER_DISPOSITIONS.md §3.13), kept whole. They carry the Go vulnerability
+database's reference URLs to FIX commits: `https://go.googlesource.com/<repo>/+/<40 hex>` (as §6b)
+and, since the database of 2026-10-21, one `https://github.com/moby/sys/commit/<40 hex>` per file.
+The sourcegraph-access-token rule matched 58 such commit ids per file in the worktree scan and
+62 per file in the history scan of the local FINAL run on d9fe35cd, every one inside one of
+those two URL shapes. Public upstream commit identifiers; no credential is involved.
+
+Scope: the rule, the two files, and only a match inside one of the two URL shapes
+(regexTarget = line). Every other rule, file and hex string stays in scope. §6 and §6b are
+left exactly as they were.
+"""
+condition = "AND"
+targetRules = ['''sourcegraph-access-token''']
+paths = ['''(^|/)infra/images/official/20261021/gosu-(amd64|arm64)\.govulncheck\.json$''']
+regexTarget = "line"
+regexes = ['''go\.googlesource\.com/[a-z]+/\+/[0-9a-f]{40}''', '''github\.com/moby/sys/commit/[0-9a-f]{40}''']
+
 # ── 7. A JSON KEY NAME in the health-score migration, not a credential ───────
 [[allowlists]]
 description = """
