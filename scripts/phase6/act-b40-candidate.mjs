@@ -178,7 +178,9 @@ console.log('\nC-1 THE RELEASE-CANDIDATE DRIFT (§CM) — the earlier candidates
     note(`candidate ${short(c.id)} v${c.version} "${String(c.label).slice(0, 60)}…": ${c.state}, head ${dg(c.head_sha)}, migration head ${c.migration_head}${drift.length ? ` — open holds: ${drift.map((h) => `${h.reason_kind}: ${String(h.reason).slice(0, 120)}`).join('; ')}` : ''}`);
   }
 }
-const RC_LABEL = 'NORDWERK corridor release candidate 2026-10 r8 — at the B40 source-platform head (SYNTHETIC — a local release-candidate record, B65 substituted: NOT a release)';
+// A redeploy at a later head needs a NEW candidate, never the earlier label (a rerun with the same label stands and leaves head_drift open):
+// the operator names the round explicitly — EYE_B40_RC_LABEL — the default is the stage's first round.
+const RC_LABEL = process.env.EYE_B40_RC_LABEL ?? 'NORDWERK corridor release candidate 2026-10 r8 — at the B40 source-platform head (SYNTHETIC — a local release-candidate record, B65 substituted: NOT a release)';
 const ingest = async (file, name) => {
   const raw = readFileSync(join(REPORTS, file), 'utf8');
   const r = await wr(steward, `${RG}/verification/ingest`, 'governance.verification.ingest', { format: 'vitest', name, report: raw, claim: 'construction', validDays: 30 }, 'VER');
