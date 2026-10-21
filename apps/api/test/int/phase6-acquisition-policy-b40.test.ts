@@ -307,11 +307,14 @@ describe('BK · the per-source token bucket (SRC@v4 rate), shared by every run',
     const t = p.at.filter((_, i) => !(p.seen[i] as string).endsWith('/robots.txt'));
     expect(t.length).toBeGreaterThanOrEqual(2);
     for (let i = 1; i < t.length; i += 1) expect((t[i] as number) - (t[i - 1] as number)).toBeGreaterThanOrEqual(1_800);
-    // the same bucket for the next run: its first request waits for the token the first run's last request spent
-    const startedAt = Date.now();
-    const r2 = await runWith(publisher());
+    // the same bucket for the next run: its first request waits for the token the first run's last request spent —
+    // measured from that request, not from the first run's end (its own work after the request is not the bucket's)
+    const p2 = publisher();
+    const r2 = await runWith(p2);
     expect(r2.state, r2.reason).toBe('finished');
-    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(1_500);
+    const t2 = p2.at.filter((_, i) => !(p2.seen[i] as string).endsWith('/robots.txt'));
+    expect(t2.length).toBeGreaterThanOrEqual(1);
+    expect((t2[0] as number) - (t[t.length - 1] as number)).toBeGreaterThanOrEqual(1_800);
   }, 120_000);
   it('a rate the run cannot wait for: the request is not sent, the run fails `rate_limited`, the interval and the contract\'s backoff recorded, the next run held', async () => {
     const v = await v4({ ap: { rate: { requests: 1, per_seconds: 3600, burst: 1 } }, backfill: { from: '2021-07-01', to: '2021-07-15', windowDays: 7 } });
