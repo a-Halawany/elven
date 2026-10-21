@@ -109,6 +109,9 @@ export interface EgressResult {
 const RETAINED_HEADERS = [
   'content-type', 'content-length', 'content-encoding', 'etag', 'last-modified',
   'date', 'retry-after', 'cache-control',
+  /* B40 integration (§VA, DESIGN D6): a publisher's DETACHED signature (authenticity-b40/verify.ts SIGNATURE_HEADER) — kept so a live REST /
+     RSS item is CHECKED by the authenticate stage, never read unsigned. A signature is public; no other header is added. */
+  'x-publisher-signature',
 ];
 
 /**
@@ -330,6 +333,37 @@ export async function egress(req: EgressRequest): Promise<EgressResult> {
   }
   throw new EgressRefused('too_many_redirects', 'redirect chain exhausted');
 }
+
+/* B40 ap */
+/**
+ * CP-6 B40 §AP (DESIGN D10): THE GET FORM OF B14'S ONE TRANSPORT SUBSTITUTION — `egress()`'s transport once the address is settled: the
+ * contract's scheme and host allowlist, URL userinfo dropped, the request to the PINNED address with the hostname's identity (SNI,
+ * certificate verification against the deployment's store or the policy's declared trust anchor — never disabled), the caps, the retained
+ * headers and the Retry-After as `egress()` reads them. NO redirect is followed (a 3xx is refused — a substituted transport goes nowhere
+ * else). `egress()` is the production entry (the address resolved and vetted — every loopback, private and reserved address refused, and
+ * proven to refuse); this split lets a harness drive the SAME transport against a synthetic throttling publisher on a loopback address the
+ * vetting refuses. It is never wired into a deployment: a connector's egress is `egress()` unless a test runtime injects otherwise.
+ */
+export async function egressPinned(req: EgressRequest, pinnedAddress: string): Promise<EgressResult> {
+  const policy = req.policy;
+  const target = new URL(req.url);
+  assertUrlPermitted(target, policy);
+  if (target.username !== '' || target.password !== '') { target.username = ''; target.password = ''; }
+  const headers: Record<string, string> = {
+    accept: '*/*', 'accept-encoding': 'gzip, deflate, br', 'user-agent': 'the-eye-observation/1.0 (+governed connector)',
+    ...(req.headers ?? {}), host: target.host,
+  };
+  if (req.credentials?.authorization !== undefined) headers['authorization'] = req.credentials.authorization;
+  if (req.credentials?.headers !== undefined) for (const [k, v] of Object.entries(req.credentials.headers)) headers[k.toLowerCase()] = v;
+  const res = await once(target, pinnedAddress, headers, policy);
+  if (res.status >= 300 && res.status < 400) throw new EgressRefused('redirect_target_refused', `a substituted transport follows no redirect (answered ${res.status})`, { requestSent: res.requestSent, status: res.status });
+  return {
+    status: res.status, headers: res.headers, body: res.body, finalUrlRedacted: redactUrl(target.toString()),
+    hops: [{ urlRedacted: redactUrl(target.toString()), status: res.status, credentialsCarried: req.credentials !== undefined }],
+    tlsVerified: true, originAllowlisted: true, pinnedAddress, retryAfterSeconds: parseRetryAfter(res.headers['retry-after']), requestSent: true,
+  };
+}
+/* end B40 ap */
 
 /**
  * B13 (D8): the delivery of a customer export's archive to an https destination. The body travels as `application/x-tar`

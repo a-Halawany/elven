@@ -145,6 +145,9 @@ export const UNIT_MAP = {
   'web.app': { path: 'apps/web', kind: 'web_app', layers: [], components: ['CP-UX-02', 'INF-PF-11'], schemas: [], semantic: 'host', controls: ['UX-ADR-010'] },
   'package.contracts': { path: 'packages/contracts', kind: 'package', layers: [], components: ['CP-OBJ-00'], schemas: [], semantic: 'control', controls: ['ES-20', 'ES-21', 'ES-24'] },
   'package.tokens': { path: 'packages/tokens', kind: 'package', layers: [], components: ['CP-UX-01'], schemas: [], semantic: 'host', controls: ['UX-ADR-010'] },
+  /* B40 cr (0123 §CR): the published connector SDK — the Connector contract, the cell protocol eye-cell/1, the gateway client and the cell runtime */
+  'package.connector-sdk': { path: 'packages/connector-sdk', kind: 'package', layers: [], components: ['L1-C02', 'INF-PF-12'], schemas: [], semantic: 'host', controls: ['V03-T-440', 'DP-14-003'] },
+  /* end B40 cr */
   'infra.postgres': { path: 'docker-compose.yml#services.postgres', kind: 'infrastructure_service', layers: [], components: ['INF-ST-01', 'DAT-ST-04'], schemas: [], semantic: 'host', controls: ['ADR-P0-09'] },
   'infra.redis': { path: 'docker-compose.yml#services.redis', kind: 'infrastructure_service', layers: [], components: ['INF-ST-11', 'DAT-ST-08'], schemas: [], semantic: 'host', controls: [] },
 };

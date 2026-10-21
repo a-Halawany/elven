@@ -245,7 +245,7 @@ describe('C15 — a service is FIXED only when every fix is present on both plat
     expect(v.tag).toBe('postgres:18-alpine');
     // Every record scoped to the configured postgres image, on BOTH scanned platforms — a re-pin
     // re-scopes all of them, or the ones left behind fail as unused.
-    expect(v.records).toEqual(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005', 'SCX-0010', 'SCX-0011', 'SCX-0012', 'SCX-0013', 'SCX-0014', 'SCX-0015']);
+    expect(v.records).toEqual(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005', 'SCX-0010', 'SCX-0011', 'SCX-0012', 'SCX-0013', 'SCX-0014', 'SCX-0015', 'SCX-0016', 'SCX-0017']);
     for (const p of ['linux/amd64', 'linux/arm64']) {
       expect(Object.values(v.platforms[p].fixes).map((f: { state: string }) => f.state)).toEqual(['patched', 'patched', 'patched']);
     }
@@ -336,7 +336,7 @@ describe('C15 — after the return, the recheck decides against the CONFIGURED p
     expect(text).toMatch(/a COMPATIBLE FIXED OFFICIAL image now exists for postgres: postgres:18-alpine -> sha256:1{64}/);
     expect(text).toMatch(/NEWER than the configured pin sha256:f{64}/);
     expect(text).toMatch(/This is a REPORT: nothing was re-pinned and no evidence was deleted/);
-    expect(text).toMatch(/re-issue or retire SCX-0002, SCX-0003, SCX-0004, SCX-0005, SCX-0010, SCX-0011, SCX-0012, SCX-0013, SCX-0014, SCX-0015 \(they name the configured pin\)/);
+    expect(text).toMatch(/re-issue or retire SCX-0002, SCX-0003, SCX-0004, SCX-0005, SCX-0010, SCX-0011, SCX-0012, SCX-0013, SCX-0014, SCX-0015, SCX-0016, SCX-0017 \(they name the configured pin\)/);
     expect(text).toMatch(/run the FINAL chain/);
   });
 
@@ -356,7 +356,7 @@ describe('C15 — after the return, the recheck decides against the CONFIGURED p
     const text = d.lines.join('\n');
     expect(text).toMatch(/the CONFIGURED pin sha256:f{64} \(postgres:18-alpine\) does NOT carry every watched fix/);
     expect(text).toMatch(/linux\/arm64 \[c-ares\]: c-ares 1\.34\.6-r0 falls inside an affected range/);
-    expect(text).toMatch(/SCX-0002, SCX-0003, SCX-0004, SCX-0005, SCX-0010, SCX-0011, SCX-0012, SCX-0013, SCX-0014, SCX-0015/);
+    expect(text).toMatch(/SCX-0002, SCX-0003, SCX-0004, SCX-0005, SCX-0010, SCX-0011, SCX-0012, SCX-0013, SCX-0014, SCX-0015, SCX-0016, SCX-0017/);
   });
 
   it("the manifest's platform_children disagreeing with the pinned index — FAIL, the record of the return is wrong", async () => {
@@ -488,10 +488,10 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
     const m = await import(/* @vite-ignore */ join(LIB, 'scanner-exclusions.mjs'));
     const doc = readExclusions();
     const run = (d: unknown) => m.validateRecords(d, {
-      // 2026-10-10: the day the owner approved SCX-0014/0015 (docs/SCANNER_DISPOSITIONS.md §3.12),
-      // the newest approval (SCX-0012/0013 2026-10-09, §3.10; the six re-issues 2026-09-23, §3.9); a
+      // 2026-10-21: the day the owner approved SCX-0016/0017 (docs/SCANNER_DISPOSITIONS.md §3.13),
+      // the newest approval (SCX-0014/0015 2026-10-10, §3.12; SCX-0012/0013 2026-10-09, §3.10); a
       // record approved after the run date is correctly refused, so the run date is the newest approval.
-      runDate: '2026-10-10', root: REPO, isTracked: () => true,
+      runDate: '2026-10-21', root: REPO, isTracked: () => true,
       readEvidence: (rel: string) => { try { return readFileSync(join(REPO, rel)); } catch { return null; } },
     }).problems;
     expect(run(doc)).toEqual([]);
@@ -518,9 +518,9 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
     // six name the same configured index reference — a record is separated from its twin by
     // `scan_platform`, not by a different image.
     expect(doc.records.map((r: { id: string }) => r.id))
-      .toEqual(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005', 'SCX-0010', 'SCX-0011', 'SCX-0012', 'SCX-0013', 'SCX-0014', 'SCX-0015']);
+      .toEqual(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005', 'SCX-0010', 'SCX-0011', 'SCX-0012', 'SCX-0013', 'SCX-0014', 'SCX-0015', 'SCX-0016', 'SCX-0017']);
     expect(doc.records.filter((r: { scan_platform: string }) => r.scan_platform === 'linux/arm64')
-      .map((r: { id: string }) => r.id)).toEqual(['SCX-0010', 'SCX-0011', 'SCX-0013', 'SCX-0015']);
+      .map((r: { id: string }) => r.id)).toEqual(['SCX-0010', 'SCX-0011', 'SCX-0013', 'SCX-0015', 'SCX-0017']);
     for (const r of doc.records) {
       expect(pinned, `${r.id} must name a pinned image`).toContain(r.image);
       // The OFFICIAL index the compose file returned to on 2026-09-22, not the derived image.
@@ -531,8 +531,9 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
       // approval was given, not the day the re-issues were drafted (2026-09-22) and not the dates
       // of the previous approvals (2026-09-10 amd64, 2026-09-11 arm64).
       // SCX-0012/0013 are new records, approved by the owner on 2026-10-09 (§3.10); SCX-0014/0015 on
-      // 2026-10-10 (§3.12).
+      // 2026-10-10 (§3.12); SCX-0016/0017 on 2026-10-21 (§3.13).
       const approved = r.id === 'SCX-0012' || r.id === 'SCX-0013' ? '2026-10-09'
+        : r.id === 'SCX-0016' || r.id === 'SCX-0017' ? '2026-10-21'
         : r.id === 'SCX-0014' || r.id === 'SCX-0015' ? '2026-10-10' : '2026-09-23';
       expect(r.approved_on, `${r.id} approved_on`).toBe(approved);
       expect(r.reviewed_on, `${r.id} reviewed_on`).toBe(approved);
@@ -681,7 +682,7 @@ describe('C15 — the recheck CLI, executed as a subprocess', () => {
     expect(r.out).toContain(`linux/amd64 child ${PG_INDEX.children[AMD]}`);
     expect(r.out).toContain(`linux/arm64 child ${PG_INDEX.children[ARM]}`);
     expect(r.out).toMatch(/This is a REPORT: nothing was re-pinned and no evidence was deleted/);
-    expect(r.out).toMatch(/re-issue or retire SCX-0002, SCX-0003, SCX-0004, SCX-0005, SCX-0010, SCX-0011, SCX-0012, SCX-0013, SCX-0014, SCX-0015 \(they name the configured pin\)/);
+    expect(r.out).toMatch(/re-issue or retire SCX-0002, SCX-0003, SCX-0004, SCX-0005, SCX-0010, SCX-0011, SCX-0012, SCX-0013, SCX-0014, SCX-0015, SCX-0016, SCX-0017 \(they name the configured pin\)/);
     expect(r.out).not.toMatch(/exists for redis/);
     expect(r.out).toMatch(/redis: AFFECTED/);
     expect(r.out).not.toMatch(/c15-recheck: PASS/);

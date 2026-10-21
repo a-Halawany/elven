@@ -188,6 +188,9 @@ export class CoverageFactsService {
         ...inWindow.slice(0, 50).map((o) => `OBS:${o.row.object_id}`),
         ...runs.slice(0, 10).map((r) => `run:${r.run_id}`),
       ],
+      /* B40 va: the recorded authenticity outcomes of the window, under the measurement's own bound scope (L1-C06) */
+      authenticity: await cap.authenticityMeasure({ tenantId: null, domainId: null, sourceId, from: windowStart, to: windowEnd }),
+      /* end B40 va */
     };
   }
 }

@@ -1,0 +1,1196 @@
+# B40 act (the source platform, 0123) — REHEARSAL on eye_demo_b40: a restored copy of .eye-local/backups/eye_demo-pre-0123-20261021T004227Z.dump (345222317 bytes — the PRE-0123 backup of eye_demo, taken read-only with pg_dump -Fc at 0122), migrated through 0123 (0123_b40_source_platform.sql, sha256 479b5a772f858626…) from the b40-act worktree (branch b40/act from the integration head 82275763).
+# THE RIG (the fix/rig form, copied to the scratchpad's b40/act-rig with the worktree path → b40-act, the database → eye_demo_b40, backup-path.txt → the pre-0123 dump): restore.sh under scripts/dev/heavy-slot.sh (EYE_HEAVY_SLOTS=1); the API :3411 built from this worktree (EYE_DB_NAME=eye_demo_b40, Redis :6392 NEVER flushed, a fresh APFS vault clone under the four EYE_VAULT_*_ROOT for every restore, its own EYE_DEGRADED_DIR, the rehearsal sinks 2535/3456, EYE_BUILD_SHA = the worktree head, no EYE_CLAMD_ADDR — engine 2 not configured: the ClamAV image is not admitted, D2); the web :3010 (built in place, NEXT_PUBLIC_EYE_API → the CORS proxy :3412 → :3411). Every run declared EYE_ACT_TARGET=rehearsal EYE_DB_NAME=eye_demo_b40 EYE_API=http://localhost:3411 (the walk adds EYE_WEB_BASE=http://localhost:3010) and EYE_ROOT=<the main tree> (its .eye-local/env; the act refuses to run without one and never generates one). The customs publisher key's private half: .eye-local/b40/eye_demo_b40-djibouti-customs-ed25519.pem (0600, git-ignored), removed before each fresh restore.
+# ORDER: (1) restore #1 (82275763) → TRY 1: 3 ✗, all the act's own (the evidence-detail route's action name; an EVD lifecycle state assumed 'active' — it is 'admitted'; a too-strict condition on the in-hold refusal's run state) → fixed; TRY 2 on the same copy STOOD (rerun path) → the candidate act tested (held). (2) the API stopped; the TRY-1 sources' BullMQ job schedulers, delayed jobs and §AP bucket keys removed from Redis :6392 by a targeted script (bullmq removeJobScheduler + those keys only — NOT a flush: no other schedule re-fired) → restore #2 at 87d22e35 → a clean run HELD (0 ✗), then superseded: the coordinator asked B40-6 to cite the §AC journey harness and the walk → b40/ac (6e053fce) merged into b40/act, B40-6 made to REQUIRE both as journey-harness evidence (7d5dcd99). (3) the same targeted Redis cleanup → restore #3 → the API restarted at 7d5dcd99 (the replay set's per-process attempt counter starts afresh: the port authority's 429, 429, 200) → RUN 1 HELD (135 ✓, 0 ✗) → RUN 2 STOOD (45 ✓, 0 ✗, 27 "stands") → the CANDIDATE act (r8 attested by H. Achterberg, r7 withdrawn; 15 ✓, 0 ✗) → the web rebuilt with the merge → the WALK e2e/phase6-b40.demo.spec.ts run from the b40-ac worktree (6e053fce, not edited) with the act's env lines: 8 passed, 2 FAILED — both the walk's own, reported to the coordinator: (a) B40-1 impact: the locator getByRole('cell', { name: 'Forecast', exact: true }) — the page's cells carry their column label in the accessible name ("Kind Forecast"); every product row is on the page (forecast, scenarios, warning, the D4 package's option); (b) B40-2 the auditor's evidence pages: E. Lindqvist is TENANT-bound with no home domain, the observation shell asks her to choose the working domain first and the walk never chooses it (the API answers her evidence read 201). No product defect was found.
+# OBSERVED (not a defect, stated): on run 1 the port authority's first collection was M. Dvořák's command form (the schedule's first iteration had not run within 20 s), and an operator-run 429 enqueues no scheduler contract retry — the act then collects at the end of each hold itself and SAYS so; the scheduler's ap-retry path (a scheduled iteration's 429) is harness-proven (phase6-acquisition-policy-b40 SC/LB). The late corridor stream's restored schedule collected new versions of the replay set after the restoration (counted in the act's history line).
+# D19, said plainly: the gitleaks history scan flagged runs 1–2's output (generic-api-key on a fingerprint printed `key ed25519:<hex>`, a trust-layer `"key_id":"<uuid>"` and the line EYE_B40_CUSTOMS_KEY=<uuid> — key references, not key material). The act was corrected (fingerprints printed `ed25519 · <hex>`, the trust layer by outcome and detail, EYE_B40_CUSTOMS_KEY = the key id's head — what the walk matches — and the full id as EYE_B40_CUSTOMS_PBK); runs 1–2 below are RENDERED through the same rule after the fact (only those three shapes changed), and RUN 3 — the corrected act on the same copy, the API restarted at the corrected head — STOOD (45 ✓, 0 ✗, 27 "stands") and is shown as printed. The walk ran on runs 1–2's env lines (the full key id; it matches the head).
+# Screenshots: the walk's 20 in the rig's shots/, not committed.
+
+════════ RUN 1 ════════
+THE B40 ACT (the source platform) on eye_demo_b40 (REHEARSAL) — 2026-10-21T01:32:48.772Z — API http://localhost:3411 — target declared rehearsal
+
+B40-T THE ACT TARGET — this act spawned (a) with no EYE_ACT_TARGET and (b) as a rehearsal naming the LIVE API: each REFUSED (exit 2) before anything is contacted
+  ✓ (a) the act spawned with NO EYE_ACT_TARGET: exit 2 — "REFUSED (act target): EYE_ACT_TARGET is not set — declare the environment: EYE_ACT_TARGET=rehearsal for a restored copy, EYE_ACT_TARGET=live for the demonstration. Nothing was contacted."
+  ✓ (b) the act spawned as a REHEARSAL naming the LIVE API http://localhost:3401: exit 2 — "REFUSED (act target): EYE_API http://localhost:3401 is the LIVE demonstration's API (http://localhost:3401); a rehearsal talks to its own rig. Nothing was contacted."
+  ✓ NOTHING WAS CONTACTED: eye_demo_b40 — human sessions 5666 → 5666, login audit rows 5667 → 5667; the LIVE eye_demo (read-only SELECT) — sessions 5666 → 5666, login audit rows 5667 → 5667
+  · D10: this act starts NO synthetic listener — the 429 + Retry-After answers are the replay set's (no network); the loopback forms (a throttling publisher, a pinned partner host) are the harnesses' (phase6-acquisition-policy-b40 LB, phase6-connector-cell-b40), each on a port scripts/act-target.mjs assertSyntheticListener refuses for the live addresses
+
+B40-0 THE CAST AND THE STATE — 0123, the build, the NORDWERK cast; the sources, the DEF-03 PDF, the stale quarantine cases, content authenticity before B40, the scanning engine (D2)
+  ✓ migration applied: 0123_b40_source_platform.sql (§RG registry + rights lifecycle · §VA authenticity · §IN intake inspection · §AP acquisition policy · §CR connector cell)
+  ✓ a.hoffmann holds domain_analyst at the DOMAIN
+  ✓ h.weber holds domain_analyst at the DOMAIN
+  ✓ m.dvorak holds collection_manager at the DOMAIN
+  ✓ f.aydin holds data_steward at the DOMAIN
+  ✓ t.richter holds domain_admin at the DOMAIN
+  ✓ w.zielinska holds customer_sponsor at the TENANT
+  ✓ n.eriksen holds forecast_owner at the DOMAIN
+  ✓ j.weber holds strategy_owner at the DOMAIN
+  ✓ c.brenner holds decision_owner at the DOMAIN
+  ✓ e.lindqvist holds auditor at the TENANT
+  ✓ h.bergmann holds retention_authority at the TENANT
+  ✓ l.haddad holds design_system_authority at the PLATFORM
+  ✓ p.castellano holds conformance_steward at the PLATFORM
+  ✓ h.achterberg holds independent_assurance at the PLATFORM
+  · the corridor's collection managers: m.dvorak — the ONLY one (MAP Q5: the analyst registers, the collection manager evaluates and approves — two people)
+  · R. Haddad (the partner's customs broker, SYNTHETIC): 3 principal(s), role(s) external_collaborator — invited collaborators with no password session; an external collaborator never registers or approves an adapter (the PDP has no rule for the role; the port refuses one even holding a manager binding — phase6-connector-cell-b40)
+  · the API declares its build: head 7d5dcd99e655… (from env), migration head —, policy bundle bundle-v1 63507ec4fd5f…
+  · the tenant holds 20 sources, 27 contract versions, 18 active; B40's five SYNTHETIC sources: none yet (no shipping-notice feed, no customs source, no port-authority API, no supplier-document source, no partner adapter)
+  ✓ the DEF-03 PDF (carrier-reroute-notice-2024-01-14.pdf, planted in 2026-09) is ADMITTED with active_content_risk = true as 01a0…2b2dbb (SRC:01a084f5-76af-711e-a291-bc110b79f394@1) — the v1–v3 rule (D8: no back-fill), stays as it was
+  · D16: 2 quarantine case(s) OPEN PAST EXPIRY — 01a0…d35e6c schema_drift (expired 2026-09-16T06:57:55Z), 01a0…6b4578 type_mismatch (expired 2026-09-16T06:57:59Z) — listed for the owner, untouched by this act (the sweeper has not expired them)
+  · content authenticity of the tenant's evidence versions: unknown ×18572 — before B40 no signature mechanism was evaluated ("content_authenticity unknown"); none is back-filled
+  · THE SCANNING ENGINE (D2): engine 1 is the content inspector in its sandboxed child process (Node's permission model: no network, the one item readable, caps, env stripped; killed on timeout → unavailable → quarantined). Engine 2 is the clamd ADAPTER; the ClamAV IMAGE IS NOT ADMITTED (the official Alpine image has no linux/arm64 child; the Debian image scans 1 CRITICAL + 53 HIGH per platform, none fixed upstream) — the owner decides (a/b/c); EXC-P1-001 stays OPEN. Every SRC@v4 contract of this act names scan_engines [content-inspector] only. The real-engine evaluation of the UNADMITTED image is evidence/cp6/b40-clamav-evaluation.txt (sha256 a92eea854f82…) — evaluation evidence, never this deployment's engine
+
+B40-1 (F-P1-01) THE SHIPPING-NOTICE FEED — discovered, evaluated, approved, customer-approved, collected, its rights withdrawn ("nothing rests on it yet"); then D4 on red-sea-corridor-stream-late: BOTH rights sources, refused use, recovery through governed versions
+  ✓ C. Brenner (decision owner) proposes a source candidate REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ A. Hoffmann (domain analyst) DISCOVERED "Red Sea shipping notices (SYNTHETIC)": candidate 7700…c138c2 — how found, publisher, terms, purposes, assessment recorded — POL 01a15c17-0232… · audit seq 742808
+  ✓ THE PREFILLED SRC@v4 DRAFT (nothing registered by a draft): red-sea-shipping-notices, rss, rights pending, active content quarantine, robots evaluate; it still lacks: identity.endpoints must name at least one endpoint for a polled source
+  ✓ A. Hoffmann COMPLETED the draft (the endpoint, the replay set, the steward, the evidence attributes: Red Sea / Gulf of Aden, en) and PROMOTED it: SRC@v4 v1 registered as a DRAFT and the candidate promoted in ONE transaction (source 01a1…04154d) — POL 01a15c17-10ff… · audit seq 742815
+  ✓ M. Dvořák approves the UNEVALUATED SRC@v4 contract REFUSED — 409 EYE-STA-002 — source approval rejected (unevaluated): source 01a15c17-10fd-78c0-8b96-a535cf04154d v1 is an SRC@v4 contract with no recorded evaluation; a collection manager who did not register it records the evaluation (authority, rights and purpose evidence, coverage fit, cost, risks, contract tests) first
+  ✓ A. Hoffmann (the registrar, a domain analyst) evaluates her own registration REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ A. Hoffmann (the registrar) approves her own registration REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · the feed "Red Sea shipping notices (SYNTHETIC)" is registered (01a1…04154d v1, draft) — stands — an earlier run
+  ✓ M. Dvořák (collection manager — not the registrar) EVALUATED the feed "Red Sea shipping notices (SYNTHETIC)" v1: approve — POL 01a15c17-114d… · audit seq 742822
+  ✓ M. Dvořák APPROVED the feed "Red Sea shipping notices (SYNTHETIC)" v1 (a different person from the registrar) — POL 01a15c17-169c… · audit seq 742824
+  ✓ M. Dvořák ACTIVATED the feed "Red Sea shipping notices (SYNTHETIC)"
+  ✓ the platform administrator PROVISIONED the feed "Red Sea shipping notices (SYNTHETIC)"'s collection agent 01a1…4be5bc (rss; owner A. Hoffmann)
+  ✓ W. Zielińska (customer sponsor, TENANT — neither registrar nor approver) RECORDED the CUSTOMER APPROVAL of the feed's use: approve, claim demonstration — a record the admission cites, not a gate on collection — POL 01a15c17-16f0… · audit seq 742833
+  ✓ THE FEED COLLECTED: run 01a1…cc8725 finished, 5 notice(s) admitted; 5 evidence object(s), content authenticity unknown (the contract declares no signature scheme — UNSIGNED, never verified); attributes at intake from the SRC@v4 declaration: geographic_scope=["Red Sea","Gulf of Aden"], language="en", licence={"statement":"no rights terms declared for the contract version at admission — the contract's own licence stands","permitted_use":["internal analysis"],"contract_licence":"synthetic-demonstration-licence (B40)"}, sensitivity="commercial"
+  ✓ M. Dvořák PREVIEWED the withdrawal (CAP-OB-02, nothing written): possible true, v1 active → suspended/withdrawn; "nothing rests on it yet: no product, claim, option, briefing, publication or dependency names this source's evidence"
+  ✓ M. Dvořák WITHDREW the feed's rights: v1 confirmed → withdrawn (active → suspended); the schedule removed; "nothing rests on it yet: no product, claim, option, briefing, publication or dependency names this source's evidence"; the rights incident 920e…7a9271; a retention action (deletion of the source's evidence) was opened; it waits for the retention authority's approval and is executed by the steward — never automatically — POL 01a15c17-1b31… · audit seq 742859
+  ✓ H. Bergmann (retention authority) SEES the deletion action 23da…47e58a waiting for her: deletion of evidence, state opened — NOT executed by this act (approval, execution and verification are the retention unit's own acts)
+  ✓ the feed's schedule: removed — collection prohibited from the withdrawal
+
+  · D4 on red-sea-corridor-stream-late (01a0…33c61d v1, active, rights confirmed) — its forecast FCT 01a0…6aafd5 rests on the stream's evidence; the unaffected control FCT 01a1…526298 (portwatch:chokepoint4:n_total)
+  ✓ C. Brenner (decision owner) DECLARED the package "B40 — reroute on the late corridor stream's forecast (SYNTHETIC; a D4 demonstration, never proposed)" 01a1…d70cdd on the Regensburg DEC — SYNTHETIC, a demonstration of refused use; never proposed — POL 01a15c17-1bf4… · audit seq 742870
+  · C. Brenner OPENED version 1 of the package (known at now)
+  ✓ C. Brenner DERIVED the option "status-quo" citing the PortWatch forecast 01a1…526298 (another source) — usable — POL 01a15c17-1c14… · audit seq 742876
+  ✓ M. Dvořák PREVIEWED the withdrawal of red-sea-corridor-stream-late (nothing written): v1 active → suspended/withdrawn; "5 product(s), 0 claim(s) and 50 further reference(s) rest on this source's evidence (537 evidence object(s))"
+  ✓ BEFORE the withdrawal: the stream's forecast is decision_option usable, gate usable, publication usable, export usable
+  ✓ M. Dvořák WITHDREW the CONTRACT rights of red-sea-corridor-stream-late: v1 suspended, the schedule removed, "5 product(s), 0 claim(s) and 50 further reference(s) rest on this source's evidence (537 evidence object(s))"; 5 attention item(s) to the owners (N. Eriksen, J. Weber); the rights incident 4d4a…91cb0b; no deletion obligation was declared with the withdrawal: no retention action was opened — POL 01a15c17-1c8f… · audit seq 742878
+  ✓ SourceHealthChanged {suspended, cause rights} → the source-health consumer MARKED 5 product(s) (forecast, warning, scenario) with cause rights, health suspended
+  ✓ N. Eriksen (forecast owner) READ THE RIGHTS IMPACT of red-sea-corridor-stream-late: rights withdrawn, 5 product(s) — forecast "live" (N. Eriksen); scenario "B36 — the corridor probe scenario (SYNTHETIC)" (N. Eriksen); scenario "Bab el-Mandeb closure — Houthi activity and insu" (J. Weber); scenario "Bab el-Mandeb freight exposure (SYNTHETIC)" (J. Weber); warning "B36 — the corridor probe scenario (SYNTHETIC) — " (N. Eriksen); owners N. Eriksen ×3, J. Weber ×2; 5 marker(s); "the decision-active use of this source's evidence is REFUSED (rights_withdrawn) until the rights are restored; reading stays as it was" — POL 01a15c17-20b0… · audit seq 742883
+  ✓ J. Weber (strategy owner — an owner the impact names) reads the same list: 2 owner(s), 5 product(s)
+  · the owners' attention items (cause rights): N. Eriksen — forecast (source.coverage_loss), N. Eriksen — scenario (source.coverage_loss), N. Eriksen — warning (source.coverage_loss), J. Weber — scenario (source.coverage_loss), J. Weber — scenario (source.coverage_loss)
+  ✓ C. Brenner derives an option citing the stream's forecast 01a0…6aafd5 (the contract rights WITHDRAWN) REFUSED — 409 EYE-STA-002 — object use rejected (rights_withdrawn): FCT 01a0f00b-8d89-7f7a-a271-60f56d6aafd5 v1 rests on EVD 01a0ee8b-1c7e-7116-93fc-0428871d1eaa v1, whose source contract (01a0deff-5fb9-7e77-8799-c8beef33c61d v1) has its rights WITHDRAWN; it is refused until the contract rights are restored through the rights lifecycle (an in-force rights-terms record does not lift a contract withdrawal); it is not used for decision_option
+  ✓ NO BUSINESS EFFECT: the package holds 1 option(s) before and after the refused act
+  ✓ FROM CURRENT DATABASE STATE (no tick): the stream's forecast — decision_option REFUSED (rights_withdrawn), gate REFUSED (rights_withdrawn), publication REFUSED (rights_withdrawn), export REFUSED (rights_withdrawn); the GATE, PUBLICATION and EXPORT paths call the same objects._lineage_usable (their route-level refusals are harness-proven: phase6-registry-b40 RG5)
+  ✓ THE UNAFFECTED SCOPE stays usable: the PortWatch forecast 01a1…526298 — decision_option usable, gate usable, publication usable, export usable
+  ✓ READING STAYS AS IT WAS (D9): A. Hoffmann still reads the stream's evidence 01a1…ae8e13; no new evidence-content access is granted by any of this
+  ✓ F. Aydın (data steward) DECLARED the stream's rights TERMS v1 IN_FORCE 46af…a374fe — POL 01a15c17-2195… · audit seq 742887
+  ✓ C. Brenner derives the option again — the terms IN FORCE, the contract still WITHDRAWN REFUSED — 409 EYE-STA-002 — object use rejected (rights_withdrawn): FCT 01a0f00b-8d89-7f7a-a271-60f56d6aafd5 v1 rests on EVD 01a0ee8b-1c7e-7116-93fc-0428871d1eaa v1, whose source contract (01a0deff-5fb9-7e77-8799-c8beef33c61d v1) has its rights WITHDRAWN (its rights terms read in_force); it is refused until the contract rights are restored through the rights lifecycle (an in-force rights-terms record does not lift a contract withdrawal); it is 
+  ✓ M. Dvořák restores the rights WITHOUT evidence REFUSED — 422 EYE-REQ-001 — rights change rejected (evidence): a restoration cites its evidence — the renewed licence, the publisher's confirmation (8 to 4000 characters)
+  ✓ RECOVERY — M. Dvořák RESTORED the contract rights with evidence: reverses 0c79…33ad07, v1 RESUMED, the schedule restored — POL 01a15c17-21b7… · audit seq 742890
+  ✓ SourceHealthChanged {active, cause rights} → the markers CLEARED (0 active left)
+  ✓ the SAME use ADMITTED after the restoration: C. Brenner derived "late-stream-restored" citing 01a0…6aafd5 — POL 01a15c17-25cb… · audit seq 742958
+  ✓ F. Aydın WITHDREW the stream's rights TERMS (v2 withdrawn) while the CONTRACT rights read confirmed — POL 01a15c17-25e0… · audit seq 742959
+  ✓ C. Brenner derives the option — the contract CONFIRMED, the terms WITHDRAWN REFUSED — 409 EYE-STA-002 — object use rejected (rights_expired): FCT 01a0f00b-8d89-7f7a-a271-60f56d6aafd5 v1 rests on EVD 01a0ee8b-1c7e-7116-93fc-0428871d1eaa v1, whose source's rights terms are withdrawn (no expiry declared); it is not used for decision_option until rights are declared again
+  ✓ FROM CURRENT STATE: the stream's forecast — decision_option REFUSED (rights_expired), gate REFUSED (rights_expired), publication REFUSED (rights_expired), export REFUSED (rights_expired) (B82's check names a withdrawn terms record rights_expired first; §RG counts it too, rights_withdrawn — whichever runs first refuses)
+  ✓ M. Dvořák tries to lift it with a CONTRACT restoration (nothing withdrawn on the contract) REFUSED — 409 EYE-STA-002 — rights change rejected (state): the rights of source 01a0deff-5fb9-7e77-8799-c8beef33c61d stand no withdrawal of the rights lifecycle; there is nothing to restore
+  ✓ RECOVERY — F. Aydın DECLARED terms v3 IN_FORCE (a governed new version) — POL 01a15c17-260c… · audit seq 742965
+  ✓ the SAME use ADMITTED again after the new terms version — "late-stream-terms-again" — POL 01a15c17-2619… · audit seq 742966
+  ✓ HISTORY INTACT: the rights ledger withdraw → restore (append-only); the contract events suspended, reactivated, rights_changed:withdraw, suspended, rights_changed:restore, reactivated; the terms series v1 in_force → v2 withdrawn → v3 in_force; the stream's evidence: 537 version(s) recorded before the withdrawal, every one still admitted (nothing withdrawn, rewritten or deleted by a rights change); 17 collected since the restoration resumed the schedule
+
+B40-2 (F-P1-02) THE DJIBOUTI CUSTOMS BULLETIN — the publisher key declared by F. Aydın; the signed bulletin VERIFIED, a tampered copy ADMITTED marked FAILED (D6); the failed version refused at a decision-active use
+  ✓ A. Hoffmann REGISTERED "Djibouti transshipment customs bulletins (SYNTHETIC)" as a DRAFT SRC@v4 contract (source 01a1…c9c4b6 v1) — POL 01a15c17-281d… · audit seq 743004
+  ✓ M. Dvořák (collection manager — not the registrar) EVALUATED "Djibouti transshipment customs bulletins (SYNTHETIC)" v1: approve — POL 01a15c17-2830… · audit seq 743007
+  ✓ M. Dvořák APPROVED "Djibouti transshipment customs bulletins (SYNTHETIC)" v1 (a different person from the registrar) — POL 01a15c17-2840… · audit seq 743009
+  ✓ M. Dvořák ACTIVATED "Djibouti transshipment customs bulletins (SYNTHETIC)"
+  ✓ the platform administrator PROVISIONED "Djibouti transshipment customs bulletins (SYNTHETIC)"'s collection agent 01a1…5c6ba4 (upload; owner A. Hoffmann)
+  · THE PUBLISHER'S KEY PAIR generated NOW (Ed25519); the private half written 0600 to .eye-local/b40/eye_demo_b40-djibouti-customs-ed25519.pem (git-ignored; never printed, never committed) — the SYNTHETIC publisher's, standing in for Djibouti customs
+  ✓ H. Weber (domain analyst — no key act) declares the publisher key REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın (data steward) DECLARED the publisher key djibouti-customs-2026: Ed25519, fingerprint ed25519 · 40c9360f1ed52987 (computed by the port), in_force — POL 01a15c17-2888… · audit seq 743022
+  ✓ F. Aydın retires the mistyped key naming ANOTHER key's fingerprint (the review bound) REFUSED — 409 EYE-STA-002 — publisher key rejected (stale): the retirement names key 0dbcdba5-901f-4cb0-a4bc-f882dec6f2c8 (ed25519 · d9774c7286d2c36c); the key you reviewed is ed25519 · 40c9360f1ed52987
+  ✓ F. Aydın RETIRED the mistyped key ed25519 · d9774c7286d2c36c on the fingerprint she reviewed (retired) — POL 01a15c17-28ad… · audit seq 743027
+  · H. Weber UPLOADED the SIGNED bulletin: run 01a1…72a7db finished, 1 admitted, 0 quarantined
+  · H. Weber UPLOADED a TAMPERED copy (consignment NWL-7701 cleared → held, the ORIGINAL signature): run 01a1…8ed776 finished, 1 admitted, 0 quarantined
+  ✓ the SIGNED bulletin 01a1…473aeb: ADMITTED, authenticity VERIFIED (ed25519_detached, key djibouti-customs-2026) — custody.authenticity_recorded
+  ✓ the TAMPERED copy 01a1…b09b61: ADMITTED marked FAILED — not quarantined, never verified (D6): "the detached Ed25519 signature did not verify with any of the 1 publisher key(s) in force — these bytes are not what the publisher signed"
+  ✓ E. Lindqvist (auditor) READ the signed evidence page's authenticity: VERIFIED (ed25519_detached, key ed25519 · 40c9360f1ed52987); the attributes recorded at intake from the SRC@v4 declaration — language "en" (source_contract), sensitivity "commercial" (source_contract), geographic_scope ["Djibouti","Horn of Africa"] (source_contract) — metadata only (D9) — POL 01a15c17-2bf2… · audit seq 743100
+  · B82's trust layer on the signed version (graph.ev_evidence_state, read-only): authenticity {"detail":"the detached Ed25519 signature verified with the publisher key ed25519 · 40c9360f1ed52987 (djibouti-customs-2026) over these exact bytes","key_id":"<the in-force key id — EYE_B40_CUSTOMS_PBK in run 3>","scheme":"ed25519_detache
+  ✓ E. Lindqvist (auditor) READ the tampered evidence page's authenticity: FAILED (ed25519_detached, no key verified it); the attributes recorded at intake from the SRC@v4 declaration — language "en" (source_contract), sensitivity "commercial" (source_contract), geographic_scope ["Djibouti","Horn of Africa"] (source_contract) — metadata only (D9) — POL 01a15c17-2c00… · audit seq 743101
+  · B82's trust layer on the tampered version (graph.ev_evidence_state, read-only): authenticity {"detail":"the detached Ed25519 signature did not verify with any of the 1 publisher key(s) in force — these bytes are not what the publisher signed","key_id":null,"scheme":"ed25519_detached","key_ref":null,"outcome":"fa
+  ✓ C. Brenner (decision owner) DECLARED the package "B40 — Regensburg consignments on the Djibouti bulletin (SYNTHETIC; a D6 demonstration, never proposed)" 01a1…8ab375 on the Regensburg DEC — SYNTHETIC, a demonstration of refused use; never proposed — POL 01a15c17-2c0b… · audit seq 743102
+  · C. Brenner OPENED version 1 of the package (known at now)
+  ✓ C. Brenner derives an option citing the TAMPERED bulletin 01a1…b09b61 REFUSED — 409 EYE-STA-002 — object use rejected (authenticity_failed): EVD 01a15c17-2a3a-7e51-aff3-c35435b09b61 v1 rests on EVD 01a15c17-2a3a-7e51-aff3-c35435b09b61 v1, whose publisher signature FAILED verification at its admission (ed25519_detached, recorded 2026-10-21T01:33:04Z, authenticity record 7c5799ae-306e-417c-9304-d03825ca2f90) — admitted marked and readable, never established as the publisher's content; it is not used for decision_op
+  ✓ NO BUSINESS EFFECT: 0 option(s) before and after
+  ✓ the VERIFIED bulletin is usable: C. Brenner derived "release-on-signed" — POL 01a15c17-2c47… · audit seq 743105
+  ✓ FROM CURRENT STATE: the tampered version — decision_option REFUSED (authenticity_failed), gate REFUSED (authenticity_failed), publication REFUSED (authenticity_failed), export REFUSED (authenticity_failed); the signed version — decision_option usable, gate usable, publication usable, export usable; the tampered one stays ADMITTED and readable
+  · the claim built on each (the WEAK / INDETERMINATE "authenticity failed" display of B82's trust layer) is HARNESS-PROVEN (phase6-authenticity-b40 VA3/VA4): no approved structured-extraction method for the bulletin's JSON exists on the demonstration, and this act plants no claim
+  · the key register for the customs source: ed25519 · d9774c7286d2c36c retired, ed25519 · 40c9360f1ed52987 in_force; the declared scheme ed25519_detached
+
+B40-3 (F-P1-03) THE SUPPLIER DOCUMENTS — the content inspector (engine 1, sandboxed): the clean note ADMITTED with its verdict; the active-content PDF and the macro .docm QUARANTINED; WHY, the excerpt (D9), the separation, the rejection
+  ✓ A. Hoffmann REGISTERED "Regensburg bearings — supplier documents (SYNTHETIC)" as a DRAFT SRC@v4 contract (source 01a1…971fb3 v1) — POL 01a15c17-2e2b… · audit seq 743110
+  ✓ M. Dvořák (collection manager — not the registrar) EVALUATED "Regensburg bearings — supplier documents (SYNTHETIC)" v1: approve — POL 01a15c17-385f… · audit seq 743113
+  ✓ M. Dvořák APPROVED "Regensburg bearings — supplier documents (SYNTHETIC)" v1 (a different person from the registrar) — POL 01a15c17-386f… · audit seq 743115
+  ✓ M. Dvořák ACTIVATED "Regensburg bearings — supplier documents (SYNTHETIC)"
+  ✓ the platform administrator PROVISIONED "Regensburg bearings — supplier documents (SYNTHETIC)"'s collection agent 01a1…86901b (upload; owner A. Hoffmann)
+  ✓ H. Weber (procurement lead) UPLOADED 3 supplier document(s) through the existing upload route: run 01a1…812112 finished — 1 admitted, 2 quarantined
+  ✓ the CLEAN delivery note 01a1…4178c4: ADMITTED; its verdict recorded as evidence — engine content-inspector 1.0.0, rule set fe1064fc0928…, outcome clean, 0 finding(s), decision pass; confinement --permission --allow-fs-read=<inspector> --allow-fs-read=<item> --disallow-code-generation-from-strings
+  ✓ the supplier PDF: QUARANTINED active_content — "active content (pdf.open_action @54, pdf.additional_actions @255, pdf.javascript @730, pdf.js @742, pdf.javascript @812, pdf.js @824); hidden instructions (pdf.hidden_text_instruction @545, pdf.metada" (cited by code and offset, never quoted)
+  ✓ the inspection checklist .docm: QUARANTINED macro — "macros (ooxml.vba_project @1510, ooxml.macro_enabled @0) — the SRC@v4 content policy quarantines macros (D7); nothing reaches extraction"
+  ✓ NOTHING REACHED EVIDENCE: no evidence-vault blob for the quarantined items (0); nothing reaches extraction
+  · the intake review queue (A. Hoffmann): 4 case(s); ours: 01a1…bec44c macro (safety, open), 01a1…f39724 active_content (safety, open); past expiry: 2 (D16)
+  ✓ A. Hoffmann READ the case's WHY 01a1…f39724: engine content-inspector 1.0.0 (rule set fe1064fc0928…), findings pdf.open_action @54, pdf.additional_actions @255, pdf.javascript @730, pdf.js @742, pdf.javascript @812, pdf.js @824, pdf.hidden_text_instruction @545, pdf.metadata_zero_width @936; the review reason safety; custody quarantined, inspected — no content in the answer — POL 01a15c17-5922… · audit seq 743196
+  ✓ A. Hoffmann (domain analyst — she already retrieves evidence, D9) READ THE EXCERPT around pdf.hidden_text_instruction: 574 bytes served of 1330 (289–863), the digest re-verified, custody.retrieved written; it carries the hidden white-text instruction — POL 01a15c17-592a… · audit seq 743197
+  ✓ F. Aydın (data steward — no evidence retrieval) asks for the excerpt REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ H. Weber (the uploader, a domain analyst) rejects the supplier PDF's case REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ M. Dvořák (collection manager — not the uploader) REJECTED the supplier PDF's case with a reason: rejected; the bytes RETAINED in quarantine (custody intact) — POL 01a15c17-5950… · audit seq 743207
+  ✓ H. Weber (the uploader, a domain analyst) rejects the .docm's case REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ M. Dvořák (collection manager — not the uploader) REJECTED the .docm's case with a reason: rejected; the bytes RETAINED in quarantine (custody intact) — POL 01a15c17-596e… · audit seq 743215
+  · D9b — REVIEWER ≠ UPLOADER for manual uploads: H. Weber was refused by the PDP (she holds no review role); the port's own refusal of a COLLECTION MANAGER who uploaded ("the operator who uploaded this item never reviews its quarantine case") is HARNESS-PROVEN (phase6-intake-b40 §IN.2) — the corridor has ONE collection manager, so staging it here would leave a case nobody may review; the upload approval of SP-22 likewise (§IN.4)
+  ✓ the DEF-03 PDF 01a0…2b2dbb (carrier-advisories v1 — a v1–v3 contract) STAYS AS IT WAS: admitted opaque with its flag, "no inspection verdict recorded: not recorded before B40, or the contract is v1–v3 (its recorded rule)" (D8, no back-fill)
+  · THE ENGINE ACTUALLY RUN HERE is engine 1, the content inspector, in its sandboxed child process. The ClamAV engine is NOT admitted (D2): the clamd adapter is built and its real-engine evaluation ran against the UNADMITTED Debian image (evidence/cp6/b40-clamav-evaluation.txt — evaluation evidence, never this deployment's engine); an unavailable or incomplete scan is never clean (fail closed → quarantine: phase6-intake-b40 §IN.3, F48/F49); EXC-P1-001 stays OPEN
+
+B40-4 (F-P1-04) THE THROTTLING PORT AUTHORITY — SRC@v4 over the replay set with planted 429 + Retry-After (D10): the authorization, the backoff per contract, a collection inside the hold refused before egress, the third answer admitted and the intervals RESOLVED
+  ✓ A. Hoffmann REGISTERED "Port of Djibouti — vessel calls API (SYNTHETIC)" as a DRAFT SRC@v4 contract (source 01a1…c190a4 v1) — POL 01a15c17-5b45… · audit seq 743245
+  ✓ M. Dvořák (collection manager — not the registrar) EVALUATED "Port of Djibouti — vessel calls API (SYNTHETIC)" v1: approve — POL 01a15c17-5b52… · audit seq 743246
+  ✓ M. Dvořák APPROVED "Port of Djibouti — vessel calls API (SYNTHETIC)" v1 (a different person from the registrar) — POL 01a15c17-5b5a… · audit seq 743248
+  ✓ M. Dvořák ACTIVATED "Port of Djibouti — vessel calls API (SYNTHETIC)"
+  ✓ the platform administrator PROVISIONED "Port of Djibouti — vessel calls API (SYNTHETIC)"'s collection agent 01a1…e76df7 (rest; owner A. Hoffmann)
+  · M. Dvořák collected (the command form): run 01a1…9f5f2c failed
+  ✓ THE FIRST COLLECTION (the schedule's first iteration, or the command form): run 01a1…9f5f2c failed — "throttle refused (rate_limited): the publisher answered 429 Too Many Requests with Retry-After 60 s; the contract's backoff holds the source 60 s until 2026-10-21T01:34:37.232347+00:00 (attempt 1 of 4, a retry planned)"
+  ✓ M. Dvořák collects INSIDE the hold: REFUSED before any request (run 01a1…d3efb5 cancelled) — "acquisition not authorized (policy): rate_limited: the contract's backoff holds collection until 2026-10-21T01:34:37.232347+00:00 (attempt 1 of 4, publisher 429) — no request before the hold ends"
+  · HOLDING until 2026-10-21T01:34:37Z (attempt 1: Retry-After 60 → applied 60 s; the contract's schedule 60 s) — waiting on the database clock
+  · no contract retry ran within 45 s of the hold's end — M. Dvořák collected (the command form): run 01a1…fe3553 failed
+  · HOLDING until 2026-10-21T01:37:24Z (attempt 2: Retry-After 120 → applied 120 s; the contract's schedule 120 s) — waiting on the database clock
+  · no contract retry ran within 45 s of the hold's end — M. Dvořák collected (the command form): run 01a1…ee4820 finished
+  ·   interval 01a1…689827: attempt 1, publisher_429 Retry-After 60 (honoured), the contract's 60 s → applied 60 s, 2026-10-21T01:33:37Z → 2026-10-21T01:34:37Z, a retry planned; RESOLVED by run 01a1…ee4820
+  ·   interval 01a1…1fa798: attempt 2, publisher_429 Retry-After 120 (honoured), the contract's 120 s → applied 120 s, 2026-10-21T01:35:24Z → 2026-10-21T01:37:24Z, a retry planned; RESOLVED by run 01a1…ee4820
+  ✓ THE COVERAGE VIEW (M. Dvořák): 2 RATE-LIMITED interval(s) — 2026-10-21T01:35:24Z–2026-10-21T01:37:24Z resolved; 2026-10-21T01:33:37Z–2026-10-21T01:34:37Z resolved — NOT a silent gap; the third answer admitted (run 01a1…ee4820, 1 item(s)); the last authorization: residency match (EU), window open, robots allowed (Allow: /v1/), rate 30/60 s — POL 01a15c1b-eba6… · audit seq 743410
+  ✓ N. Eriksen (forecast owner — a coverage reader) reads the same intervals: 2 — metadata only
+  · NOT MADE, STATED: a residency mismatch (a contract declaring US in this EU domain) is refused BEFORE egress (residency_refused), and a request outside the declared window is never made (window_closed) — harness-proven (phase6-acquisition-policy-b40 AU); this act registers no mis-declared contract on the demonstration
+
+B40-5 (F-P1-12) THE PARTNER'S ADAPTER — registered, approved by a second person, run in its cell; the unregistered host BLOCKED, the contract SUSPENDED and REQUALIFIED with 1.0.1
+  ✓ H. Weber (domain analyst) registers the adapter package REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ M. Dvořák (collection manager) REGISTERED the adapter package nordwerk-logistics-consignments 1.0.0: digest 25b6f8fb9268… (recomputed by the port), protocol eye-cell/1, author "R. Haddad's firm — partner logistics (SYNTHETIC, customer-written)", destinations consignments.partner-logistics.synthetic.example — POL 01a15c1b-ed92… · audit seq 743413
+  ✓ M. Dvořák (its registrant) approves the adapter 1.0.0 REFUSED — 403 EYE-AUT-001 — adapter package rejected (separation_of_duties): deciding an adapter package (a second person: never its registrant) is never done by its proposer (no self-acceptance)
+  ✓ T. Richter (domain admin — the second person) APPROVED the adapter 1.0.0 at the digest he reviewed: approved — POL 01a15c1b-edbf… · audit seq 743415
+  · the manifest names R. Haddad's firm as the author (the partner's customer-written code); an external collaborator may neither register nor approve it — R. Haddad holds no session here, the refusal is harness-proven (phase6-connector-cell-b40: "an external collaborator even holding a manager binding")
+  ✓ A. Hoffmann REGISTERED "NORDWERK logistics partner — consignments (SYNTHETIC, customer-written adapter)" as a DRAFT SRC@v4 contract (source 01a1…8b8827 v1) — POL 01a15c1b-edc8… · audit seq 743416
+  ✓ M. Dvořák (collection manager — not the registrar) EVALUATED "NORDWERK logistics partner — consignments (SYNTHETIC, customer-written adapter)" v1: approve — POL 01a15c1b-edd5… · audit seq 743417
+  ✓ M. Dvořák APPROVED "NORDWERK logistics partner — consignments (SYNTHETIC, customer-written adapter)" v1 (a different person from the registrar) — POL 01a15c1b-edde… · audit seq 743418
+  ✓ M. Dvořák ACTIVATED "NORDWERK logistics partner — consignments (SYNTHETIC, customer-written adapter)"
+  ✓ the platform administrator PROVISIONED "NORDWERK logistics partner — consignments (SYNTHETIC, customer-written adapter)"'s collection agent 01a1…8d6a9a (adapter; owner A. Hoffmann)
+  ✓ 1.0.0 RAN IN ITS CELL and the gateway BLOCKED the unregistered host: run 01a1…f2c078 FAILED CLOSED — "connector cell refused (unregistered_destination): the contract is suspended, requalification df19e483-c79a-41bd-b54e-0db139887655 required (cursor and custody unchanged); host track.unregistered-carrier.synthetic.example is not a destination the contract regi"; nothing admitted (0); the receipts allowed consignments.partner-logistics.synthetic.example 200, allowed consignments.partner-logistics.synthetic.example 200, blocked:unregistered_destination track.unregistered-carrier.synthetic.example
+  ✓ the contract SUSPENDED with its cursor and custody intact; requalification df19…887655 required (unregistered_destination)
+  ✓ M. Dvořák reactivates the suspended contract REFUSED — 409 EYE-STA-002 — transition rejected (held): source 01a15c1b-edc6-7a3f-aed7-e5d59a8b8827 v1 is held for requalification df19e483-c79a-41bd-b54e-0db139887655 (unregistered_destination, required); it is activated again once a second person approves a requalified connector
+  ✓ M. Dvořák (collection manager) REGISTERED the adapter package nordwerk-logistics-consignments 1.0.1: digest 3cca44e02495… (recomputed by the port), protocol eye-cell/1, author "R. Haddad's firm — partner logistics (SYNTHETIC, customer-written)", destinations consignments.partner-logistics.synthetic.example — POL 01a15c1c-3d82… · audit seq 743440
+  ✓ M. Dvořák (its registrant) approves the adapter 1.0.1 REFUSED — 403 EYE-AUT-001 — adapter package rejected (separation_of_duties): deciding an adapter package (a second person: never its registrant) is never done by its proposer (no self-acceptance)
+  ✓ T. Richter (domain admin — the second person) APPROVED the adapter 1.0.1 at the digest he reviewed: approved — POL 01a15c1c-3daa… · audit seq 743442
+  ✓ M. Dvořák submits 1.0.0 again for requalification REFUSED — 422 EYE-REQ-001 — requalification rejected (contract_tests): the contract tests the API ran in a cell did not pass (failed: every request on a registered destination — asked for track.unregistered-carrier.synthetic.example; completes against the replay set — failed — the adapter reported gateway_refused (unregistered_destination): host track.unregistered-carrier.synthetic.example is not a destination the contract registers (consignmen
+  ✓ M. Dvořák SUBMITTED 1.0.1 for requalification: the contract tests pass in a cell against the replay set — package digest verified pass; manifest valid for eye-cell/1 pass; declared destinations registered by the contract pass; every request on a registered destination pass; speaks eye-cell/1 pass; completes against the replay set pass; frames at least one item pass — POL 01a15c1c-3e5b… · audit seq 743449
+  ✓ M. Dvořák (the submitter) approves the requalification REFUSED — 403 EYE-AUT-001 — requalification rejected (separation_of_duties): deciding a connector's requalification (a second person: never its submitter) is never done by its proposer (no self-acceptance)
+  ✓ T. Richter APPROVED the requalification at the digest he reviewed: approved — POL 01a15c1c-3e71… · audit seq 743451
+  ✓ M. Dvořák REACTIVATED the requalified contract (1.0.1 in force)
+  ✓ 1.0.1 RAN IN ITS CELL: run 01a1…932595 finished — 3 consignment(s) ADMITTED through the unchanged lifecycle; every request on a receipt: allowed consignments.partner-logistics.synthetic.example 200, allowed consignments.partner-logistics.synthetic.example 200 — the off-registry link never requested
+  · the connectors register (A. Hoffmann): nordwerk-logistics-partner-consignments active, the package in force 1.0.1 (requalification), open requalification none
+  ✓ the egress receipts (A. Hoffmann — digests, sizes, destinations, decisions; never bytes): {"allowed":4,"blocked:unregistered_destination":1}
+  · the DESTINATION IDENTITY CHANGE (a different pinned key on the registered host → blocked before the request, quarantined destination_identity_changed) and the credential injected by the gateway are HARNESS-PROVEN (phase6-connector-cell-b40, a loopback TLS host on a port the act-target module refuses for the live addresses) — not staged here. D3: the cell is confined by process and capability; network-level denial is B103 / B109 — stated, never claimed
+
+B40-6 THE RECORDS — B40's components owned and approved by the DSA; a B40 design baseline; the design acceptance DEMONSTRATION records ch9 (F-P1-01) and ch16 (F-P1-03), the exercises linked
+  ✓ P. Castellano (conformance steward) re-read the inventory from the repository: 26 new asset(s) (26 of B40's library — source-registry 6, authenticity 5, intake 6, acquisition-policy 5, connector-cell 4), 174 unchanged; drift stated: pattern.governed-action, pattern.truth-state, tokens.semantic, web.actions.button, web.authority.command-review, web.command-environment.command-composition, web.forms.field, web.layers.dialog, web.layers.drawer, web.layers.panel, web.layers.popover, web.layers.surface, web.layout.composition, web.layout.density-switch, web.layout.region, web.object.lifecycle-view, web.object.object-header, web.observation.governed-button, web.shell.app-shell, web.shell.command-palette, web.shell.history-navigator, web.ui.lifecycle-badge, web.ui.truth-badge
+  ✓ L. Haddad (Design System Authority, human gate) APPROVED 26 B40 component(s): 26 components of source-registry, authenticity, intake, acquisition-policy, connector-cell, each with ONE accountable owner — S. Iversen
+  ✓ P. Castellano PROPOSED the B40 design baseline 01a1…0719ef v1: 26 members, design system @eye/tokens@0.1.0
+  ✓ P. Castellano (its proposer) attests the baseline REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ L. Haddad ATTESTED and SIGNED the B40 design baseline v1 (attested)
+  ✓ the design acceptance DEMONSTRATION records ch9 (F-P1-01) and ch16 (F-P1-03), each attested by L. Haddad (design), H. Achterberg (assurance) and W. Zielińska (customer): ch9 ACCEPTED, ch16 ACCEPTED — 2 records, claim demonstration; 8 journey-harness evidence item(s) linked (the §AC harness phase6-acceptance-b40 and the walk among them); the signed scope-specific records are B111 → H3/R2
+
+B40-7 THE STATE, the env lines for the walk, THE LIMITS
+  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B40_STATE_DEF03_EVD=01a084f5-8c73-7087-b0fb-2796c42b2dbb
+  EYE_B40_FEED_EVD=01a15c17-179a-76a5-b4c1-05b0db9adbdf
+  EYE_B40_FEED_SOURCE=01a15c17-10fd-78c0-8b96-a535cf04154d
+  EYE_B40_FEED_NAME=Red Sea shipping notices (SYNTHETIC)
+  EYE_B40_FEED_CANDIDATE=770024e5-a111-4f1c-9136-dcc59bc138c2
+  EYE_B40_FEED_RETENTION_ACTION=23dadeff-462c-4286-be85-abdb3547e58a
+  EYE_B40_FEED_RIGHTS_CHANGE=dc8e237a-e8cf-4c1a-8e06-09f7042e5ef9
+  EYE_B40_STREAM_WITHDRAWAL=0c79306a-7231-4f36-912a-a09b1733ad07
+  EYE_B40_STREAM_PRODUCTS=5
+  EYE_B40_STREAM_EVD=01a15afe-87bf-71e0-bf64-79cd82ae8e13
+  EYE_B40_STREAM_SOURCE=01a0deff-5fb9-7e77-8799-c8beef33c61d
+  EYE_B40_STREAM_KEY=red-sea-corridor-stream-late
+  EYE_B40_STREAM_FORECAST=01a0f00b-8d89-7f7a-a271-60f56d6aafd5
+  EYE_B40_STREAM_TERMS=46afc5bd-aa3d-4530-a24d-2db851a374fe
+  EYE_B40_D4_PACKAGE=01a15c17-1bf2-75cf-9c40-faa483d70cdd
+  EYE_B40_CUSTOMS_PACKAGE=01a15c17-2c09-7ca4-a359-e119998ab375
+  EYE_B40_CUSTOMS_SOURCE=01a15c17-2819-741b-a311-2262d6c9c4b6
+  EYE_B40_CUSTOMS_NAME=Djibouti transshipment customs bulletins (SYNTHETIC)
+  EYE_B40_CUSTOMS_KEY_REF=djibouti-customs-2026
+  EYE_B40_CUSTOMS_KEY=e65f0740
+  EYE_B40_CUSTOMS_VERIFIED_EVD=01a15c17-295e-7b0b-b5b8-119636473aeb
+  EYE_B40_CUSTOMS_FAILED_EVD=01a15c17-2a3a-7e51-aff3-c35435b09b61
+  EYE_B40_SUPPLIER_CLEAN_EVD=01a15c17-5738-7a9d-9b46-bdb77f4178c4
+  EYE_B40_SUPPLIER_PDF_CASE=01a15c17-579b-726d-99aa-b7ef67f39724
+  EYE_B40_SUPPLIER_SOURCE=01a15c17-2e29-762e-9e72-e5ad88971fb3
+  EYE_B40_SUPPLIER_NAME=Regensburg bearings — supplier documents (SYNTHETIC)
+  EYE_B40_SUPPLIER_DOCM_CASE=01a15c17-57ee-7093-b957-395731bec44c
+  EYE_B40_PORT_RATE_LIMIT=01a15c19-4d2a-73ab-91ed-7dc1631fa798
+  EYE_B40_PORT_SOURCE=01a15c17-5b43-71af-8f71-153b32c190a4
+  EYE_B40_PORT_NAME=Port of Djibouti — vessel calls API (SYNTHETIC)
+  EYE_B40_PARTNER_BLOCKED_RUN=01a15c1c-3cb8-79a2-afc2-f38c87f2c078
+  EYE_B40_PARTNER_GOOD_RUN=01a15c1c-3e95-771c-9c4b-342c18932595
+  EYE_B40_PARTNER_SOURCE=01a15c1b-edc6-7a3f-aed7-e5d59a8b8827
+  EYE_B40_PARTNER_NAME=NORDWERK logistics partner — consignments (SYNTHETIC, customer-written adapter)
+  EYE_B40_PARTNER_REQUALIFICATION=df19e483-c79a-41bd-b54e-0db139887655
+  EYE_B40_ADAPTER_100=47b93717-3f7a-4c6e-9ac3-f143279c1e7d
+  EYE_B40_ADAPTER_101=808508ba-3a72-4f8e-8615-f609423ba7ce
+  EYE_B40_ACCEPTANCE_CH9=01a15c1c-90f9-79d7-b251-6bfa39e4c7d1
+  EYE_B40_ACCEPTANCE_CH16=01a15c1c-912f-773d-8a7b-46767ac40cfe
+  EYE_B40_BASELINE=01a15c1c-90bf-760f-93a7-d347cd0719ef
+  EYE_B40_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B40_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B40_ANALYST=a.hoffmann
+  EYE_B40_UPLOADER=h.weber
+  EYE_B40_MANAGER=m.dvorak
+  EYE_B40_STEWARD=f.aydin
+  EYE_B40_DOMAIN_ADMIN=t.richter
+  EYE_B40_SPONSOR=w.zielinska
+  EYE_B40_FORECAST_OWNER=n.eriksen
+  EYE_B40_DECISION_OWNER=c.brenner
+  EYE_B40_AUDITOR=e.lindqvist
+  EYE_B40_RETENTION_AUTHORITY=h.bergmann
+  EYE_B40_FEED_ANALYST=a.hoffmann
+  EYE_B40_FEED_MANAGER=m.dvorak
+  EYE_B40_STREAM_OWNER=n.eriksen
+  EYE_B40_STREAM_STATE=restored
+  EYE_B40_CUSTOMS_STEWARD=f.aydin
+  EYE_B40_CUSTOMS_AUDITOR=e.lindqvist
+  EYE_B40_CUSTOMS_SIGNED_EVD=01a15c17-295e-7b0b-b5b8-119636473aeb
+  EYE_B40_CUSTOMS_TAMPERED_EVD=01a15c17-2a3a-7e51-aff3-c35435b09b61
+  EYE_B40_SUPPLIER_UPLOADER=h.weber
+  EYE_B40_SUPPLIER_REVIEWER=a.hoffmann
+  EYE_B40_PORT_MANAGER=m.dvorak
+  EYE_B40_ADAPTER_ADMIN=t.richter
+  EYE_B40_ADAPTER_SOURCE=01a15c1b-edc6-7a3f-aed7-e5d59a8b8827
+  EYE_B40_ADAPTER_PACKAGE=47b93717-3f7a-4c6e-9ac3-f143279c1e7d
+  EYE_B40_ADAPTER_REQUALIFIED_PACKAGE=808508ba-3a72-4f8e-8615-f609423ba7ce
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — 0123 (§RG, §VA, §IN, §AP, §CR) and its harnesses phase6-{prelude,registry,authenticity,intake,acquisition-policy,connector-cell,clamav-engine,b40-res-evidenced}-b40, the unit cases, the web unit models, the walk. (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: the feed discovered, drafted, promoted, evaluated and approved by a second person (the unevaluated approval and the registrar's own acts refused), the customer approval (claim demonstration), collected, and its rights withdrawn with a deletion obligation waiting for the retention authority; D4 on the late corridor stream — the contract rights withdrawn, the products and owners listed, markers set, a decision-active use refused with no business effect, the unaffected forecast usable, an in-force terms record not lifting the withdrawal, recovery by the governed restoration; the terms record withdrawn and refused again, a contract restoration refused, a new terms version restoring use; the customs key declared and a mistyped one retired on its fingerprint, the signed bulletin verified and the tampered copy admitted FAILED and refused at use; the supplier documents inspected in the sandbox — the clean one admitted with its verdict, the active-content PDF and the macro .docm quarantined, read by WHY and excerpt, rejected by the manager; the port authority's 429s held by the contract's backoff and resolved; the partner adapter blocked at the gateway, suspended, requalified by a second person and admitting through its cell; the B40 library approved and the ch9 / ch16 design acceptance records (claim demonstration). (3) REAL ACCEPTANCE — never claimed (B111, then H3/R2). NOT STAGED (harness-proven): the gate / publication / export route refusals of D4 (RG5; their shared check read here on current state), the claim on authenticity-failed evidence (VA3/VA4), D9b with a collection manager as the uploader (§IN.2) and the upload approval (§IN.4), residency and window refusals (AU), the loopback forms (LB, the pinned partner host), the destination identity change, every fault point F47–F56. The ClamAV engine is NOT admitted (D2) — EXC-P1-001 stays OPEN; the owner decides.
+
+ALL SCENES HELD · 6.2 min
+
+════════ RUN 2 ════════
+THE B40 ACT (the source platform) on eye_demo_b40 (REHEARSAL) — 2026-10-21T01:39:07.414Z — API http://localhost:3411 — target declared rehearsal
+
+B40-T THE ACT TARGET — this act spawned (a) with no EYE_ACT_TARGET and (b) as a rehearsal naming the LIVE API: each REFUSED (exit 2) before anything is contacted
+  ✓ (a) the act spawned with NO EYE_ACT_TARGET: exit 2 — "REFUSED (act target): EYE_ACT_TARGET is not set — declare the environment: EYE_ACT_TARGET=rehearsal for a restored copy, EYE_ACT_TARGET=live for the demonstration. Nothing was contacted."
+  ✓ (b) the act spawned as a REHEARSAL naming the LIVE API http://localhost:3401: exit 2 — "REFUSED (act target): EYE_API http://localhost:3401 is the LIVE demonstration's API (http://localhost:3401); a rehearsal talks to its own rig. Nothing was contacted."
+  ✓ NOTHING WAS CONTACTED: eye_demo_b40 — human sessions 5757 → 5757, login audit rows 5758 → 5758; the LIVE eye_demo (read-only SELECT) — sessions 5666 → 5666, login audit rows 5667 → 5667
+  · D10: this act starts NO synthetic listener — the 429 + Retry-After answers are the replay set's (no network); the loopback forms (a throttling publisher, a pinned partner host) are the harnesses' (phase6-acquisition-policy-b40 LB, phase6-connector-cell-b40), each on a port scripts/act-target.mjs assertSyntheticListener refuses for the live addresses
+
+B40-0 THE CAST AND THE STATE — 0123, the build, the NORDWERK cast; the sources, the DEF-03 PDF, the stale quarantine cases, content authenticity before B40, the scanning engine (D2)
+  ✓ migration applied: 0123_b40_source_platform.sql (§RG registry + rights lifecycle · §VA authenticity · §IN intake inspection · §AP acquisition policy · §CR connector cell)
+  ✓ a.hoffmann holds domain_analyst at the DOMAIN
+  ✓ h.weber holds domain_analyst at the DOMAIN
+  ✓ m.dvorak holds collection_manager at the DOMAIN
+  ✓ f.aydin holds data_steward at the DOMAIN
+  ✓ t.richter holds domain_admin at the DOMAIN
+  ✓ w.zielinska holds customer_sponsor at the TENANT
+  ✓ n.eriksen holds forecast_owner at the DOMAIN
+  ✓ j.weber holds strategy_owner at the DOMAIN
+  ✓ c.brenner holds decision_owner at the DOMAIN
+  ✓ e.lindqvist holds auditor at the TENANT
+  ✓ h.bergmann holds retention_authority at the TENANT
+  ✓ l.haddad holds design_system_authority at the PLATFORM
+  ✓ p.castellano holds conformance_steward at the PLATFORM
+  ✓ h.achterberg holds independent_assurance at the PLATFORM
+  · the corridor's collection managers: m.dvorak — the ONLY one (MAP Q5: the analyst registers, the collection manager evaluates and approves — two people)
+  · R. Haddad (the partner's customs broker, SYNTHETIC): 3 principal(s), role(s) external_collaborator — invited collaborators with no password session; an external collaborator never registers or approves an adapter (the PDP has no rule for the role; the port refuses one even holding a manager binding — phase6-connector-cell-b40)
+  · the API declares its build: head 7d5dcd99e655… (from env), migration head —, policy bundle bundle-v1 63507ec4fd5f…
+  · the tenant holds 25 sources, 32 contract versions, 22 active; B40's five SYNTHETIC sources: djibouti-port-vessel-calls, djibouti-transshipment-customs-bulletins, nordwerk-logistics-partner-consignments, red-sea-shipping-notices, regensburg-supplier-documents — an earlier run
+  ✓ the DEF-03 PDF (carrier-reroute-notice-2024-01-14.pdf, planted in 2026-09) is ADMITTED with active_content_risk = true as 01a0…2b2dbb (SRC:01a084f5-76af-711e-a291-bc110b79f394@1) — the v1–v3 rule (D8: no back-fill), stays as it was
+  · D16: 2 quarantine case(s) OPEN PAST EXPIRY — 01a0…d35e6c schema_drift (expired 2026-09-16T06:57:55Z), 01a0…6b4578 type_mismatch (expired 2026-09-16T06:57:59Z) — listed for the owner, untouched by this act (the sweeper has not expired them)
+  · content authenticity of the tenant's evidence versions: unknown ×18618, verified ×1 — before B40 no signature mechanism was evaluated ("content_authenticity unknown"); none is back-filled
+  · THE SCANNING ENGINE (D2): engine 1 is the content inspector in its sandboxed child process (Node's permission model: no network, the one item readable, caps, env stripped; killed on timeout → unavailable → quarantined). Engine 2 is the clamd ADAPTER; the ClamAV IMAGE IS NOT ADMITTED (the official Alpine image has no linux/arm64 child; the Debian image scans 1 CRITICAL + 53 HIGH per platform, none fixed upstream) — the owner decides (a/b/c); EXC-P1-001 stays OPEN. Every SRC@v4 contract of this act names scan_engines [content-inspector] only. The real-engine evaluation of the UNADMITTED image is evidence/cp6/b40-clamav-evaluation.txt (sha256 a92eea854f82…) — evaluation evidence, never this deployment's engine
+
+B40-1 (F-P1-01) THE SHIPPING-NOTICE FEED — discovered, evaluated, approved, customer-approved, collected, its rights withdrawn ("nothing rests on it yet"); then D4 on red-sea-corridor-stream-late: BOTH rights sources, refused use, recovery through governed versions
+  · the candidate "Red Sea shipping notices (SYNTHETIC)" 7700…c138c2 (promoted) stands — an earlier run
+  · the feed 01a1…04154d v1 (suspended, rights withdrawn) stands — an earlier run
+  · the feed "Red Sea shipping notices (SYNTHETIC)" is registered (01a1…04154d v1, suspended) — stands — an earlier run
+  · W. Zielińska's customer approval 119e…75f1a3 (approve, claim demonstration) stands — an earlier run
+  · the feed is suspended (rights withdrawn) — an earlier run withdrew its rights
+  · the feed's rights are WITHDRAWN (change dc8e…2e5ef9) — stands — an earlier run
+  ✓ H. Bergmann (retention authority) SEES the deletion action 23da…47e58a waiting for her: deletion of evidence, state opened — NOT executed by this act (approval, execution and verification are the retention unit's own acts)
+  ✓ the feed's schedule: removed — collection prohibited from the withdrawal
+
+  · D4 on red-sea-corridor-stream-late (01a0…33c61d v1, active, rights confirmed) — its forecast FCT 01a0…6aafd5 rests on the stream's evidence; the unaffected control FCT 01a1…526298 (portwatch:chokepoint4:n_total)
+  · the package "B40 — reroute on the late corridor stream's forecast (SYNTHETIC; a D4 demonstration, never proposed)" 01a1…d70cdd v1 (draft) stands — an earlier run
+  · the unaffected option "status-quo" (another source's forecast) stands — an earlier run
+  · THE D4 CYCLE stands — an earlier run: the contract ledger withdraw → restore, the rights-terms series v1 in_force → v2 withdrawn → v3 in_force
+  ✓ FROM CURRENT STATE (no tick): the stream's forecast is decision_option usable, gate usable, publication usable, export usable — the contract rights confirmed and the terms v3 in force
+  ✓ HISTORY INTACT: the rights ledger withdraw → restore (append-only); the contract events suspended, reactivated, rights_changed:withdraw, suspended, rights_changed:restore, reactivated; the terms series v1 in_force → v2 withdrawn → v3 in_force; the stream's evidence: 537 version(s) recorded before the withdrawal, every one still admitted (nothing withdrawn, rewritten or deleted by a rights change); 35 collected since the restoration resumed the schedule
+
+B40-2 (F-P1-02) THE DJIBOUTI CUSTOMS BULLETIN — the publisher key declared by F. Aydın; the signed bulletin VERIFIED, a tampered copy ADMITTED marked FAILED (D6); the failed version refused at a decision-active use
+  · "Djibouti transshipment customs bulletins (SYNTHETIC)" is registered (01a1…c9c4b6 v1, active) — stands — an earlier run
+  · the publisher key ed25519 · 40c9360f1ed52987 is in force — stands — an earlier run
+  · the mistyped key, retired on its fingerprint, stands — an earlier run
+  · both bulletins are uploaded — stand — an earlier run (01a1…473aeb, 01a1…b09b61)
+  ✓ the SIGNED bulletin 01a1…473aeb: ADMITTED, authenticity VERIFIED (ed25519_detached, key djibouti-customs-2026) — custody.authenticity_recorded
+  ✓ the TAMPERED copy 01a1…b09b61: ADMITTED marked FAILED — not quarantined, never verified (D6): "the detached Ed25519 signature did not verify with any of the 1 publisher key(s) in force — these bytes are not what the publisher signed"
+  ✓ E. Lindqvist (auditor) READ the signed evidence page's authenticity: VERIFIED (ed25519_detached, key ed25519 · 40c9360f1ed52987); the attributes recorded at intake from the SRC@v4 declaration — language "en" (source_contract), sensitivity "commercial" (source_contract), geographic_scope ["Djibouti","Horn of Africa"] (source_contract) — metadata only (D9) — POL 01a15c1c-d57d… · audit seq 743513
+  · B82's trust layer on the signed version (graph.ev_evidence_state, read-only): authenticity {"detail":"the detached Ed25519 signature verified with the publisher key ed25519 · 40c9360f1ed52987 (djibouti-customs-2026) over these exact bytes","key_id":"<the in-force key id — EYE_B40_CUSTOMS_PBK in run 3>","scheme":"ed25519_detache
+  ✓ E. Lindqvist (auditor) READ the tampered evidence page's authenticity: FAILED (ed25519_detached, no key verified it); the attributes recorded at intake from the SRC@v4 declaration — language "en" (source_contract), sensitivity "commercial" (source_contract), geographic_scope ["Djibouti","Horn of Africa"] (source_contract) — metadata only (D9) — POL 01a15c1c-d815… · audit seq 743515
+  · B82's trust layer on the tampered version (graph.ev_evidence_state, read-only): authenticity {"detail":"the detached Ed25519 signature did not verify with any of the 1 publisher key(s) in force — these bytes are not what the publisher signed","key_id":null,"scheme":"ed25519_detached","key_ref":null,"outcome":"fa
+  · the package "B40 — Regensburg consignments on the Djibouti bulletin (SYNTHETIC; a D6 demonstration, never proposed)" 01a1…8ab375 v1 (draft) stands — an earlier run
+  ✓ C. Brenner derives an option citing the TAMPERED bulletin 01a1…b09b61 REFUSED — 409 EYE-STA-002 — object use rejected (authenticity_failed): EVD 01a15c17-2a3a-7e51-aff3-c35435b09b61 v1 rests on EVD 01a15c17-2a3a-7e51-aff3-c35435b09b61 v1, whose publisher signature FAILED verification at its admission (ed25519_detached, recorded 2026-10-21T01:33:04Z, authenticity record 7c5799ae-306e-417c-9304-d03825ca2f90) — admitted marked and readable, never established as the publisher's content; it is not used for decision_op
+  ✓ NO BUSINESS EFFECT: 1 option(s) before and after
+  · the option on the verified bulletin stands — an earlier run
+  ✓ FROM CURRENT STATE: the tampered version — decision_option REFUSED (authenticity_failed), gate REFUSED (authenticity_failed), publication REFUSED (authenticity_failed), export REFUSED (authenticity_failed); the signed version — decision_option usable, gate usable, publication usable, export usable; the tampered one stays ADMITTED and readable
+  · the claim built on each (the WEAK / INDETERMINATE "authenticity failed" display of B82's trust layer) is HARNESS-PROVEN (phase6-authenticity-b40 VA3/VA4): no approved structured-extraction method for the bulletin's JSON exists on the demonstration, and this act plants no claim
+  · the key register for the customs source: ed25519 · d9774c7286d2c36c retired, ed25519 · 40c9360f1ed52987 in_force; the declared scheme ed25519_detached
+
+B40-3 (F-P1-03) THE SUPPLIER DOCUMENTS — the content inspector (engine 1, sandboxed): the clean note ADMITTED with its verdict; the active-content PDF and the macro .docm QUARANTINED; WHY, the excerpt (D9), the separation, the rejection
+  · "Regensburg bearings — supplier documents (SYNTHETIC)" is registered (01a1…971fb3 v1, active) — stands — an earlier run
+  · the three supplier documents are uploaded — stand — an earlier run
+  ✓ the CLEAN delivery note 01a1…4178c4: ADMITTED; its verdict recorded as evidence — engine content-inspector 1.0.0, rule set fe1064fc0928…, outcome clean, 0 finding(s), decision pass; confinement --permission --allow-fs-read=<inspector> --allow-fs-read=<item> --disallow-code-generation-from-strings
+  ✓ the supplier PDF: QUARANTINED active_content — "active content (pdf.open_action @54, pdf.additional_actions @255, pdf.javascript @730, pdf.js @742, pdf.javascript @812, pdf.js @824); hidden instructions (pdf.hidden_text_instruction @545, pdf.metada" (cited by code and offset, never quoted)
+  ✓ the inspection checklist .docm: QUARANTINED macro — "macros (ooxml.vba_project @1510, ooxml.macro_enabled @0) — the SRC@v4 content policy quarantines macros (D7); nothing reaches extraction"
+  ✓ NOTHING REACHED EVIDENCE: no evidence-vault blob for the quarantined items (0); nothing reaches extraction
+  · the intake review queue (A. Hoffmann): 2 case(s); ours: —; past expiry: 2 (D16)
+  ✓ A. Hoffmann READ the case's WHY 01a1…f39724: engine content-inspector 1.0.0 (rule set fe1064fc0928…), findings pdf.open_action @54, pdf.additional_actions @255, pdf.javascript @730, pdf.js @742, pdf.javascript @812, pdf.js @824, pdf.hidden_text_instruction @545, pdf.metadata_zero_width @936; the review reason safety; custody quarantined, inspected, retrieved — no content in the answer — POL 01a15c1c-db31… · audit seq 743523
+  ✓ A. Hoffmann (domain analyst — she already retrieves evidence, D9) READ THE EXCERPT around pdf.hidden_text_instruction: 574 bytes served of 1330 (289–863), the digest re-verified, custody.retrieved written; it carries the hidden white-text instruction — POL 01a15c1c-db42… · audit seq 743524
+  ✓ F. Aydın (data steward — no evidence retrieval) asks for the excerpt REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · the supplier PDF's case 01a1…f39724 is rejected (by M. Dvořák) — stands — an earlier run
+  · the .docm's case 01a1…bec44c is rejected (by M. Dvořák) — stands — an earlier run
+  · D9b — REVIEWER ≠ UPLOADER for manual uploads: H. Weber was refused by the PDP (she holds no review role); the port's own refusal of a COLLECTION MANAGER who uploaded ("the operator who uploaded this item never reviews its quarantine case") is HARNESS-PROVEN (phase6-intake-b40 §IN.2) — the corridor has ONE collection manager, so staging it here would leave a case nobody may review; the upload approval of SP-22 likewise (§IN.4)
+  ✓ the DEF-03 PDF 01a0…2b2dbb (carrier-advisories v1 — a v1–v3 contract) STAYS AS IT WAS: admitted opaque with its flag, "no inspection verdict recorded: not recorded before B40, or the contract is v1–v3 (its recorded rule)" (D8, no back-fill)
+  · THE ENGINE ACTUALLY RUN HERE is engine 1, the content inspector, in its sandboxed child process. The ClamAV engine is NOT admitted (D2): the clamd adapter is built and its real-engine evaluation ran against the UNADMITTED Debian image (evidence/cp6/b40-clamav-evaluation.txt — evaluation evidence, never this deployment's engine); an unavailable or incomplete scan is never clean (fail closed → quarantine: phase6-intake-b40 §IN.3, F48/F49); EXC-P1-001 stays OPEN
+
+B40-4 (F-P1-04) THE THROTTLING PORT AUTHORITY — SRC@v4 over the replay set with planted 429 + Retry-After (D10): the authorization, the backoff per contract, a collection inside the hold refused before egress, the third answer admitted and the intervals RESOLVED
+  · "Port of Djibouti — vessel calls API (SYNTHETIC)" is registered (01a1…c190a4 v1, active) — stands — an earlier run
+  · the throttled collection stands — an earlier run: 2 interval(s), each RESOLVED
+  ·   interval 01a1…689827: attempt 1, publisher_429 Retry-After 60 (honoured), the contract's 60 s → applied 60 s, 2026-10-21T01:33:37Z → 2026-10-21T01:34:37Z, a retry planned; RESOLVED by run 01a1…ee4820
+  ·   interval 01a1…1fa798: attempt 2, publisher_429 Retry-After 120 (honoured), the contract's 120 s → applied 120 s, 2026-10-21T01:35:24Z → 2026-10-21T01:37:24Z, a retry planned; RESOLVED by run 01a1…ee4820
+  ✓ THE COVERAGE VIEW (M. Dvořák): 2 RATE-LIMITED interval(s) — 2026-10-21T01:35:24Z–2026-10-21T01:37:24Z resolved; 2026-10-21T01:33:37Z–2026-10-21T01:34:37Z resolved — NOT a silent gap; the third answer admitted (run 01a1…ee4820, 1 item(s)); the last authorization: residency match (EU), window open, robots allowed (Allow: /v1/), rate 30/60 s — POL 01a15c1c-dd25… · audit seq 743527
+  ✓ N. Eriksen (forecast owner — a coverage reader) reads the same intervals: 2 — metadata only
+  · NOT MADE, STATED: a residency mismatch (a contract declaring US in this EU domain) is refused BEFORE egress (residency_refused), and a request outside the declared window is never made (window_closed) — harness-proven (phase6-acquisition-policy-b40 AU); this act registers no mis-declared contract on the demonstration
+
+B40-5 (F-P1-12) THE PARTNER'S ADAPTER — registered, approved by a second person, run in its cell; the unregistered host BLOCKED, the contract SUSPENDED and REQUALIFIED with 1.0.1
+  · the adapter package 1.0.0 47b9…9c1e7d (approved) stands — an earlier run
+  · the manifest names R. Haddad's firm as the author (the partner's customer-written code); an external collaborator may neither register nor approve it — R. Haddad holds no session here, the refusal is harness-proven (phase6-connector-cell-b40: "an external collaborator even holding a manager binding")
+  · "NORDWERK logistics partner — consignments (SYNTHETIC, customer-written adapter)" is registered (01a1…8b8827 v1, active) — stands — an earlier run
+  ✓ 1.0.0 RAN IN ITS CELL and the gateway BLOCKED the unregistered host: run 01a1…f2c078 FAILED CLOSED — "connector cell refused (unregistered_destination): the contract is suspended, requalification df19e483-c79a-41bd-b54e-0db139887655 required (cursor and custody unchanged); host track.unregistered-carrier.synthetic.example is not a destination the contract regi"; nothing admitted (0); the receipts allowed consignments.partner-logistics.synthetic.example 200, allowed consignments.partner-logistics.synthetic.example 200, blocked:unregistered_destination track.unregistered-carrier.synthetic.example
+  · the contract is active on 1.0.1 and has admitted consignments — stands — an earlier run
+  ✓ 1.0.1 RAN IN ITS CELL: run 01a1…932595 finished — 3 consignment(s) ADMITTED through the unchanged lifecycle; every request on a receipt: allowed consignments.partner-logistics.synthetic.example 200, allowed consignments.partner-logistics.synthetic.example 200 — the off-registry link never requested
+  · the connectors register (A. Hoffmann): nordwerk-logistics-partner-consignments active, the package in force 1.0.1 (requalification), open requalification none
+  ✓ the egress receipts (A. Hoffmann — digests, sizes, destinations, decisions; never bytes): {"allowed":4,"blocked:unregistered_destination":1}
+  · the DESTINATION IDENTITY CHANGE (a different pinned key on the registered host → blocked before the request, quarantined destination_identity_changed) and the credential injected by the gateway are HARNESS-PROVEN (phase6-connector-cell-b40, a loopback TLS host on a port the act-target module refuses for the live addresses) — not staged here. D3: the cell is confined by process and capability; network-level denial is B103 / B109 — stated, never claimed
+
+B40-6 THE RECORDS — B40's components owned and approved by the DSA; a B40 design baseline; the design acceptance DEMONSTRATION records ch9 (F-P1-01) and ch16 (F-P1-03), the exercises linked
+  · B40's library is in the inventory (26 components): stands — an earlier run
+  ✓ L. Haddad (Design System Authority, human gate) APPROVED 0 B40 component(s) (26 stand — an earlier run): 26 components of source-registry, authenticity, intake, acquisition-policy, connector-cell, each with ONE accountable owner — S. Iversen
+  · the B40 design baseline 01a1…0719ef v1 stands — an earlier run (attested)
+  ✓ the design acceptance DEMONSTRATION records ch9 (F-P1-01) and ch16 (F-P1-03), each attested by L. Haddad (design), H. Achterberg (assurance) and W. Zielińska (customer): ch9 stands, ch16 stands — 2 records, claim demonstration; 8 journey-harness evidence item(s) linked (the §AC harness phase6-acceptance-b40 and the walk among them); the signed scope-specific records are B111 → H3/R2
+
+B40-7 THE STATE, the env lines for the walk, THE LIMITS
+  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B40_STATE_DEF03_EVD=01a084f5-8c73-7087-b0fb-2796c42b2dbb
+  EYE_B40_FEED_SOURCE=01a15c17-10fd-78c0-8b96-a535cf04154d
+  EYE_B40_FEED_NAME=Red Sea shipping notices (SYNTHETIC)
+  EYE_B40_FEED_CANDIDATE=770024e5-a111-4f1c-9136-dcc59bc138c2
+  EYE_B40_FEED_RETENTION_ACTION=23dadeff-462c-4286-be85-abdb3547e58a
+  EYE_B40_FEED_RIGHTS_CHANGE=dc8e237a-e8cf-4c1a-8e06-09f7042e5ef9
+  EYE_B40_STREAM_SOURCE=01a0deff-5fb9-7e77-8799-c8beef33c61d
+  EYE_B40_STREAM_KEY=red-sea-corridor-stream-late
+  EYE_B40_STREAM_FORECAST=01a0f00b-8d89-7f7a-a271-60f56d6aafd5
+  EYE_B40_STREAM_TERMS=46afc5bd-aa3d-4530-a24d-2db851a374fe
+  EYE_B40_D4_PACKAGE=01a15c17-1bf2-75cf-9c40-faa483d70cdd
+  EYE_B40_CUSTOMS_PACKAGE=01a15c17-2c09-7ca4-a359-e119998ab375
+  EYE_B40_CUSTOMS_SOURCE=01a15c17-2819-741b-a311-2262d6c9c4b6
+  EYE_B40_CUSTOMS_NAME=Djibouti transshipment customs bulletins (SYNTHETIC)
+  EYE_B40_CUSTOMS_KEY_REF=djibouti-customs-2026
+  EYE_B40_CUSTOMS_KEY=e65f0740
+  EYE_B40_CUSTOMS_VERIFIED_EVD=01a15c17-295e-7b0b-b5b8-119636473aeb
+  EYE_B40_CUSTOMS_FAILED_EVD=01a15c17-2a3a-7e51-aff3-c35435b09b61
+  EYE_B40_SUPPLIER_CLEAN_EVD=01a15c17-5738-7a9d-9b46-bdb77f4178c4
+  EYE_B40_SUPPLIER_PDF_CASE=01a15c17-579b-726d-99aa-b7ef67f39724
+  EYE_B40_SUPPLIER_SOURCE=01a15c17-2e29-762e-9e72-e5ad88971fb3
+  EYE_B40_SUPPLIER_NAME=Regensburg bearings — supplier documents (SYNTHETIC)
+  EYE_B40_SUPPLIER_DOCM_CASE=01a15c17-57ee-7093-b957-395731bec44c
+  EYE_B40_PORT_RATE_LIMIT=01a15c19-4d2a-73ab-91ed-7dc1631fa798
+  EYE_B40_PORT_SOURCE=01a15c17-5b43-71af-8f71-153b32c190a4
+  EYE_B40_PORT_NAME=Port of Djibouti — vessel calls API (SYNTHETIC)
+  EYE_B40_PARTNER_BLOCKED_RUN=01a15c1c-3cb8-79a2-afc2-f38c87f2c078
+  EYE_B40_PARTNER_GOOD_RUN=01a15c1c-3e95-771c-9c4b-342c18932595
+  EYE_B40_PARTNER_SOURCE=01a15c1b-edc6-7a3f-aed7-e5d59a8b8827
+  EYE_B40_PARTNER_NAME=NORDWERK logistics partner — consignments (SYNTHETIC, customer-written adapter)
+  EYE_B40_PARTNER_REQUALIFICATION=df19e483-c79a-41bd-b54e-0db139887655
+  EYE_B40_ADAPTER_100=47b93717-3f7a-4c6e-9ac3-f143279c1e7d
+  EYE_B40_ADAPTER_101=808508ba-3a72-4f8e-8615-f609423ba7ce
+  EYE_B40_ACCEPTANCE_CH9=01a15c1c-90f9-79d7-b251-6bfa39e4c7d1
+  EYE_B40_ACCEPTANCE_CH16=01a15c1c-912f-773d-8a7b-46767ac40cfe
+  EYE_B40_BASELINE=01a15c1c-90bf-760f-93a7-d347cd0719ef
+  EYE_B40_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B40_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B40_ANALYST=a.hoffmann
+  EYE_B40_UPLOADER=h.weber
+  EYE_B40_MANAGER=m.dvorak
+  EYE_B40_STEWARD=f.aydin
+  EYE_B40_DOMAIN_ADMIN=t.richter
+  EYE_B40_SPONSOR=w.zielinska
+  EYE_B40_FORECAST_OWNER=n.eriksen
+  EYE_B40_DECISION_OWNER=c.brenner
+  EYE_B40_AUDITOR=e.lindqvist
+  EYE_B40_RETENTION_AUTHORITY=h.bergmann
+  EYE_B40_FEED_ANALYST=a.hoffmann
+  EYE_B40_FEED_MANAGER=m.dvorak
+  EYE_B40_STREAM_OWNER=n.eriksen
+  EYE_B40_STREAM_STATE=restored
+  EYE_B40_CUSTOMS_STEWARD=f.aydin
+  EYE_B40_CUSTOMS_AUDITOR=e.lindqvist
+  EYE_B40_CUSTOMS_SIGNED_EVD=01a15c17-295e-7b0b-b5b8-119636473aeb
+  EYE_B40_CUSTOMS_TAMPERED_EVD=01a15c17-2a3a-7e51-aff3-c35435b09b61
+  EYE_B40_SUPPLIER_UPLOADER=h.weber
+  EYE_B40_SUPPLIER_REVIEWER=a.hoffmann
+  EYE_B40_PORT_MANAGER=m.dvorak
+  EYE_B40_ADAPTER_ADMIN=t.richter
+  EYE_B40_ADAPTER_SOURCE=01a15c1b-edc6-7a3f-aed7-e5d59a8b8827
+  EYE_B40_ADAPTER_PACKAGE=47b93717-3f7a-4c6e-9ac3-f143279c1e7d
+  EYE_B40_ADAPTER_REQUALIFIED_PACKAGE=808508ba-3a72-4f8e-8615-f609423ba7ce
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — 0123 (§RG, §VA, §IN, §AP, §CR) and its harnesses phase6-{prelude,registry,authenticity,intake,acquisition-policy,connector-cell,clamav-engine,b40-res-evidenced}-b40, the unit cases, the web unit models, the walk. (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: the feed discovered, drafted, promoted, evaluated and approved by a second person (the unevaluated approval and the registrar's own acts refused), the customer approval (claim demonstration), collected, and its rights withdrawn with a deletion obligation waiting for the retention authority; D4 on the late corridor stream — the contract rights withdrawn, the products and owners listed, markers set, a decision-active use refused with no business effect, the unaffected forecast usable, an in-force terms record not lifting the withdrawal, recovery by the governed restoration; the terms record withdrawn and refused again, a contract restoration refused, a new terms version restoring use; the customs key declared and a mistyped one retired on its fingerprint, the signed bulletin verified and the tampered copy admitted FAILED and refused at use; the supplier documents inspected in the sandbox — the clean one admitted with its verdict, the active-content PDF and the macro .docm quarantined, read by WHY and excerpt, rejected by the manager; the port authority's 429s held by the contract's backoff and resolved; the partner adapter blocked at the gateway, suspended, requalified by a second person and admitting through its cell; the B40 library approved and the ch9 / ch16 design acceptance records (claim demonstration). (3) REAL ACCEPTANCE — never claimed (B111, then H3/R2). NOT STAGED (harness-proven): the gate / publication / export route refusals of D4 (RG5; their shared check read here on current state), the claim on authenticity-failed evidence (VA3/VA4), D9b with a collection manager as the uploader (§IN.2) and the upload approval (§IN.4), residency and window refusals (AU), the loopback forms (LB, the pinned partner host), the destination identity change, every fault point F47–F56. The ClamAV engine is NOT admitted (D2) — EXC-P1-001 stays OPEN; the owner decides.
+
+ALL SCENES HELD · 0.2 min
+
+════════ RUN 3 (the corrected printing) ════════
+THE B40 ACT (the source platform) on eye_demo_b40 (REHEARSAL) — 2026-10-21T01:44:07.038Z — API http://localhost:3411 — target declared rehearsal
+
+B40-T THE ACT TARGET — this act spawned (a) with no EYE_ACT_TARGET and (b) as a rehearsal naming the LIVE API: each REFUSED (exit 2) before anything is contacted
+  ✓ (a) the act spawned with NO EYE_ACT_TARGET: exit 2 — "REFUSED (act target): EYE_ACT_TARGET is not set — declare the environment: EYE_ACT_TARGET=rehearsal for a restored copy, EYE_ACT_TARGET=live for the demonstration. Nothing was contacted."
+  ✓ (b) the act spawned as a REHEARSAL naming the LIVE API http://localhost:3401: exit 2 — "REFUSED (act target): EYE_API http://localhost:3401 is the LIVE demonstration's API (http://localhost:3401); a rehearsal talks to its own rig. Nothing was contacted."
+  ✓ NOTHING WAS CONTACTED: eye_demo_b40 — human sessions 5880 → 5880, login audit rows 5881 → 5881; the LIVE eye_demo (read-only SELECT) — sessions 5666 → 5666, login audit rows 5667 → 5667
+  · D10: this act starts NO synthetic listener — the 429 + Retry-After answers are the replay set's (no network); the loopback forms (a throttling publisher, a pinned partner host) are the harnesses' (phase6-acquisition-policy-b40 LB, phase6-connector-cell-b40), each on a port scripts/act-target.mjs assertSyntheticListener refuses for the live addresses
+
+B40-0 THE CAST AND THE STATE — 0123, the build, the NORDWERK cast; the sources, the DEF-03 PDF, the stale quarantine cases, content authenticity before B40, the scanning engine (D2)
+  ✓ migration applied: 0123_b40_source_platform.sql (§RG registry + rights lifecycle · §VA authenticity · §IN intake inspection · §AP acquisition policy · §CR connector cell)
+  ✓ a.hoffmann holds domain_analyst at the DOMAIN
+  ✓ h.weber holds domain_analyst at the DOMAIN
+  ✓ m.dvorak holds collection_manager at the DOMAIN
+  ✓ f.aydin holds data_steward at the DOMAIN
+  ✓ t.richter holds domain_admin at the DOMAIN
+  ✓ w.zielinska holds customer_sponsor at the TENANT
+  ✓ n.eriksen holds forecast_owner at the DOMAIN
+  ✓ j.weber holds strategy_owner at the DOMAIN
+  ✓ c.brenner holds decision_owner at the DOMAIN
+  ✓ e.lindqvist holds auditor at the TENANT
+  ✓ h.bergmann holds retention_authority at the TENANT
+  ✓ l.haddad holds design_system_authority at the PLATFORM
+  ✓ p.castellano holds conformance_steward at the PLATFORM
+  ✓ h.achterberg holds independent_assurance at the PLATFORM
+  · the corridor's collection managers: m.dvorak — the ONLY one (MAP Q5: the analyst registers, the collection manager evaluates and approves — two people)
+  · R. Haddad (the partner's customs broker, SYNTHETIC): 3 principal(s), role(s) external_collaborator — invited collaborators with no password session; an external collaborator never registers or approves an adapter (the PDP has no rule for the role; the port refuses one even holding a manager binding — phase6-connector-cell-b40)
+  · the API declares its build: head a8f89e7a1844… (from env), migration head —, policy bundle bundle-v1 63507ec4fd5f…
+  · the tenant holds 25 sources, 32 contract versions, 22 active; B40's five SYNTHETIC sources: djibouti-port-vessel-calls, djibouti-transshipment-customs-bulletins, nordwerk-logistics-partner-consignments, red-sea-shipping-notices, regensburg-supplier-documents — an earlier run
+  ✓ the DEF-03 PDF (carrier-reroute-notice-2024-01-14.pdf, planted in 2026-09) is ADMITTED with active_content_risk = true as 01a0…2b2dbb (SRC:01a084f5-76af-711e-a291-bc110b79f394@1) — the v1–v3 rule (D8: no back-fill), stays as it was
+  · D16: 2 quarantine case(s) OPEN PAST EXPIRY — 01a0…d35e6c schema_drift (expired 2026-09-16T06:57:55Z), 01a0…6b4578 type_mismatch (expired 2026-09-16T06:57:59Z) — listed for the owner, untouched by this act (the sweeper has not expired them)
+  · content authenticity of the tenant's evidence versions: unknown ×18618, verified ×1 — before B40 no signature mechanism was evaluated ("content_authenticity unknown"); none is back-filled
+  · THE SCANNING ENGINE (D2): engine 1 is the content inspector in its sandboxed child process (Node's permission model: no network, the one item readable, caps, env stripped; killed on timeout → unavailable → quarantined). Engine 2 is the clamd ADAPTER; the ClamAV IMAGE IS NOT ADMITTED (the official Alpine image has no linux/arm64 child; the Debian image scans 1 CRITICAL + 53 HIGH per platform, none fixed upstream) — the owner decides (a/b/c); EXC-P1-001 stays OPEN. Every SRC@v4 contract of this act names scan_engines [content-inspector] only. The real-engine evaluation of the UNADMITTED image is evidence/cp6/b40-clamav-evaluation.txt (sha256 a92eea854f82…) — evaluation evidence, never this deployment's engine
+
+B40-1 (F-P1-01) THE SHIPPING-NOTICE FEED — discovered, evaluated, approved, customer-approved, collected, its rights withdrawn ("nothing rests on it yet"); then D4 on red-sea-corridor-stream-late: BOTH rights sources, refused use, recovery through governed versions
+  · the candidate "Red Sea shipping notices (SYNTHETIC)" 7700…c138c2 (promoted) stands — an earlier run
+  · the feed 01a1…04154d v1 (suspended, rights withdrawn) stands — an earlier run
+  · the feed "Red Sea shipping notices (SYNTHETIC)" is registered (01a1…04154d v1, suspended) — stands — an earlier run
+  · W. Zielińska's customer approval 119e…75f1a3 (approve, claim demonstration) stands — an earlier run
+  · the feed is suspended (rights withdrawn) — an earlier run withdrew its rights
+  · the feed's rights are WITHDRAWN (change dc8e…2e5ef9) — stands — an earlier run
+  ✓ H. Bergmann (retention authority) SEES the deletion action 23da…47e58a waiting for her: deletion of evidence, state opened — NOT executed by this act (approval, execution and verification are the retention unit's own acts)
+  ✓ the feed's schedule: removed — collection prohibited from the withdrawal
+
+  · D4 on red-sea-corridor-stream-late (01a0…33c61d v1, active, rights confirmed) — its forecast FCT 01a0…6aafd5 rests on the stream's evidence; the unaffected control FCT 01a1…526298 (portwatch:chokepoint4:n_total)
+  · the package "B40 — reroute on the late corridor stream's forecast (SYNTHETIC; a D4 demonstration, never proposed)" 01a1…d70cdd v1 (draft) stands — an earlier run
+  · the unaffected option "status-quo" (another source's forecast) stands — an earlier run
+  · THE D4 CYCLE stands — an earlier run: the contract ledger withdraw → restore, the rights-terms series v1 in_force → v2 withdrawn → v3 in_force
+  ✓ FROM CURRENT STATE (no tick): the stream's forecast is decision_option usable, gate usable, publication usable, export usable — the contract rights confirmed and the terms v3 in force
+  ✓ HISTORY INTACT: the rights ledger withdraw → restore (append-only); the contract events suspended, reactivated, rights_changed:withdraw, suspended, rights_changed:restore, reactivated; the terms series v1 in_force → v2 withdrawn → v3 in_force; the stream's evidence: 537 version(s) recorded before the withdrawal, every one still admitted (nothing withdrawn, rewritten or deleted by a rights change); 35 collected since the restoration resumed the schedule
+
+B40-2 (F-P1-02) THE DJIBOUTI CUSTOMS BULLETIN — the publisher key declared by F. Aydın; the signed bulletin VERIFIED, a tampered copy ADMITTED marked FAILED (D6); the failed version refused at a decision-active use
+  · "Djibouti transshipment customs bulletins (SYNTHETIC)" is registered (01a1…c9c4b6 v1, active) — stands — an earlier run
+  · the publisher key ed25519 · 40c9360f1ed52987 is in force — stands — an earlier run
+  · the mistyped key, retired on its fingerprint, stands — an earlier run
+  · both bulletins are uploaded — stand — an earlier run (01a1…473aeb, 01a1…b09b61)
+  ✓ the SIGNED bulletin 01a1…473aeb: ADMITTED, authenticity VERIFIED (ed25519_detached, key djibouti-customs-2026) — custody.authenticity_recorded
+  ✓ the TAMPERED copy 01a1…b09b61: ADMITTED marked FAILED — not quarantined, never verified (D6): "the detached Ed25519 signature did not verify with any of the 1 publisher key(s) in force — these bytes are not what the publisher signed"
+  ✓ E. Lindqvist (auditor) READ the signed evidence page's authenticity: VERIFIED (ed25519_detached, key ed25519 · 40c9360f1ed52987); the attributes recorded at intake from the SRC@v4 declaration — language "en" (source_contract), sensitivity "commercial" (source_contract), geographic_scope ["Djibouti","Horn of Africa"] (source_contract) — metadata only (D9) — POL 01a15c21-67f1… · audit seq 743733
+  · B82's trust layer on the signed version (graph.ev_evidence_state, read-only): authenticity VERIFIED — "the detached Ed25519 signature verified with the publisher key ed25519 · 40c9360f1ed52987 (djibouti-customs-2026) over these exact bytes"
+  ✓ E. Lindqvist (auditor) READ the tampered evidence page's authenticity: FAILED (ed25519_detached, no key verified it); the attributes recorded at intake from the SRC@v4 declaration — language "en" (source_contract), sensitivity "commercial" (source_contract), geographic_scope ["Djibouti","Horn of Africa"] (source_contract) — metadata only (D9) — POL 01a15c21-7497… · audit seq 743736
+  · B82's trust layer on the tampered version (graph.ev_evidence_state, read-only): authenticity FAILED — "the detached Ed25519 signature did not verify with any of the 1 publisher key(s) in force — these bytes are not what the publisher signed"
+  · the package "B40 — Regensburg consignments on the Djibouti bulletin (SYNTHETIC; a D6 demonstration, never proposed)" 01a1…8ab375 v1 (draft) stands — an earlier run
+  ✓ C. Brenner derives an option citing the TAMPERED bulletin 01a1…b09b61 REFUSED — 409 EYE-STA-002 — object use rejected (authenticity_failed): EVD 01a15c17-2a3a-7e51-aff3-c35435b09b61 v1 rests on EVD 01a15c17-2a3a-7e51-aff3-c35435b09b61 v1, whose publisher signature FAILED verification at its admission (ed25519_detached, recorded 2026-10-21T01:33:04Z, authenticity record 7c5799ae-306e-417c-9304-d03825ca2f90) — admitted marked and readable, never established as the publisher's content; it is not used for decision_op
+  ✓ NO BUSINESS EFFECT: 1 option(s) before and after
+  · the option on the verified bulletin stands — an earlier run
+  ✓ FROM CURRENT STATE: the tampered version — decision_option REFUSED (authenticity_failed), gate REFUSED (authenticity_failed), publication REFUSED (authenticity_failed), export REFUSED (authenticity_failed); the signed version — decision_option usable, gate usable, publication usable, export usable; the tampered one stays ADMITTED and readable
+  · the claim built on each (the WEAK / INDETERMINATE "authenticity failed" display of B82's trust layer) is HARNESS-PROVEN (phase6-authenticity-b40 VA3/VA4): no approved structured-extraction method for the bulletin's JSON exists on the demonstration, and this act plants no claim
+  · the key register for the customs source: ed25519 · d9774c7286d2c36c retired, ed25519 · 40c9360f1ed52987 in_force; the declared scheme ed25519_detached
+
+B40-3 (F-P1-03) THE SUPPLIER DOCUMENTS — the content inspector (engine 1, sandboxed): the clean note ADMITTED with its verdict; the active-content PDF and the macro .docm QUARANTINED; WHY, the excerpt (D9), the separation, the rejection
+  · "Regensburg bearings — supplier documents (SYNTHETIC)" is registered (01a1…971fb3 v1, active) — stands — an earlier run
+  · the three supplier documents are uploaded — stand — an earlier run
+  ✓ the CLEAN delivery note 01a1…4178c4: ADMITTED; its verdict recorded as evidence — engine content-inspector 1.0.0, rule set fe1064fc0928…, outcome clean, 0 finding(s), decision pass; confinement --permission --allow-fs-read=<inspector> --allow-fs-read=<item> --disallow-code-generation-from-strings
+  ✓ the supplier PDF: QUARANTINED active_content — "active content (pdf.open_action @54, pdf.additional_actions @255, pdf.javascript @730, pdf.js @742, pdf.javascript @812, pdf.js @824); hidden instructions (pdf.hidden_text_instruction @545, pdf.metada" (cited by code and offset, never quoted)
+  ✓ the inspection checklist .docm: QUARANTINED macro — "macros (ooxml.vba_project @1510, ooxml.macro_enabled @0) — the SRC@v4 content policy quarantines macros (D7); nothing reaches extraction"
+  ✓ NOTHING REACHED EVIDENCE: no evidence-vault blob for the quarantined items (0); nothing reaches extraction
+  · the intake review queue (A. Hoffmann): 2 case(s); ours: —; past expiry: 2 (D16)
+  ✓ A. Hoffmann READ the case's WHY 01a1…f39724: engine content-inspector 1.0.0 (rule set fe1064fc0928…), findings pdf.open_action @54, pdf.additional_actions @255, pdf.javascript @730, pdf.js @742, pdf.javascript @812, pdf.js @824, pdf.hidden_text_instruction @545, pdf.metadata_zero_width @936; the review reason safety; custody quarantined, inspected, retrieved, retrieved — no content in the answer — POL 01a15c21-7a93… · audit seq 743751
+  ✓ A. Hoffmann (domain analyst — she already retrieves evidence, D9) READ THE EXCERPT around pdf.hidden_text_instruction: 574 bytes served of 1330 (289–863), the digest re-verified, custody.retrieved written; it carries the hidden white-text instruction — POL 01a15c21-7a9e… · audit seq 743752
+  ✓ F. Aydın (data steward — no evidence retrieval) asks for the excerpt REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · the supplier PDF's case 01a1…f39724 is rejected (by M. Dvořák) — stands — an earlier run
+  · the .docm's case 01a1…bec44c is rejected (by M. Dvořák) — stands — an earlier run
+  · D9b — REVIEWER ≠ UPLOADER for manual uploads: H. Weber was refused by the PDP (she holds no review role); the port's own refusal of a COLLECTION MANAGER who uploaded ("the operator who uploaded this item never reviews its quarantine case") is HARNESS-PROVEN (phase6-intake-b40 §IN.2) — the corridor has ONE collection manager, so staging it here would leave a case nobody may review; the upload approval of SP-22 likewise (§IN.4)
+  ✓ the DEF-03 PDF 01a0…2b2dbb (carrier-advisories v1 — a v1–v3 contract) STAYS AS IT WAS: admitted opaque with its flag, "no inspection verdict recorded: not recorded before B40, or the contract is v1–v3 (its recorded rule)" (D8, no back-fill)
+  · THE ENGINE ACTUALLY RUN HERE is engine 1, the content inspector, in its sandboxed child process. The ClamAV engine is NOT admitted (D2): the clamd adapter is built and its real-engine evaluation ran against the UNADMITTED Debian image (evidence/cp6/b40-clamav-evaluation.txt — evaluation evidence, never this deployment's engine); an unavailable or incomplete scan is never clean (fail closed → quarantine: phase6-intake-b40 §IN.3, F48/F49); EXC-P1-001 stays OPEN
+
+B40-4 (F-P1-04) THE THROTTLING PORT AUTHORITY — SRC@v4 over the replay set with planted 429 + Retry-After (D10): the authorization, the backoff per contract, a collection inside the hold refused before egress, the third answer admitted and the intervals RESOLVED
+  · "Port of Djibouti — vessel calls API (SYNTHETIC)" is registered (01a1…c190a4 v1, active) — stands — an earlier run
+  · the throttled collection stands — an earlier run: 2 interval(s), each RESOLVED
+  ·   interval 01a1…689827: attempt 1, publisher_429 Retry-After 60 (honoured), the contract's 60 s → applied 60 s, 2026-10-21T01:33:37Z → 2026-10-21T01:34:37Z, a retry planned; RESOLVED by run 01a1…ee4820
+  ·   interval 01a1…1fa798: attempt 2, publisher_429 Retry-After 120 (honoured), the contract's 120 s → applied 120 s, 2026-10-21T01:35:24Z → 2026-10-21T01:37:24Z, a retry planned; RESOLVED by run 01a1…ee4820
+  ✓ THE COVERAGE VIEW (M. Dvořák): 2 RATE-LIMITED interval(s) — 2026-10-21T01:35:24Z–2026-10-21T01:37:24Z resolved; 2026-10-21T01:33:37Z–2026-10-21T01:34:37Z resolved — NOT a silent gap; the third answer admitted (run 01a1…ee4820, 1 item(s)); the last authorization: residency match (EU), window open, robots allowed (Allow: /v1/), rate 30/60 s — POL 01a15c21-7c9c… · audit seq 743755
+  ✓ N. Eriksen (forecast owner — a coverage reader) reads the same intervals: 2 — metadata only
+  · NOT MADE, STATED: a residency mismatch (a contract declaring US in this EU domain) is refused BEFORE egress (residency_refused), and a request outside the declared window is never made (window_closed) — harness-proven (phase6-acquisition-policy-b40 AU); this act registers no mis-declared contract on the demonstration
+
+B40-5 (F-P1-12) THE PARTNER'S ADAPTER — registered, approved by a second person, run in its cell; the unregistered host BLOCKED, the contract SUSPENDED and REQUALIFIED with 1.0.1
+  · the adapter package 1.0.0 47b9…9c1e7d (approved) stands — an earlier run
+  · the manifest names R. Haddad's firm as the author (the partner's customer-written code); an external collaborator may neither register nor approve it — R. Haddad holds no session here, the refusal is harness-proven (phase6-connector-cell-b40: "an external collaborator even holding a manager binding")
+  · "NORDWERK logistics partner — consignments (SYNTHETIC, customer-written adapter)" is registered (01a1…8b8827 v1, active) — stands — an earlier run
+  ✓ 1.0.0 RAN IN ITS CELL and the gateway BLOCKED the unregistered host: run 01a1…f2c078 FAILED CLOSED — "connector cell refused (unregistered_destination): the contract is suspended, requalification df19e483-c79a-41bd-b54e-0db139887655 required (cursor and custody unchanged); host track.unregistered-carrier.synthetic.example is not a destination the contract regi"; nothing admitted (0); the receipts allowed consignments.partner-logistics.synthetic.example 200, allowed consignments.partner-logistics.synthetic.example 200, blocked:unregistered_destination track.unregistered-carrier.synthetic.example
+  · the contract is active on 1.0.1 and has admitted consignments — stands — an earlier run
+  ✓ 1.0.1 RAN IN ITS CELL: run 01a1…932595 finished — 3 consignment(s) ADMITTED through the unchanged lifecycle; every request on a receipt: allowed consignments.partner-logistics.synthetic.example 200, allowed consignments.partner-logistics.synthetic.example 200 — the off-registry link never requested
+  · the connectors register (A. Hoffmann): nordwerk-logistics-partner-consignments active, the package in force 1.0.1 (requalification), open requalification none
+  ✓ the egress receipts (A. Hoffmann — digests, sizes, destinations, decisions; never bytes): {"allowed":4,"blocked:unregistered_destination":1}
+  · the DESTINATION IDENTITY CHANGE (a different pinned key on the registered host → blocked before the request, quarantined destination_identity_changed) and the credential injected by the gateway are HARNESS-PROVEN (phase6-connector-cell-b40, a loopback TLS host on a port the act-target module refuses for the live addresses) — not staged here. D3: the cell is confined by process and capability; network-level denial is B103 / B109 — stated, never claimed
+
+B40-6 THE RECORDS — B40's components owned and approved by the DSA; a B40 design baseline; the design acceptance DEMONSTRATION records ch9 (F-P1-01) and ch16 (F-P1-03), the exercises linked
+  · B40's library is in the inventory (26 components): stands — an earlier run
+  ✓ L. Haddad (Design System Authority, human gate) APPROVED 0 B40 component(s) (26 stand — an earlier run): 26 components of source-registry, authenticity, intake, acquisition-policy, connector-cell, each with ONE accountable owner — S. Iversen
+  · the B40 design baseline 01a1…0719ef v1 stands — an earlier run (attested)
+  ✓ the design acceptance DEMONSTRATION records ch9 (F-P1-01) and ch16 (F-P1-03), each attested by L. Haddad (design), H. Achterberg (assurance) and W. Zielińska (customer): ch9 stands, ch16 stands — 2 records, claim demonstration; 8 journey-harness evidence item(s) linked (the §AC harness phase6-acceptance-b40 and the walk among them); the signed scope-specific records are B111 → H3/R2
+
+B40-7 THE STATE, the env lines for the walk, THE LIMITS
+  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B40_STATE_DEF03_EVD=01a084f5-8c73-7087-b0fb-2796c42b2dbb
+  EYE_B40_FEED_SOURCE=01a15c17-10fd-78c0-8b96-a535cf04154d
+  EYE_B40_FEED_NAME=Red Sea shipping notices (SYNTHETIC)
+  EYE_B40_FEED_CANDIDATE=770024e5-a111-4f1c-9136-dcc59bc138c2
+  EYE_B40_FEED_RETENTION_ACTION=23dadeff-462c-4286-be85-abdb3547e58a
+  EYE_B40_FEED_RIGHTS_CHANGE=dc8e237a-e8cf-4c1a-8e06-09f7042e5ef9
+  EYE_B40_STREAM_SOURCE=01a0deff-5fb9-7e77-8799-c8beef33c61d
+  EYE_B40_STREAM_KEY=red-sea-corridor-stream-late
+  EYE_B40_STREAM_FORECAST=01a0f00b-8d89-7f7a-a271-60f56d6aafd5
+  EYE_B40_STREAM_TERMS=46afc5bd-aa3d-4530-a24d-2db851a374fe
+  EYE_B40_D4_PACKAGE=01a15c17-1bf2-75cf-9c40-faa483d70cdd
+  EYE_B40_CUSTOMS_PACKAGE=01a15c17-2c09-7ca4-a359-e119998ab375
+  EYE_B40_CUSTOMS_SOURCE=01a15c17-2819-741b-a311-2262d6c9c4b6
+  EYE_B40_CUSTOMS_NAME=Djibouti transshipment customs bulletins (SYNTHETIC)
+  EYE_B40_CUSTOMS_KEY_REF=djibouti-customs-2026
+  EYE_B40_CUSTOMS_PBK=e65f0740-188f-4226-ba7a-431977dadea9
+  EYE_B40_CUSTOMS_KEY=e65f0740
+  EYE_B40_CUSTOMS_VERIFIED_EVD=01a15c17-295e-7b0b-b5b8-119636473aeb
+  EYE_B40_CUSTOMS_FAILED_EVD=01a15c17-2a3a-7e51-aff3-c35435b09b61
+  EYE_B40_SUPPLIER_CLEAN_EVD=01a15c17-5738-7a9d-9b46-bdb77f4178c4
+  EYE_B40_SUPPLIER_PDF_CASE=01a15c17-579b-726d-99aa-b7ef67f39724
+  EYE_B40_SUPPLIER_SOURCE=01a15c17-2e29-762e-9e72-e5ad88971fb3
+  EYE_B40_SUPPLIER_NAME=Regensburg bearings — supplier documents (SYNTHETIC)
+  EYE_B40_SUPPLIER_DOCM_CASE=01a15c17-57ee-7093-b957-395731bec44c
+  EYE_B40_PORT_RATE_LIMIT=01a15c19-4d2a-73ab-91ed-7dc1631fa798
+  EYE_B40_PORT_SOURCE=01a15c17-5b43-71af-8f71-153b32c190a4
+  EYE_B40_PORT_NAME=Port of Djibouti — vessel calls API (SYNTHETIC)
+  EYE_B40_PARTNER_BLOCKED_RUN=01a15c1c-3cb8-79a2-afc2-f38c87f2c078
+  EYE_B40_PARTNER_GOOD_RUN=01a15c1c-3e95-771c-9c4b-342c18932595
+  EYE_B40_PARTNER_SOURCE=01a15c1b-edc6-7a3f-aed7-e5d59a8b8827
+  EYE_B40_PARTNER_NAME=NORDWERK logistics partner — consignments (SYNTHETIC, customer-written adapter)
+  EYE_B40_PARTNER_REQUALIFICATION=df19e483-c79a-41bd-b54e-0db139887655
+  EYE_B40_ADAPTER_100=47b93717-3f7a-4c6e-9ac3-f143279c1e7d
+  EYE_B40_ADAPTER_101=808508ba-3a72-4f8e-8615-f609423ba7ce
+  EYE_B40_ACCEPTANCE_CH9=01a15c1c-90f9-79d7-b251-6bfa39e4c7d1
+  EYE_B40_ACCEPTANCE_CH16=01a15c1c-912f-773d-8a7b-46767ac40cfe
+  EYE_B40_BASELINE=01a15c1c-90bf-760f-93a7-d347cd0719ef
+  EYE_B40_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B40_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B40_ANALYST=a.hoffmann
+  EYE_B40_UPLOADER=h.weber
+  EYE_B40_MANAGER=m.dvorak
+  EYE_B40_STEWARD=f.aydin
+  EYE_B40_DOMAIN_ADMIN=t.richter
+  EYE_B40_SPONSOR=w.zielinska
+  EYE_B40_FORECAST_OWNER=n.eriksen
+  EYE_B40_DECISION_OWNER=c.brenner
+  EYE_B40_AUDITOR=e.lindqvist
+  EYE_B40_RETENTION_AUTHORITY=h.bergmann
+  EYE_B40_FEED_ANALYST=a.hoffmann
+  EYE_B40_FEED_MANAGER=m.dvorak
+  EYE_B40_STREAM_OWNER=n.eriksen
+  EYE_B40_STREAM_STATE=restored
+  EYE_B40_CUSTOMS_STEWARD=f.aydin
+  EYE_B40_CUSTOMS_AUDITOR=e.lindqvist
+  EYE_B40_CUSTOMS_SIGNED_EVD=01a15c17-295e-7b0b-b5b8-119636473aeb
+  EYE_B40_CUSTOMS_TAMPERED_EVD=01a15c17-2a3a-7e51-aff3-c35435b09b61
+  EYE_B40_SUPPLIER_UPLOADER=h.weber
+  EYE_B40_SUPPLIER_REVIEWER=a.hoffmann
+  EYE_B40_PORT_MANAGER=m.dvorak
+  EYE_B40_ADAPTER_ADMIN=t.richter
+  EYE_B40_ADAPTER_SOURCE=01a15c1b-edc6-7a3f-aed7-e5d59a8b8827
+  EYE_B40_ADAPTER_PACKAGE=47b93717-3f7a-4c6e-9ac3-f143279c1e7d
+  EYE_B40_ADAPTER_REQUALIFIED_PACKAGE=808508ba-3a72-4f8e-8615-f609423ba7ce
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — 0123 (§RG, §VA, §IN, §AP, §CR) and its harnesses phase6-{prelude,registry,authenticity,intake,acquisition-policy,connector-cell,clamav-engine,b40-res-evidenced}-b40, the unit cases, the web unit models, the walk. (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: the feed discovered, drafted, promoted, evaluated and approved by a second person (the unevaluated approval and the registrar's own acts refused), the customer approval (claim demonstration), collected, and its rights withdrawn with a deletion obligation waiting for the retention authority; D4 on the late corridor stream — the contract rights withdrawn, the products and owners listed, markers set, a decision-active use refused with no business effect, the unaffected forecast usable, an in-force terms record not lifting the withdrawal, recovery by the governed restoration; the terms record withdrawn and refused again, a contract restoration refused, a new terms version restoring use; the customs key declared and a mistyped one retired on its fingerprint, the signed bulletin verified and the tampered copy admitted FAILED and refused at use; the supplier documents inspected in the sandbox — the clean one admitted with its verdict, the active-content PDF and the macro .docm quarantined, read by WHY and excerpt, rejected by the manager; the port authority's 429s held by the contract's backoff and resolved; the partner adapter blocked at the gateway, suspended, requalified by a second person and admitting through its cell; the B40 library approved and the ch9 / ch16 design acceptance records (claim demonstration). (3) REAL ACCEPTANCE — never claimed (B111, then H3/R2). NOT STAGED (harness-proven): the gate / publication / export route refusals of D4 (RG5; their shared check read here on current state), the claim on authenticity-failed evidence (VA3/VA4), D9b with a collection manager as the uploader (§IN.2) and the upload approval (§IN.4), residency and window refusals (AU), the loopback forms (LB, the pinned partner host), the destination identity change, every fault point F47–F56. The ClamAV engine is NOT admitted (D2) — EXC-P1-001 stays OPEN; the owner decides.
+
+ALL SCENES HELD · 0.2 min
+
+════════ THE CANDIDATE ACT ════════
+THE B40 CANDIDATE ACT (the source platform) on eye_demo_b40 (REHEARSAL) — 2026-10-21T01:39:28.999Z — API http://localhost:3411 — target declared rehearsal
+
+C-0 THE STATE — 0123 applied, the build identity, the cast; the registers re-imported and the component manifest registered
+  ✓ migration applied: 0121_b82_trust_evidence_visualization.sql
+  ✓ migration applied: 0122_b80_b82_integration_corrections.sql
+  ✓ migration applied: 0123_b40_source_platform.sql
+  ✓ the API declares its build: head 7d5dcd99e655… (from env), migration head —, policy bundle bundle-v1
+  ✓ P. Castellano (conformance steward) RE-IMPORTED the registers READ-ONLY in 0.6 s: objects.schema_registry +1
+  ✓ P. Castellano REGISTERED the committed component manifest v6: 33 deployable units, 298 components
+
+C-1 THE RELEASE-CANDIDATE DRIFT (§CM) — the earlier candidates read drifted; a new candidate at the deployed head, checked and attested (not a release)
+  · the monitor: {"open":4,"opened":0,"run_id":"f2a7322d-beb9-40ae-83ba-0648c90a5a5e","recorded":true,"resolved":1,"holds_lifted":0,"holds_opened":0,"observation_digest":"205311c745978771fd9b15019c67746bade3d3f202b3f76c2c590681df712fc9","findings":[{"kind":"head_drift","fingerprint":"head_drift:98364f78-1477-40f0-9d
+  · candidate ac8e…09aa00 v1 "NORDWERK corridor release candidate 2026-10 (SYNTHETIC — a l…": withdrawn, head 42a10891c042…, migration head 0115_b107_governance_registries_acceptance.sql — open holds: evidence_stale: change impact dfa10f34dba4: a controlling artifact changed under RC:ac8ef1d9-b4e6-402f-978c-06dbfb09aa00; its dependent 
+  · candidate c974…15c44f v1 "NORDWERK corridor release candidate 2026-10 r2 — at the B107…": withdrawn, head 855d69633c9f…, migration head 0117_b107g_expansion_at_activation.sql — open holds: evidence_stale: change impact dfa10f34dba4: a controlling artifact changed under RC:c9741340-0b5d-40f0-8640-eac92e15c44f; its dependent 
+  · candidate 02a1…518faa v1 "NORDWERK corridor release candidate 2026-10 r3 — at the B80 …": withdrawn, head 7833eda358c8…, migration head 0118_b80_shell_foundations.sql — open holds: evidence_stale: change impact dfa10f34dba4: a controlling artifact changed under RC:02a1c8e6-2dec-4246-9237-dac359518faa; its dependent 
+  · candidate b651…2939e3 v1 "NORDWERK corridor release candidate 2026-10 r4 — at the B81 …": withdrawn, head cdff286b6628…, migration head 0119_b81_patterns_layout_content.sql
+  · candidate c61c…d43227 v1 "NORDWERK corridor release candidate 2026-10 r5 — at the B50 …": withdrawn, head f9b022205962…, migration head 0120_b50_knowledge_core.sql
+  · candidate be0d…cded44 v1 "NORDWERK corridor release candidate 2026-10 r6 — at the B82 …": withdrawn, head 235a80a2b65d…, migration head 0121_b82_trust_evidence_visualization.sql
+  · candidate 9836…927c3d v1 "NORDWERK corridor release candidate 2026-10 r7 — at the B80–…": attested, head 0b984194f040…, migration head 0122_b80_b82_integration_corrections.sql — open holds: conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 r7 — at the B80–B82 integration pass head (SYNTHETIC — a ; conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 r7 — at the B80–B82 integration pass head (SYNTHETIC — a ; conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 r7 — at the B80–B82 integration pass head (SYNTHETIC — a ; conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 r7 — at the B80–B82 integration pass head (SYNTHETIC — a 
+  ✓ P. Castellano INGESTED b40-contract.vitest.json (203/203 passed at head 7d5dcd99e655…)
+  ✓ P. Castellano INGESTED b40-trust.vitest.json (31/31 passed at head 7d5dcd99e655…)
+  ✓ P. Castellano INGESTED b40-human-authority.vitest.json (118/118 passed at head 7d5dcd99e655…)
+  ✓ P. Castellano ASSEMBLED f09d…b6b684 v1 at head 7d5dcd99e655…, migration head 0123_b40_source_platform.sql
+  ✓ the CHECK: CONFORMANT
+  ✓ P. Castellano (the assembler) attests the candidate REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ H. Achterberg (independent assurance) ATTESTED the new candidate v1: attested — a LOCAL CONFORMANCE RECORD, nothing released
+
+C-2 THE SUPERSEDED CANDIDATES — withdrawn by the conformance steward with the reason; the monitor run again
+  ✓ P. Castellano (conformance steward) WITHDREW 9836…927c3d v1 "NORDWERK corridor release candidate 2026-10 r7 — at the …" (was attested): 4 hold(s) lifted — superseded by the candidate f09d…b6b684 at the deployed head 7d5dcd99e655 (0123, B40); this one is bound to head 0b984194f040 (SYNTHETIC)
+  · the monitor again: open 0, resolved 4
+  ✓ open conformance findings: none — the live candidate is bound to the deployed head, manifest, migration and policy
+  · LIMITS — CONSTRUCTION: §CM (0115) and its harness; DEMONSTRATED OPERATION: this act (SYNTHETIC vendor personas; every record claim = demonstration); the candidate is a local conformance record (B65 substituted) — NEVER a release; production admission is R1.
+
+ALL SCENES HELD
+
+════════ THE WALK (e2e/phase6-b40.demo.spec.ts at 6e053fce, from the b40-ac worktree, against the rig) ════════
+  ✓   1 e2e/phase6-b40.demo.spec.ts:92:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-1 the analyst opens discovery: the feed's candidate PROMOTED, registered as its source — no longe
+  ✓   2 e2e/phase6-b40.demo.spec.ts:113:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-1 the feed's source page: its registry record (SRC@v4 under its evaluation gate, discovered as t
+  ✘   3 e2e/phase6-b40.demo.spec.ts:135:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-1 the corridor stream's REVOCATION IMPACT for its forecast owner: the resting products with thei
+  ✓   4 e2e/phase6-b40.demo.spec.ts:170:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-2 the data steward's publisher-key register: the customs source's key in force (key metadata onl
+  ✘   5 e2e/phase6-b40.demo.spec.ts:191:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-2 the auditor opens BOTH bulletins: the signed one VERIFIED; the tampered copy AUTHENTICITY FAIL
+  ✓   6 e2e/phase6-b40.demo.spec.ts:221:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-3 the reviewer opens the intake review queue: the scan rule (only clean admits), the reviewer se
+  ✓   7 e2e/phase6-b40.demo.spec.ts:237:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-3 the supplier PDF's case — WHY: active content and a hidden instruction cited by code and byte 
+  ✓   8 e2e/phase6-b40.demo.spec.ts:279:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-4 the port authority's acquisition policy: the publisher's 429 as a STATED coverage gap with the
+  ✓   9 e2e/phase6-b40.demo.spec.ts:301:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-5 the domain admin's connectors: the cell's boundary stated, the package and the requalified pac
+  ✓  10 e2e/phase6-b40.demo.spec.ts:326:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-5 the egress receipts of the adapter source: the unregistered host's request BLOCKED on a receip
+  2 failed
+  8 passed (1.8m)
+  (a) B40-1 impact — Locator getByRole('region', { name: 'Resting products and their owners' }).getByRole('cell', { name: 'Forecast', exact: true }) not found; the page renders the row, its cell named "Kind Forecast"
+  (b) B40-2 auditor — h1 stayed "Observation Operations": the TENANT-bound auditor is asked to choose her working domain first; the walk does not choose it
+
+════════ THE WALK after its two locator fixes (e2e/phase6-b40.demo.spec.ts), on eye_demo_b40 — the rig :3411 / :3010 ════════
+  ✓   1 e2e/phase6-b40.demo.spec.ts:104:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-1 the analyst opens discovery: the feed's candidate PROMOTED, registered as its source — no longer offered for registration (1.9s)
+  ✓   2 e2e/phase6-b40.demo.spec.ts:125:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-1 the feed's source page: its registry record (SRC@v4 under its evaluation gate, discovered as the candidate), the rights lifecycle, the coverage panel (1.7s)
+  ✓   3 e2e/phase6-b40.demo.spec.ts:147:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-1 the corridor stream's REVOCATION IMPACT for its forecast owner: the resting products with their owners, the withdrawal standing (or none), the server's preview (6.2s)
+  ✓   4 e2e/phase6-b40.demo.spec.ts:182:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-2 the data steward's publisher-key register: the customs source's key in force (key metadata only) (6.2s)
+  ✓   5 e2e/phase6-b40.demo.spec.ts:203:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-2 the auditor opens BOTH bulletins: the signed one VERIFIED; the tampered copy AUTHENTICITY FAILED — admitted, readable, shown weak, refused at decision-active use (2.2s)
+  ✓   6 e2e/phase6-b40.demo.spec.ts:233:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-3 the reviewer opens the intake review queue: the scan rule (only clean admits), the reviewer separation said (948ms)
+  ✓   7 e2e/phase6-b40.demo.spec.ts:249:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-3 the supplier PDF's case — WHY: active content and a hidden instruction cited by code and byte offset (never the text), the engine's identity, custody; the .docm's macro case (2.4s)
+  ✓   8 e2e/phase6-b40.demo.spec.ts:291:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-4 the port authority's acquisition policy: the publisher's 429 as a STATED coverage gap with the contract's backoff; the authorizations (1.2s)
+  ✓   9 e2e/phase6-b40.demo.spec.ts:313:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-5 the domain admin's connectors: the cell's boundary stated, the package and the requalified package approved, the requalification (1.4s)
+  ✓  10 e2e/phase6-b40.demo.spec.ts:338:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-5 the egress receipts of the adapter source: the unregistered host's request BLOCKED on a receipt (digests and sizes, never content) (1.3s)
+  10 passed (26.1s)
+
+════════════════ SECOND REHEARSAL — AT THE FINAL HEAD 62693411 (the bookkeeping's finding: the first rehearsal ran an earlier 0123, before 043485b1's closing custody entry and human-gated review) ════════════════
+# the same PRE-0123 backup restored fresh into eye_demo_b40; migrated with the final 0123 (applied digest ca1e4245…2564 = the committed file); the API and the web built at 62693411; Redis :6392 not flushed (the previous run's sources had no schedulers left)
+
+════════ RUN 1 ════════
+THE B40 ACT (the source platform) on eye_demo_b40 (REHEARSAL) — 2026-10-21T07:16:05.617Z — API http://localhost:3411 — target declared rehearsal
+
+B40-T THE ACT TARGET — this act spawned (a) with no EYE_ACT_TARGET and (b) as a rehearsal naming the LIVE API: each REFUSED (exit 2) before anything is contacted
+  ✓ (a) the act spawned with NO EYE_ACT_TARGET: exit 2 — "REFUSED (act target): EYE_ACT_TARGET is not set — declare the environment: EYE_ACT_TARGET=rehearsal for a restored copy, EYE_ACT_TARGET=live for the demonstration. Nothing was contacted."
+  ✓ (b) the act spawned as a REHEARSAL naming the LIVE API http://localhost:3401: exit 2 — "REFUSED (act target): EYE_API http://localhost:3401 is the LIVE demonstration's API (http://localhost:3401); a rehearsal talks to its own rig. Nothing was contacted."
+  ✓ NOTHING WAS CONTACTED: eye_demo_b40 — human sessions 5666 → 5666, login audit rows 5667 → 5667; the LIVE eye_demo (read-only SELECT) — sessions 5666 → 5666, login audit rows 5667 → 5667
+  · D10: this act starts NO synthetic listener — the 429 + Retry-After answers are the replay set's (no network); the loopback forms (a throttling publisher, a pinned partner host) are the harnesses' (phase6-acquisition-policy-b40 LB, phase6-connector-cell-b40), each on a port scripts/act-target.mjs assertSyntheticListener refuses for the live addresses
+
+B40-0 THE CAST AND THE STATE — 0123, the build, the NORDWERK cast; the sources, the DEF-03 PDF, the stale quarantine cases, content authenticity before B40, the scanning engine (D2)
+  ✓ migration applied: 0123_b40_source_platform.sql (§RG registry + rights lifecycle · §VA authenticity · §IN intake inspection · §AP acquisition policy · §CR connector cell)
+  ✓ a.hoffmann holds domain_analyst at the DOMAIN
+  ✓ h.weber holds domain_analyst at the DOMAIN
+  ✓ m.dvorak holds collection_manager at the DOMAIN
+  ✓ f.aydin holds data_steward at the DOMAIN
+  ✓ t.richter holds domain_admin at the DOMAIN
+  ✓ w.zielinska holds customer_sponsor at the TENANT
+  ✓ n.eriksen holds forecast_owner at the DOMAIN
+  ✓ j.weber holds strategy_owner at the DOMAIN
+  ✓ c.brenner holds decision_owner at the DOMAIN
+  ✓ e.lindqvist holds auditor at the TENANT
+  ✓ h.bergmann holds retention_authority at the TENANT
+  ✓ l.haddad holds design_system_authority at the PLATFORM
+  ✓ p.castellano holds conformance_steward at the PLATFORM
+  ✓ h.achterberg holds independent_assurance at the PLATFORM
+  · the corridor's collection managers: m.dvorak — the ONLY one (MAP Q5: the analyst registers, the collection manager evaluates and approves — two people)
+  · R. Haddad (the partner's customs broker, SYNTHETIC): 3 principal(s), role(s) external_collaborator — invited collaborators with no password session; an external collaborator never registers or approves an adapter (the PDP has no rule for the role; the port refuses one even holding a manager binding — phase6-connector-cell-b40)
+  · the API declares its build: head 62693411fe2d… (from env), migration head —, policy bundle bundle-v1 0b6146a9a814…
+  · the tenant holds 20 sources, 27 contract versions, 18 active; B40's five SYNTHETIC sources: none yet (no shipping-notice feed, no customs source, no port-authority API, no supplier-document source, no partner adapter)
+  ✓ the DEF-03 PDF (carrier-reroute-notice-2024-01-14.pdf, planted in 2026-09) is ADMITTED with active_content_risk = true as 01a0…2b2dbb (SRC:01a084f5-76af-711e-a291-bc110b79f394@1) — the v1–v3 rule (D8: no back-fill), stays as it was
+  · D16: 2 quarantine case(s) OPEN PAST EXPIRY — 01a0…d35e6c schema_drift (expired 2026-09-16T06:57:55Z), 01a0…6b4578 type_mismatch (expired 2026-09-16T06:57:59Z) — listed for the owner, untouched by this act (the sweeper has not expired them)
+  · content authenticity of the tenant's evidence versions: unknown ×18573 — before B40 no signature mechanism was evaluated ("content_authenticity unknown"); none is back-filled
+  · THE SCANNING ENGINE (D2): engine 1 is the content inspector in its sandboxed child process (Node's permission model: no network, the one item readable, caps, env stripped; killed on timeout → unavailable → quarantined). Engine 2 is the clamd ADAPTER; the ClamAV IMAGE IS NOT ADMITTED (the official Alpine image has no linux/arm64 child; the Debian image scans 1 CRITICAL + 53 HIGH per platform, none fixed upstream) — the owner decides (a/b/c); EXC-P1-001 stays OPEN. Every SRC@v4 contract of this act names scan_engines [content-inspector] only. The real-engine evaluation of the UNADMITTED image is evidence/cp6/b40-clamav-evaluation.txt (sha256 a92eea854f82…) — evaluation evidence, never this deployment's engine
+
+B40-1 (F-P1-01) THE SHIPPING-NOTICE FEED — discovered, evaluated, approved, customer-approved, collected, its rights withdrawn ("nothing rests on it yet"); then D4 on red-sea-corridor-stream-late: BOTH rights sources, refused use, recovery through governed versions
+  ✓ C. Brenner (decision owner) proposes a source candidate REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ A. Hoffmann (domain analyst) DISCOVERED "Red Sea shipping notices (SYNTHETIC)": candidate ae5b…a46583 — how found, publisher, terms, purposes, assessment recorded — POL 01a15d51-521a… · audit seq 742838
+  ✓ THE PREFILLED SRC@v4 DRAFT (nothing registered by a draft): red-sea-shipping-notices, rss, rights pending, active content quarantine, robots evaluate; it still lacks: identity.endpoints must name at least one endpoint for a polled source
+  ✓ A. Hoffmann COMPLETED the draft (the endpoint, the replay set, the steward, the evidence attributes: Red Sea / Gulf of Aden, en) and PROMOTED it: SRC@v4 v1 registered as a DRAFT and the candidate promoted in ONE transaction (source 01a1…2fcb4c) — POL 01a15d51-523c… · audit seq 742846
+  ✓ M. Dvořák approves the UNEVALUATED SRC@v4 contract REFUSED — 409 EYE-STA-002 — source approval rejected (unevaluated): source 01a15d51-5239-741d-beb2-b69a232fcb4c v1 is an SRC@v4 contract with no recorded evaluation; a collection manager who did not register it records the evaluation (authority, rights and purpose evidence, coverage fit, cost, risks, contract tests) first
+  ✓ A. Hoffmann (the registrar, a domain analyst) evaluates her own registration REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ A. Hoffmann (the registrar) approves her own registration REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · the feed "Red Sea shipping notices (SYNTHETIC)" is registered (01a1…2fcb4c v1, draft) — stands — an earlier run
+  ✓ M. Dvořák (collection manager — not the registrar) EVALUATED the feed "Red Sea shipping notices (SYNTHETIC)" v1: approve — POL 01a15d51-5285… · audit seq 742850
+  ✓ M. Dvořák APPROVED the feed "Red Sea shipping notices (SYNTHETIC)" v1 (a different person from the registrar) — POL 01a15d51-5293… · audit seq 742851
+  ✓ M. Dvořák ACTIVATED the feed "Red Sea shipping notices (SYNTHETIC)"
+  ✓ the platform administrator PROVISIONED the feed "Red Sea shipping notices (SYNTHETIC)"'s collection agent 01a1…ed1828 (rss; owner A. Hoffmann)
+  ✓ W. Zielińska (customer sponsor, TENANT — neither registrar nor approver) RECORDED the CUSTOMER APPROVAL of the feed's use: approve, claim demonstration — a record the admission cites, not a gate on collection — POL 01a15d51-52dc… · audit seq 742856
+  · M. Dvořák collected the feed (the command form): run 01a1…f49501 finished, 5 admitted
+  ✓ THE FEED COLLECTED: run 01a1…f49501 finished, 5 notice(s) admitted; 5 evidence object(s), content authenticity unknown (the contract declares no signature scheme — UNSIGNED, never verified); attributes at intake from the SRC@v4 declaration: geographic_scope=["Red Sea","Gulf of Aden"], language="en", licence={"statement":"no rights terms declared for the contract version at admission — the contract's own licence stands","permitted_use":["internal analysis"],"contract_licence":"synthetic-demonstration-licence (B40)"}, sensitivity="commercial"
+  ✓ M. Dvořák PREVIEWED the withdrawal (CAP-OB-02, nothing written): possible true, v1 active → suspended/withdrawn; "nothing rests on it yet: no product, claim, option, briefing, publication or dependency names this source's evidence"
+  ✓ M. Dvořák WITHDREW the feed's rights: v1 confirmed → withdrawn (active → suspended); the schedule removed; "nothing rests on it yet: no product, claim, option, briefing, publication or dependency names this source's evidence"; the rights incident 472d…ca7f36; a retention action (deletion of the source's evidence) was opened; it waits for the retention authority's approval and is executed by the steward — never automatically — POL 01a15d51-a4d8… · audit seq 742912
+  ✓ H. Bergmann (retention authority) SEES the deletion action f29d…56dc75 waiting for her: deletion of evidence, state opened — NOT executed by this act (approval, execution and verification are the retention unit's own acts)
+  ✓ the feed's schedule: removed — collection prohibited from the withdrawal
+
+  · D4 on red-sea-corridor-stream-late (01a0…33c61d v1, active, rights confirmed) — its forecast FCT 01a0…6aafd5 rests on the stream's evidence; the unaffected control FCT 01a1…526298 (portwatch:chokepoint4:n_total)
+  ✓ C. Brenner (decision owner) DECLARED the package "B40 — reroute on the late corridor stream's forecast (SYNTHETIC; a D4 demonstration, never proposed)" 01a1…598aaa on the Regensburg DEC — SYNTHETIC, a demonstration of refused use; never proposed — POL 01a15d51-a5a6… · audit seq 742914
+  · C. Brenner OPENED version 1 of the package (known at now)
+  ✓ C. Brenner DERIVED the option "status-quo" citing the PortWatch forecast 01a1…526298 (another source) — usable — POL 01a15d51-a5cb… · audit seq 742916
+  ✓ M. Dvořák PREVIEWED the withdrawal of red-sea-corridor-stream-late (nothing written): v1 active → suspended/withdrawn; "5 product(s), 0 claim(s) and 50 further reference(s) rest on this source's evidence (537 evidence object(s))"
+  ✓ BEFORE the withdrawal: the stream's forecast is decision_option usable, gate usable, publication usable, export usable
+  ✓ M. Dvořák WITHDREW the CONTRACT rights of red-sea-corridor-stream-late: v1 suspended, the schedule removed, "5 product(s), 0 claim(s) and 50 further reference(s) rest on this source's evidence (537 evidence object(s))"; 5 attention item(s) to the owners (N. Eriksen, J. Weber); the rights incident 3fe7…9ce30f; no deletion obligation was declared with the withdrawal: no retention action was opened — POL 01a15d51-a646… · audit seq 742918
+  ✓ SourceHealthChanged {suspended, cause rights} → the source-health consumer MARKED 5 product(s) (forecast, warning, scenario) with cause rights, health suspended
+  ✓ N. Eriksen (forecast owner) READ THE RIGHTS IMPACT of red-sea-corridor-stream-late: rights withdrawn, 5 product(s) — forecast "live" (N. Eriksen); scenario "B36 — the corridor probe scenario (SYNTHETIC)" (N. Eriksen); scenario "Bab el-Mandeb closure — Houthi activity and insu" (J. Weber); scenario "Bab el-Mandeb freight exposure (SYNTHETIC)" (J. Weber); warning "B36 — the corridor probe scenario (SYNTHETIC) — " (N. Eriksen); owners N. Eriksen ×3, J. Weber ×2; 5 marker(s); "the decision-active use of this source's evidence is REFUSED (rights_withdrawn) until the rights are restored; reading stays as it was" — POL 01a15d51-aa63… · audit seq 742929
+  ✓ J. Weber (strategy owner — an owner the impact names) reads the same list: 2 owner(s), 5 product(s)
+  · the owners' attention items (cause rights): N. Eriksen — forecast (source.coverage_loss), N. Eriksen — scenario (source.coverage_loss), N. Eriksen — warning (source.coverage_loss), J. Weber — scenario (source.coverage_loss), J. Weber — scenario (source.coverage_loss)
+  ✓ C. Brenner derives an option citing the stream's forecast 01a0…6aafd5 (the contract rights WITHDRAWN) REFUSED — 409 EYE-STA-002 — object use rejected (rights_withdrawn): FCT 01a0f00b-8d89-7f7a-a271-60f56d6aafd5 v1 rests on EVD 01a0ee8b-1c7e-7116-93fc-0428871d1eaa v1, whose source contract (01a0deff-5fb9-7e77-8799-c8beef33c61d v1) has its rights WITHDRAWN; it is refused until the contract rights are restored through the rights lifecycle (an in-force rights-terms record does not lift a contract withdrawal); it is not used for decision_option
+  ✓ NO BUSINESS EFFECT: the package holds 1 option(s) before and after the refused act
+  ✓ FROM CURRENT DATABASE STATE (no tick): the stream's forecast — decision_option REFUSED (rights_withdrawn), gate REFUSED (rights_withdrawn), publication REFUSED (rights_withdrawn), export REFUSED (rights_withdrawn); the GATE, PUBLICATION and EXPORT paths call the same objects._lineage_usable (their route-level refusals are harness-proven: phase6-registry-b40 RG5)
+  ✓ THE UNAFFECTED SCOPE stays usable: the PortWatch forecast 01a1…526298 — decision_option usable, gate usable, publication usable, export usable
+  ✓ READING STAYS AS IT WAS (D9): A. Hoffmann still reads the stream's evidence 01a1…ae8e13; no new evidence-content access is granted by any of this
+  ✓ F. Aydın (data steward) DECLARED the stream's rights TERMS v1 IN_FORCE c23a…85fa2d — POL 01a15d51-ab2f… · audit seq 742933
+  ✓ C. Brenner derives the option again — the terms IN FORCE, the contract still WITHDRAWN REFUSED — 409 EYE-STA-002 — object use rejected (rights_withdrawn): FCT 01a0f00b-8d89-7f7a-a271-60f56d6aafd5 v1 rests on EVD 01a0ee8b-1c7e-7116-93fc-0428871d1eaa v1, whose source contract (01a0deff-5fb9-7e77-8799-c8beef33c61d v1) has its rights WITHDRAWN (its rights terms read in_force); it is refused until the contract rights are restored through the rights lifecycle (an in-force rights-terms record does not lift a contract withdrawal); it is 
+  ✓ M. Dvořák restores the rights WITHOUT evidence REFUSED — 422 EYE-REQ-001 — rights change rejected (evidence): a restoration cites its evidence — the renewed licence, the publisher's confirmation (8 to 4000 characters)
+  ✓ RECOVERY — M. Dvořák RESTORED the contract rights with evidence: reverses 2d25…ffb1e0, v1 RESUMED, the schedule restored — POL 01a15d51-ab4f… · audit seq 742936
+  ✓ SourceHealthChanged {active, cause rights} → the markers CLEARED (0 active left)
+  ✓ the SAME use ADMITTED after the restoration: C. Brenner derived "late-stream-restored" citing 01a0…6aafd5 — POL 01a15d51-af66… · audit seq 742991
+  ✓ F. Aydın WITHDREW the stream's rights TERMS (v2 withdrawn) while the CONTRACT rights read confirmed — POL 01a15d51-af87… · audit seq 742993
+  ✓ C. Brenner derives the option — the contract CONFIRMED, the terms WITHDRAWN REFUSED — 409 EYE-STA-002 — object use rejected (rights_expired): FCT 01a0f00b-8d89-7f7a-a271-60f56d6aafd5 v1 rests on EVD 01a0ee8b-1c7e-7116-93fc-0428871d1eaa v1, whose source's rights terms are withdrawn (no expiry declared); it is not used for decision_option until rights are declared again
+  ✓ FROM CURRENT STATE: the stream's forecast — decision_option REFUSED (rights_expired), gate REFUSED (rights_expired), publication REFUSED (rights_expired), export REFUSED (rights_expired) (B82's check names a withdrawn terms record rights_expired first; §RG counts it too, rights_withdrawn — whichever runs first refuses)
+  ✓ M. Dvořák tries to lift it with a CONTRACT restoration (nothing withdrawn on the contract) REFUSED — 409 EYE-STA-002 — rights change rejected (state): the rights of source 01a0deff-5fb9-7e77-8799-c8beef33c61d stand no withdrawal of the rights lifecycle; there is nothing to restore
+  ✓ RECOVERY — F. Aydın DECLARED terms v3 IN_FORCE (a governed new version) — POL 01a15d51-afd4… · audit seq 743001
+  ✓ the SAME use ADMITTED again after the new terms version — "late-stream-terms-again" — POL 01a15d51-afe4… · audit seq 743003
+  ✓ HISTORY INTACT: the rights ledger withdraw → restore (append-only); the contract events suspended, reactivated, rights_changed:withdraw, suspended, rights_changed:restore, reactivated; the terms series v1 in_force → v2 withdrawn → v3 in_force; the stream's evidence: 537 version(s) recorded before the withdrawal, every one still admitted (nothing withdrawn, rewritten or deleted by a rights change); 17 collected since the restoration resumed the schedule
+
+B40-2 (F-P1-02) THE DJIBOUTI CUSTOMS BULLETIN — the publisher key declared by F. Aydın; the signed bulletin VERIFIED, a tampered copy ADMITTED marked FAILED (D6); the failed version refused at a decision-active use
+  ✓ A. Hoffmann REGISTERED "Djibouti transshipment customs bulletins (SYNTHETIC)" as a DRAFT SRC@v4 contract (source 01a1…b682f7 v1) — POL 01a15d51-b1e2… · audit seq 743047
+  ✓ M. Dvořák (collection manager — not the registrar) EVALUATED "Djibouti transshipment customs bulletins (SYNTHETIC)" v1: approve — POL 01a15d51-b1f1… · audit seq 743051
+  ✓ M. Dvořák APPROVED "Djibouti transshipment customs bulletins (SYNTHETIC)" v1 (a different person from the registrar) — POL 01a15d51-b202… · audit seq 743053
+  ✓ M. Dvořák ACTIVATED "Djibouti transshipment customs bulletins (SYNTHETIC)"
+  ✓ the platform administrator PROVISIONED "Djibouti transshipment customs bulletins (SYNTHETIC)"'s collection agent 01a1…37968f (upload; owner A. Hoffmann)
+  ✓ H. Weber (domain analyst — no key act) declares the publisher key REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın (data steward) DECLARED the publisher key djibouti-customs-2026: Ed25519, fingerprint ed25519 · 40c9360f1ed52987 (computed by the port), in_force — POL 01a15d51-b242… · audit seq 743064
+  ✓ F. Aydın retires the mistyped key naming ANOTHER key's fingerprint (the review bound) REFUSED — 409 EYE-STA-002 — publisher key rejected (stale): the retirement names key 057cd57c-fe91-43be-84cf-dc7eb31f4657 (ed25519 · 89825673a0651973); the key you reviewed is ed25519 · 40c9360f1ed52987
+  ✓ F. Aydın RETIRED the mistyped key ed25519 · 89825673a0651973 on the fingerprint she reviewed (retired) — POL 01a15d51-b264… · audit seq 743069
+  · H. Weber UPLOADED the SIGNED bulletin: run 01a1…39439c finished, 1 admitted, 0 quarantined
+  · H. Weber UPLOADED a TAMPERED copy (consignment NWL-7701 cleared → held, the ORIGINAL signature): run 01a1…b96899 finished, 1 admitted, 0 quarantined
+  ✓ the SIGNED bulletin 01a1…9c6cad: ADMITTED, authenticity VERIFIED (ed25519_detached, key djibouti-customs-2026) — custody.authenticity_recorded
+  ✓ the TAMPERED copy 01a1…069ec3: ADMITTED marked FAILED — not quarantined, never verified (D6): "the detached Ed25519 signature did not verify with any of the 1 publisher key(s) in force — these bytes are not what the publisher signed"
+  ✓ E. Lindqvist (auditor) READ the signed evidence page's authenticity: VERIFIED (ed25519_detached, key ed25519 · 40c9360f1ed52987); the attributes recorded at intake from the SRC@v4 declaration — language "en" (source_contract), sensitivity "commercial" (source_contract), geographic_scope ["Djibouti","Horn of Africa"] (source_contract) — metadata only (D9) — POL 01a15d51-b55b… · audit seq 743156
+  · B82's trust layer on the signed version (graph.ev_evidence_state, read-only): authenticity VERIFIED — "the detached Ed25519 signature verified with the publisher key ed25519 · 40c9360f1ed52987 (djibouti-customs-2026) over these exact bytes"
+  ✓ E. Lindqvist (auditor) READ the tampered evidence page's authenticity: FAILED (ed25519_detached, no key verified it); the attributes recorded at intake from the SRC@v4 declaration — language "en" (source_contract), sensitivity "commercial" (source_contract), geographic_scope ["Djibouti","Horn of Africa"] (source_contract) — metadata only (D9) — POL 01a15d51-b566… · audit seq 743158
+  · B82's trust layer on the tampered version (graph.ev_evidence_state, read-only): authenticity FAILED — "the detached Ed25519 signature did not verify with any of the 1 publisher key(s) in force — these bytes are not what the publisher signed"
+  ✓ C. Brenner (decision owner) DECLARED the package "B40 — Regensburg consignments on the Djibouti bulletin (SYNTHETIC; a D6 demonstration, never proposed)" 01a1…3e04b2 on the Regensburg DEC — SYNTHETIC, a demonstration of refused use; never proposed — POL 01a15d51-b574… · audit seq 743160
+  · C. Brenner OPENED version 1 of the package (known at now)
+  ✓ C. Brenner derives an option citing the TAMPERED bulletin 01a1…069ec3 REFUSED — 409 EYE-STA-002 — object use rejected (authenticity_failed): EVD 01a15d51-b3e3-7e69-98e8-17a3bc069ec3 v1 rests on EVD 01a15d51-b3e3-7e69-98e8-17a3bc069ec3 v1, whose publisher signature FAILED verification at its admission (ed25519_detached, recorded 2026-10-21T07:16:38Z, authenticity record c499ee23-a414-4727-9f0f-3230b82a4305) — admitted marked and readable, never established as the publisher's content; it is not used for decision_op
+  ✓ NO BUSINESS EFFECT: 0 option(s) before and after
+  ✓ the VERIFIED bulletin is usable: C. Brenner derived "release-on-signed" — POL 01a15d51-b59d… · audit seq 743165
+  ✓ FROM CURRENT STATE: the tampered version — decision_option REFUSED (authenticity_failed), gate REFUSED (authenticity_failed), publication REFUSED (authenticity_failed), export REFUSED (authenticity_failed); the signed version — decision_option usable, gate usable, publication usable, export usable; the tampered one stays ADMITTED and readable
+  · the claim built on each (the WEAK / INDETERMINATE "authenticity failed" display of B82's trust layer) is HARNESS-PROVEN (phase6-authenticity-b40 VA3/VA4): no approved structured-extraction method for the bulletin's JSON exists on the demonstration, and this act plants no claim
+  · the key register for the customs source: ed25519 · 89825673a0651973 retired, ed25519 · 40c9360f1ed52987 in_force; the declared scheme ed25519_detached
+
+B40-3 (F-P1-03) THE SUPPLIER DOCUMENTS — the content inspector (engine 1, sandboxed): the clean note ADMITTED with its verdict; the active-content PDF and the macro .docm QUARANTINED; WHY, the excerpt (D9), the separation, the rejection
+  ✓ A. Hoffmann REGISTERED "Regensburg bearings — supplier documents (SYNTHETIC)" as a DRAFT SRC@v4 contract (source 01a1…7e19a9 v1) — POL 01a15d51-b77c… · audit seq 743196
+  ✓ M. Dvořák (collection manager — not the registrar) EVALUATED "Regensburg bearings — supplier documents (SYNTHETIC)" v1: approve — POL 01a15d51-b789… · audit seq 743197
+  ✓ M. Dvořák APPROVED "Regensburg bearings — supplier documents (SYNTHETIC)" v1 (a different person from the registrar) — POL 01a15d51-b794… · audit seq 743199
+  ✓ M. Dvořák ACTIVATED "Regensburg bearings — supplier documents (SYNTHETIC)"
+  ✓ the platform administrator PROVISIONED "Regensburg bearings — supplier documents (SYNTHETIC)"'s collection agent 01a1…336e04 (upload; owner A. Hoffmann)
+  ✓ H. Weber (procurement lead) UPLOADED 3 supplier document(s) through the existing upload route: run 01a1…cd29e8 finished — 1 admitted, 2 quarantined
+  ✓ the CLEAN delivery note 01a1…514b55: ADMITTED; its verdict recorded as evidence — engine content-inspector 1.0.0, rule set fe1064fc0928…, outcome clean, 0 finding(s), decision pass; confinement --permission --allow-fs-read=<inspector> --allow-fs-read=<item> --disallow-code-generation-from-strings
+  ✓ the supplier PDF: QUARANTINED active_content — "active content (pdf.open_action @54, pdf.additional_actions @255, pdf.javascript @730, pdf.js @742, pdf.javascript @812, pdf.js @824); hidden instructions (pdf.hidden_text_instruction @545, pdf.metada" (cited by code and offset, never quoted)
+  ✓ the inspection checklist .docm: QUARANTINED macro — "macros (ooxml.vba_project @1510, ooxml.macro_enabled @0) — the SRC@v4 content policy quarantines macros (D7); nothing reaches extraction"
+  ✓ NOTHING REACHED EVIDENCE: no evidence-vault blob for the quarantined items (0); nothing reaches extraction
+  · the intake review queue (A. Hoffmann): 4 case(s); ours: 01a1…e0960d macro (safety, open), 01a1…e6d082 active_content (safety, open); past expiry: 2 (D16)
+  ✓ A. Hoffmann READ the case's WHY 01a1…e6d082: engine content-inspector 1.0.0 (rule set fe1064fc0928…), findings pdf.open_action @54, pdf.additional_actions @255, pdf.javascript @730, pdf.js @742, pdf.javascript @812, pdf.js @824, pdf.hidden_text_instruction @545, pdf.metadata_zero_width @936; the review reason safety; custody quarantined, inspected — no content in the answer — POL 01a15d51-ba49… · audit seq 743264
+  ✓ A. Hoffmann (domain analyst — she already retrieves evidence, D9) READ THE EXCERPT around pdf.hidden_text_instruction: 574 bytes served of 1330 (289–863), the digest re-verified, custody.retrieved written; it carries the hidden white-text instruction — POL 01a15d51-ba51… · audit seq 743265
+  ✓ F. Aydın (data steward — no evidence retrieval) asks for the excerpt REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ H. Weber (the uploader, a domain analyst) rejects the supplier PDF's case REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ M. Dvořák (collection manager — not the uploader) REJECTED the supplier PDF's case with a reason: rejected; the bytes RETAINED in quarantine (custody intact) — POL 01a15d51-ba7c… · audit seq 743275
+  ✓ H. Weber (the uploader, a domain analyst) rejects the .docm's case REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ M. Dvořák (collection manager — not the uploader) REJECTED the .docm's case with a reason: rejected; the bytes RETAINED in quarantine (custody intact) — POL 01a15d51-baaf… · audit seq 743283
+  · D9b — REVIEWER ≠ UPLOADER for manual uploads: H. Weber was refused by the PDP (she holds no review role); the port's own refusal of a COLLECTION MANAGER who uploaded ("the operator who uploaded this item never reviews its quarantine case") is HARNESS-PROVEN (phase6-intake-b40 §IN.2) — the corridor has ONE collection manager, so staging it here would leave a case nobody may review; the upload approval of SP-22 likewise (§IN.4)
+  ✓ the DEF-03 PDF 01a0…2b2dbb (carrier-advisories v1 — a v1–v3 contract) STAYS AS IT WAS: admitted opaque with its flag, "no inspection verdict recorded: not recorded before B40, or the contract is v1–v3 (its recorded rule)" (D8, no back-fill)
+  · THE ENGINE ACTUALLY RUN HERE is engine 1, the content inspector, in its sandboxed child process. The ClamAV engine is NOT admitted (D2): the clamd adapter is built and its real-engine evaluation ran against the UNADMITTED Debian image (evidence/cp6/b40-clamav-evaluation.txt — evaluation evidence, never this deployment's engine); an unavailable or incomplete scan is never clean (fail closed → quarantine: phase6-intake-b40 §IN.3, F48/F49); EXC-P1-001 stays OPEN
+
+B40-4 (F-P1-04) THE THROTTLING PORT AUTHORITY — SRC@v4 over the replay set with planted 429 + Retry-After (D10): the authorization, the backoff per contract, a collection inside the hold refused before egress, the third answer admitted and the intervals RESOLVED
+  ✓ A. Hoffmann REGISTERED "Port of Djibouti — vessel calls API (SYNTHETIC)" as a DRAFT SRC@v4 contract (source 01a1…2856a0 v1) — POL 01a15d51-bc93… · audit seq 743290
+  ✓ M. Dvořák (collection manager — not the registrar) EVALUATED "Port of Djibouti — vessel calls API (SYNTHETIC)" v1: approve — POL 01a15d51-bcaa… · audit seq 743291
+  ✓ M. Dvořák APPROVED "Port of Djibouti — vessel calls API (SYNTHETIC)" v1 (a different person from the registrar) — POL 01a15d51-bcb5… · audit seq 743292
+  ✓ M. Dvořák ACTIVATED "Port of Djibouti — vessel calls API (SYNTHETIC)"
+  ✓ the platform administrator PROVISIONED "Port of Djibouti — vessel calls API (SYNTHETIC)"'s collection agent 01a1…fb6ef8 (rest; owner A. Hoffmann)
+  · M. Dvořák collected (the command form): run 01a1…9ec4ab failed
+  ✓ THE FIRST COLLECTION (the schedule's first iteration, or the command form): run 01a1…9ec4ab failed — "throttle refused (rate_limited): the publisher answered 429 Too Many Requests with Retry-After 60 s; the contract's backoff holds the source 60 s until 2026-10-21T07:18:00.574464+00:00 (attempt 1 of 4, a retry planned)"
+  ✓ M. Dvořák collects INSIDE the hold: REFUSED before any request (run 01a1…c0ce41 cancelled) — "acquisition not authorized (policy): rate_limited: the contract's backoff holds collection until 2026-10-21T07:18:00.574464+00:00 (attempt 1 of 4, publisher 429) — no request before the hold ends"
+  · HOLDING until 2026-10-21T07:18:00Z (attempt 1: Retry-After 60 → applied 60 s; the contract's schedule 60 s) — waiting on the database clock
+  · no contract retry ran within 45 s of the hold's end — M. Dvořák collected (the command form): run 01a1…196493 failed
+  · HOLDING until 2026-10-21T07:20:47Z (attempt 2: Retry-After 120 → applied 120 s; the contract's schedule 120 s) — waiting on the database clock
+  · no contract retry ran within 45 s of the hold's end — M. Dvořák collected (the command form): run 01a1…ac843c finished
+  ·   interval 01a1…010f9b: attempt 1, publisher_429 Retry-After 60 (honoured), the contract's 60 s → applied 60 s, 2026-10-21T07:17:00Z → 2026-10-21T07:18:00Z, a retry planned; RESOLVED by run 01a1…ac843c
+  ·   interval 01a1…562cd6: attempt 2, publisher_429 Retry-After 120 (honoured), the contract's 120 s → applied 120 s, 2026-10-21T07:18:47Z → 2026-10-21T07:20:47Z, a retry planned; RESOLVED by run 01a1…ac843c
+  ✓ THE COVERAGE VIEW (M. Dvořák): 2 RATE-LIMITED interval(s) — 2026-10-21T07:18:47Z–2026-10-21T07:20:47Z resolved; 2026-10-21T07:17:00Z–2026-10-21T07:18:00Z resolved — NOT a silent gap; the third answer admitted (run 01a1…ac843c, 1 item(s)); the last authorization: residency match (EU), window open, robots allowed (Allow: /v1/), rate 30/60 s — POL 01a15d56-3dd6… · audit seq 743435
+  ✓ N. Eriksen (forecast owner — a coverage reader) reads the same intervals: 2 — metadata only
+  · NOT MADE, STATED: a residency mismatch (a contract declaring US in this EU domain) is refused BEFORE egress (residency_refused), and a request outside the declared window is never made (window_closed) — harness-proven (phase6-acquisition-policy-b40 AU); this act registers no mis-declared contract on the demonstration
+
+B40-5 (F-P1-12) THE PARTNER'S ADAPTER — registered, approved by a second person, run in its cell; the unregistered host BLOCKED, the contract SUSPENDED and REQUALIFIED with 1.0.1
+  ✓ H. Weber (domain analyst) registers the adapter package REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ M. Dvořák (collection manager) REGISTERED the adapter package nordwerk-logistics-consignments 1.0.0: digest 25b6f8fb9268… (recomputed by the port), protocol eye-cell/1, author "R. Haddad's firm — partner logistics (SYNTHETIC, customer-written)", destinations consignments.partner-logistics.synthetic.example — POL 01a15d56-3fd0… · audit seq 743438
+  ✓ M. Dvořák (its registrant) approves the adapter 1.0.0 REFUSED — 403 EYE-AUT-001 — adapter package rejected (separation_of_duties): deciding an adapter package (a second person: never its registrant) is never done by its proposer (no self-acceptance)
+  ✓ T. Richter (domain admin — the second person) APPROVED the adapter 1.0.0 at the digest he reviewed: approved — POL 01a15d56-3ff8… · audit seq 743440
+  · the manifest names R. Haddad's firm as the author (the partner's customer-written code); an external collaborator may neither register nor approve it — R. Haddad holds no session here, the refusal is harness-proven (phase6-connector-cell-b40: "an external collaborator even holding a manager binding")
+  ✓ A. Hoffmann REGISTERED "NORDWERK logistics partner — consignments (SYNTHETIC, customer-written adapter)" as a DRAFT SRC@v4 contract (source 01a1…dfe649 v1) — POL 01a15d56-4003… · audit seq 743441
+  ✓ M. Dvořák (collection manager — not the registrar) EVALUATED "NORDWERK logistics partner — consignments (SYNTHETIC, customer-written adapter)" v1: approve — POL 01a15d56-4017… · audit seq 743442
+  ✓ M. Dvořák APPROVED "NORDWERK logistics partner — consignments (SYNTHETIC, customer-written adapter)" v1 (a different person from the registrar) — POL 01a15d56-4021… · audit seq 743443
+  ✓ M. Dvořák ACTIVATED "NORDWERK logistics partner — consignments (SYNTHETIC, customer-written adapter)"
+  ✓ the platform administrator PROVISIONED "NORDWERK logistics partner — consignments (SYNTHETIC, customer-written adapter)"'s collection agent 01a1…32e3ca (adapter; owner A. Hoffmann)
+  ✓ 1.0.0 RAN IN ITS CELL and the gateway BLOCKED the unregistered host: run 01a1…53464a FAILED CLOSED — "connector cell refused (unregistered_destination): the contract is suspended, requalification 01ec4e9a-b146-4028-9d1d-69cb97dc8700 required (cursor and custody unchanged); host track.unregistered-carrier.synthetic.example is not a destination the contract regi"; nothing admitted (0); the receipts allowed consignments.partner-logistics.synthetic.example 200, allowed consignments.partner-logistics.synthetic.example 200, blocked:unregistered_destination track.unregistered-carrier.synthetic.example
+  ✓ the contract SUSPENDED with its cursor and custody intact; requalification 01ec…dc8700 required (unregistered_destination)
+  ✓ M. Dvořák reactivates the suspended contract REFUSED — 409 EYE-STA-002 — transition rejected (held): source 01a15d56-4000-7027-b9c2-3d5b4cdfe649 v1 is held for requalification 01ec4e9a-b146-4028-9d1d-69cb97dc8700 (unregistered_destination, required); it is activated again once a second person approves a requalified connector
+  ✓ M. Dvořák (collection manager) REGISTERED the adapter package nordwerk-logistics-consignments 1.0.1: digest 3cca44e02495… (recomputed by the port), protocol eye-cell/1, author "R. Haddad's firm — partner logistics (SYNTHETIC, customer-written)", destinations consignments.partner-logistics.synthetic.example — POL 01a15d56-8fcb… · audit seq 743464
+  ✓ M. Dvořák (its registrant) approves the adapter 1.0.1 REFUSED — 403 EYE-AUT-001 — adapter package rejected (separation_of_duties): deciding an adapter package (a second person: never its registrant) is never done by its proposer (no self-acceptance)
+  ✓ T. Richter (domain admin — the second person) APPROVED the adapter 1.0.1 at the digest he reviewed: approved — POL 01a15d56-8ff7… · audit seq 743466
+  ✓ M. Dvořák submits 1.0.0 again for requalification REFUSED — 422 EYE-REQ-001 — requalification rejected (contract_tests): the contract tests the API ran in a cell did not pass (failed: every request on a registered destination — asked for track.unregistered-carrier.synthetic.example; completes against the replay set — failed — the adapter reported gateway_refused (unregistered_destination): host track.unregistered-carrier.synthetic.example is not a destination the contract registers (consignmen
+  ✓ M. Dvořák SUBMITTED 1.0.1 for requalification: the contract tests pass in a cell against the replay set — package digest verified pass; manifest valid for eye-cell/1 pass; declared destinations registered by the contract pass; every request on a registered destination pass; speaks eye-cell/1 pass; completes against the replay set pass; frames at least one item pass — POL 01a15d56-90a6… · audit seq 743472
+  ✓ M. Dvořák (the submitter) approves the requalification REFUSED — 403 EYE-AUT-001 — requalification rejected (separation_of_duties): deciding a connector's requalification (a second person: never its submitter) is never done by its proposer (no self-acceptance)
+  ✓ T. Richter APPROVED the requalification at the digest he reviewed: approved — POL 01a15d56-90b7… · audit seq 743474
+  ✓ M. Dvořák REACTIVATED the requalified contract (1.0.1 in force)
+  ✓ 1.0.1 RAN IN ITS CELL: run 01a1…4b6c3c finished — 3 consignment(s) ADMITTED through the unchanged lifecycle; every request on a receipt: allowed consignments.partner-logistics.synthetic.example 200, allowed consignments.partner-logistics.synthetic.example 200 — the off-registry link never requested
+  · the connectors register (A. Hoffmann): nordwerk-logistics-partner-consignments active, the package in force 1.0.1 (requalification), open requalification none
+  ✓ the egress receipts (A. Hoffmann — digests, sizes, destinations, decisions; never bytes): {"allowed":4,"blocked:unregistered_destination":1}
+  · the DESTINATION IDENTITY CHANGE (a different pinned key on the registered host → blocked before the request, quarantined destination_identity_changed) and the credential injected by the gateway are HARNESS-PROVEN (phase6-connector-cell-b40, a loopback TLS host on a port the act-target module refuses for the live addresses) — not staged here. D3: the cell is confined by process and capability; network-level denial is B103 / B109 — stated, never claimed
+
+B40-6 THE RECORDS — B40's components owned and approved by the DSA; a B40 design baseline; the design acceptance DEMONSTRATION records ch9 (F-P1-01) and ch16 (F-P1-03), the exercises linked
+  ✓ P. Castellano (conformance steward) re-read the inventory from the repository: 26 new asset(s) (26 of B40's library — source-registry 6, authenticity 5, intake 6, acquisition-policy 5, connector-cell 4), 174 unchanged; drift stated: pattern.governed-action, pattern.truth-state, tokens.semantic, web.actions.button, web.authority.command-review, web.command-environment.command-composition, web.forms.field, web.layers.dialog, web.layers.drawer, web.layers.panel, web.layers.popover, web.layers.surface, web.layout.composition, web.layout.density-switch, web.layout.region, web.object.lifecycle-view, web.object.object-header, web.observation.governed-button, web.shell.app-shell, web.shell.command-palette, web.shell.history-navigator, web.ui.lifecycle-badge, web.ui.truth-badge
+  ✓ L. Haddad (Design System Authority, human gate) APPROVED 26 B40 component(s): 26 components of source-registry, authenticity, intake, acquisition-policy, connector-cell, each with ONE accountable owner — S. Iversen
+  ✓ P. Castellano PROPOSED the B40 design baseline 01a1…ae51e2 v1: 26 members, design system @eye/tokens@0.1.0
+  ✓ P. Castellano (its proposer) attests the baseline REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ L. Haddad ATTESTED and SIGNED the B40 design baseline v1 (attested)
+  ✓ the design acceptance DEMONSTRATION records ch9 (F-P1-01) and ch16 (F-P1-03), each attested by L. Haddad (design), H. Achterberg (assurance) and W. Zielińska (customer): ch9 ACCEPTED, ch16 ACCEPTED — 2 records, claim demonstration; 8 journey-harness evidence item(s) linked (the §AC harness phase6-acceptance-b40 and the walk among them); the signed scope-specific records are B111 → H3/R2
+
+B40-7 THE STATE, the env lines for the walk, THE LIMITS
+  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B40_STATE_DEF03_EVD=01a084f5-8c73-7087-b0fb-2796c42b2dbb
+  EYE_B40_FEED_EVD=01a15d51-a266-78c7-8b12-6b44ca1cabdb
+  EYE_B40_FEED_SOURCE=01a15d51-5239-741d-beb2-b69a232fcb4c
+  EYE_B40_FEED_NAME=Red Sea shipping notices (SYNTHETIC)
+  EYE_B40_FEED_CANDIDATE=ae5bde8f-ab1e-47aa-b9be-9263cfa46583
+  EYE_B40_FEED_RETENTION_ACTION=f29d0a8d-57f5-4996-9d21-3a22e956dc75
+  EYE_B40_FEED_RIGHTS_CHANGE=a474c96f-6d07-4ca4-a929-2533c61f41c9
+  EYE_B40_STREAM_WITHDRAWAL=2d25c533-df16-48eb-a035-20cd02ffb1e0
+  EYE_B40_STREAM_PRODUCTS=5
+  EYE_B40_STREAM_EVD=01a15afe-87bf-71e0-bf64-79cd82ae8e13
+  EYE_B40_STREAM_SOURCE=01a0deff-5fb9-7e77-8799-c8beef33c61d
+  EYE_B40_STREAM_KEY=red-sea-corridor-stream-late
+  EYE_B40_STREAM_FORECAST=01a0f00b-8d89-7f7a-a271-60f56d6aafd5
+  EYE_B40_STREAM_TERMS=c23a2a7e-2d97-40c7-af4b-ad134c85fa2d
+  EYE_B40_D4_PACKAGE=01a15d51-a5a3-7ffc-9ce6-132ee8598aaa
+  EYE_B40_CUSTOMS_PACKAGE=01a15d51-b572-7eae-bc47-140c7c3e04b2
+  EYE_B40_CUSTOMS_SOURCE=01a15d51-b1df-7417-a65f-a1dfdbb682f7
+  EYE_B40_CUSTOMS_NAME=Djibouti transshipment customs bulletins (SYNTHETIC)
+  EYE_B40_CUSTOMS_KEY_REF=djibouti-customs-2026
+  EYE_B40_CUSTOMS_PBK=46e16557-034e-40e8-9c37-9ebc2cb7a507
+  EYE_B40_CUSTOMS_KEY=46e16557
+  EYE_B40_CUSTOMS_VERIFIED_EVD=01a15d51-b309-79b0-9269-0fb9e39c6cad
+  EYE_B40_CUSTOMS_FAILED_EVD=01a15d51-b3e3-7e69-98e8-17a3bc069ec3
+  EYE_B40_SUPPLIER_CLEAN_EVD=01a15d51-b85b-761c-bf6d-45eced514b55
+  EYE_B40_SUPPLIER_PDF_CASE=01a15d51-b8bd-707d-9172-e43d35e6d082
+  EYE_B40_SUPPLIER_SOURCE=01a15d51-b77a-70f4-acbd-9111a47e19a9
+  EYE_B40_SUPPLIER_NAME=Regensburg bearings — supplier documents (SYNTHETIC)
+  EYE_B40_SUPPLIER_DOCM_CASE=01a15d51-b90d-7347-9e18-77755ae0960d
+  EYE_B40_PORT_RATE_LIMIT=01a15d53-af7e-7ad9-9f76-b5b7d3562cd6
+  EYE_B40_PORT_SOURCE=01a15d51-bc90-7add-92c2-35947f2856a0
+  EYE_B40_PORT_NAME=Port of Djibouti — vessel calls API (SYNTHETIC)
+  EYE_B40_PARTNER_BLOCKED_RUN=01a15d56-8f00-7fde-a7b7-b01eb053464a
+  EYE_B40_PARTNER_GOOD_RUN=01a15d56-90d7-7478-8949-4a432c4b6c3c
+  EYE_B40_PARTNER_SOURCE=01a15d56-4000-7027-b9c2-3d5b4cdfe649
+  EYE_B40_PARTNER_NAME=NORDWERK logistics partner — consignments (SYNTHETIC, customer-written adapter)
+  EYE_B40_PARTNER_REQUALIFICATION=01ec4e9a-b146-4028-9d1d-69cb97dc8700
+  EYE_B40_ADAPTER_100=9d277143-b75d-40f4-a3b3-c8b67724728b
+  EYE_B40_ADAPTER_101=627376d5-7a7c-4de9-bc45-dd6b4f95cd15
+  EYE_B40_ACCEPTANCE_CH9=01a15d56-e395-7912-a4c6-674d79889902
+  EYE_B40_ACCEPTANCE_CH16=01a15d56-e3c1-774f-9ffd-333aeff2db00
+  EYE_B40_BASELINE=01a15d56-e36a-7541-8f2b-3cc2b2ae51e2
+  EYE_B40_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B40_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B40_ANALYST=a.hoffmann
+  EYE_B40_UPLOADER=h.weber
+  EYE_B40_MANAGER=m.dvorak
+  EYE_B40_STEWARD=f.aydin
+  EYE_B40_DOMAIN_ADMIN=t.richter
+  EYE_B40_SPONSOR=w.zielinska
+  EYE_B40_FORECAST_OWNER=n.eriksen
+  EYE_B40_DECISION_OWNER=c.brenner
+  EYE_B40_AUDITOR=e.lindqvist
+  EYE_B40_RETENTION_AUTHORITY=h.bergmann
+  EYE_B40_FEED_ANALYST=a.hoffmann
+  EYE_B40_FEED_MANAGER=m.dvorak
+  EYE_B40_STREAM_OWNER=n.eriksen
+  EYE_B40_STREAM_STATE=restored
+  EYE_B40_CUSTOMS_STEWARD=f.aydin
+  EYE_B40_CUSTOMS_AUDITOR=e.lindqvist
+  EYE_B40_CUSTOMS_SIGNED_EVD=01a15d51-b309-79b0-9269-0fb9e39c6cad
+  EYE_B40_CUSTOMS_TAMPERED_EVD=01a15d51-b3e3-7e69-98e8-17a3bc069ec3
+  EYE_B40_SUPPLIER_UPLOADER=h.weber
+  EYE_B40_SUPPLIER_REVIEWER=a.hoffmann
+  EYE_B40_PORT_MANAGER=m.dvorak
+  EYE_B40_ADAPTER_ADMIN=t.richter
+  EYE_B40_ADAPTER_SOURCE=01a15d56-4000-7027-b9c2-3d5b4cdfe649
+  EYE_B40_ADAPTER_PACKAGE=9d277143-b75d-40f4-a3b3-c8b67724728b
+  EYE_B40_ADAPTER_REQUALIFIED_PACKAGE=627376d5-7a7c-4de9-bc45-dd6b4f95cd15
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — 0123 (§RG, §VA, §IN, §AP, §CR) and its harnesses phase6-{prelude,registry,authenticity,intake,acquisition-policy,connector-cell,clamav-engine,b40-res-evidenced}-b40, the unit cases, the web unit models, the walk. (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: the feed discovered, drafted, promoted, evaluated and approved by a second person (the unevaluated approval and the registrar's own acts refused), the customer approval (claim demonstration), collected, and its rights withdrawn with a deletion obligation waiting for the retention authority; D4 on the late corridor stream — the contract rights withdrawn, the products and owners listed, markers set, a decision-active use refused with no business effect, the unaffected forecast usable, an in-force terms record not lifting the withdrawal, recovery by the governed restoration; the terms record withdrawn and refused again, a contract restoration refused, a new terms version restoring use; the customs key declared and a mistyped one retired on its fingerprint, the signed bulletin verified and the tampered copy admitted FAILED and refused at use; the supplier documents inspected in the sandbox — the clean one admitted with its verdict, the active-content PDF and the macro .docm quarantined, read by WHY and excerpt, rejected by the manager; the port authority's 429s held by the contract's backoff and resolved; the partner adapter blocked at the gateway, suspended, requalified by a second person and admitting through its cell; the B40 library approved and the ch9 / ch16 design acceptance records (claim demonstration). (3) REAL ACCEPTANCE — never claimed (B111, then H3/R2). NOT STAGED (harness-proven): the gate / publication / export route refusals of D4 (RG5; their shared check read here on current state), the claim on authenticity-failed evidence (VA3/VA4), D9b with a collection manager as the uploader (§IN.2) and the upload approval (§IN.4), residency and window refusals (AU), the loopback forms (LB, the pinned partner host), the destination identity change, every fault point F47–F56. The ClamAV engine is NOT admitted (D2) — EXC-P1-001 stays OPEN; the owner decides.
+
+ALL SCENES HELD · 6.2 min
+
+════════ RUN 2 ════════
+THE B40 ACT (the source platform) on eye_demo_b40 (REHEARSAL) — 2026-10-21T07:22:18.056Z — API http://localhost:3411 — target declared rehearsal
+
+B40-T THE ACT TARGET — this act spawned (a) with no EYE_ACT_TARGET and (b) as a rehearsal naming the LIVE API: each REFUSED (exit 2) before anything is contacted
+  ✓ (a) the act spawned with NO EYE_ACT_TARGET: exit 2 — "REFUSED (act target): EYE_ACT_TARGET is not set — declare the environment: EYE_ACT_TARGET=rehearsal for a restored copy, EYE_ACT_TARGET=live for the demonstration. Nothing was contacted."
+  ✓ (b) the act spawned as a REHEARSAL naming the LIVE API http://localhost:3401: exit 2 — "REFUSED (act target): EYE_API http://localhost:3401 is the LIVE demonstration's API (http://localhost:3401); a rehearsal talks to its own rig. Nothing was contacted."
+  ✓ NOTHING WAS CONTACTED: eye_demo_b40 — human sessions 5757 → 5757, login audit rows 5758 → 5758; the LIVE eye_demo (read-only SELECT) — sessions 5666 → 5666, login audit rows 5667 → 5667
+  · D10: this act starts NO synthetic listener — the 429 + Retry-After answers are the replay set's (no network); the loopback forms (a throttling publisher, a pinned partner host) are the harnesses' (phase6-acquisition-policy-b40 LB, phase6-connector-cell-b40), each on a port scripts/act-target.mjs assertSyntheticListener refuses for the live addresses
+
+B40-0 THE CAST AND THE STATE — 0123, the build, the NORDWERK cast; the sources, the DEF-03 PDF, the stale quarantine cases, content authenticity before B40, the scanning engine (D2)
+  ✓ migration applied: 0123_b40_source_platform.sql (§RG registry + rights lifecycle · §VA authenticity · §IN intake inspection · §AP acquisition policy · §CR connector cell)
+  ✓ a.hoffmann holds domain_analyst at the DOMAIN
+  ✓ h.weber holds domain_analyst at the DOMAIN
+  ✓ m.dvorak holds collection_manager at the DOMAIN
+  ✓ f.aydin holds data_steward at the DOMAIN
+  ✓ t.richter holds domain_admin at the DOMAIN
+  ✓ w.zielinska holds customer_sponsor at the TENANT
+  ✓ n.eriksen holds forecast_owner at the DOMAIN
+  ✓ j.weber holds strategy_owner at the DOMAIN
+  ✓ c.brenner holds decision_owner at the DOMAIN
+  ✓ e.lindqvist holds auditor at the TENANT
+  ✓ h.bergmann holds retention_authority at the TENANT
+  ✓ l.haddad holds design_system_authority at the PLATFORM
+  ✓ p.castellano holds conformance_steward at the PLATFORM
+  ✓ h.achterberg holds independent_assurance at the PLATFORM
+  · the corridor's collection managers: m.dvorak — the ONLY one (MAP Q5: the analyst registers, the collection manager evaluates and approves — two people)
+  · R. Haddad (the partner's customs broker, SYNTHETIC): 3 principal(s), role(s) external_collaborator — invited collaborators with no password session; an external collaborator never registers or approves an adapter (the PDP has no rule for the role; the port refuses one even holding a manager binding — phase6-connector-cell-b40)
+  · the API declares its build: head 62693411fe2d… (from env), migration head —, policy bundle bundle-v1 0b6146a9a814…
+  · the tenant holds 25 sources, 32 contract versions, 22 active; B40's five SYNTHETIC sources: djibouti-port-vessel-calls, djibouti-transshipment-customs-bulletins, nordwerk-logistics-partner-consignments, red-sea-shipping-notices, regensburg-supplier-documents — an earlier run
+  ✓ the DEF-03 PDF (carrier-reroute-notice-2024-01-14.pdf, planted in 2026-09) is ADMITTED with active_content_risk = true as 01a0…2b2dbb (SRC:01a084f5-76af-711e-a291-bc110b79f394@1) — the v1–v3 rule (D8: no back-fill), stays as it was
+  · D16: 2 quarantine case(s) OPEN PAST EXPIRY — 01a0…d35e6c schema_drift (expired 2026-09-16T06:57:55Z), 01a0…6b4578 type_mismatch (expired 2026-09-16T06:57:59Z) — listed for the owner, untouched by this act (the sweeper has not expired them)
+  · content authenticity of the tenant's evidence versions: unknown ×18619, verified ×1 — before B40 no signature mechanism was evaluated ("content_authenticity unknown"); none is back-filled
+  · THE SCANNING ENGINE (D2): engine 1 is the content inspector in its sandboxed child process (Node's permission model: no network, the one item readable, caps, env stripped; killed on timeout → unavailable → quarantined). Engine 2 is the clamd ADAPTER; the ClamAV IMAGE IS NOT ADMITTED (the official Alpine image has no linux/arm64 child; the Debian image scans 1 CRITICAL + 53 HIGH per platform, none fixed upstream) — the owner decides (a/b/c); EXC-P1-001 stays OPEN. Every SRC@v4 contract of this act names scan_engines [content-inspector] only. The real-engine evaluation of the UNADMITTED image is evidence/cp6/b40-clamav-evaluation.txt (sha256 a92eea854f82…) — evaluation evidence, never this deployment's engine
+
+B40-1 (F-P1-01) THE SHIPPING-NOTICE FEED — discovered, evaluated, approved, customer-approved, collected, its rights withdrawn ("nothing rests on it yet"); then D4 on red-sea-corridor-stream-late: BOTH rights sources, refused use, recovery through governed versions
+  · the candidate "Red Sea shipping notices (SYNTHETIC)" ae5b…a46583 (promoted) stands — an earlier run
+  · the feed 01a1…2fcb4c v1 (suspended, rights withdrawn) stands — an earlier run
+  · the feed "Red Sea shipping notices (SYNTHETIC)" is registered (01a1…2fcb4c v1, suspended) — stands — an earlier run
+  · W. Zielińska's customer approval 934b…e48109 (approve, claim demonstration) stands — an earlier run
+  · the feed is suspended (rights withdrawn) — an earlier run withdrew its rights
+  · the feed's rights are WITHDRAWN (change a474…1f41c9) — stands — an earlier run
+  ✓ H. Bergmann (retention authority) SEES the deletion action f29d…56dc75 waiting for her: deletion of evidence, state opened — NOT executed by this act (approval, execution and verification are the retention unit's own acts)
+  ✓ the feed's schedule: removed — collection prohibited from the withdrawal
+
+  · D4 on red-sea-corridor-stream-late (01a0…33c61d v1, active, rights confirmed) — its forecast FCT 01a0…6aafd5 rests on the stream's evidence; the unaffected control FCT 01a1…526298 (portwatch:chokepoint4:n_total)
+  · the package "B40 — reroute on the late corridor stream's forecast (SYNTHETIC; a D4 demonstration, never proposed)" 01a1…598aaa v1 (draft) stands — an earlier run
+  · the unaffected option "status-quo" (another source's forecast) stands — an earlier run
+  · THE D4 CYCLE stands — an earlier run: the contract ledger withdraw → restore, the rights-terms series v1 in_force → v2 withdrawn → v3 in_force
+  ✓ FROM CURRENT STATE (no tick): the stream's forecast is decision_option usable, gate usable, publication usable, export usable — the contract rights confirmed and the terms v3 in force
+  ✓ HISTORY INTACT: the rights ledger withdraw → restore (append-only); the contract events suspended, reactivated, rights_changed:withdraw, suspended, rights_changed:restore, reactivated; the terms series v1 in_force → v2 withdrawn → v3 in_force; the stream's evidence: 537 version(s) recorded before the withdrawal, every one still admitted (nothing withdrawn, rewritten or deleted by a rights change); 35 collected since the restoration resumed the schedule
+
+B40-2 (F-P1-02) THE DJIBOUTI CUSTOMS BULLETIN — the publisher key declared by F. Aydın; the signed bulletin VERIFIED, a tampered copy ADMITTED marked FAILED (D6); the failed version refused at a decision-active use
+  · "Djibouti transshipment customs bulletins (SYNTHETIC)" is registered (01a1…b682f7 v1, active) — stands — an earlier run
+  · the publisher key ed25519 · 40c9360f1ed52987 is in force — stands — an earlier run
+  · the mistyped key, retired on its fingerprint, stands — an earlier run
+  · both bulletins are uploaded — stand — an earlier run (01a1…9c6cad, 01a1…069ec3)
+  ✓ the SIGNED bulletin 01a1…9c6cad: ADMITTED, authenticity VERIFIED (ed25519_detached, key djibouti-customs-2026) — custody.authenticity_recorded
+  ✓ the TAMPERED copy 01a1…069ec3: ADMITTED marked FAILED — not quarantined, never verified (D6): "the detached Ed25519 signature did not verify with any of the 1 publisher key(s) in force — these bytes are not what the publisher signed"
+  ✓ E. Lindqvist (auditor) READ the signed evidence page's authenticity: VERIFIED (ed25519_detached, key ed25519 · 40c9360f1ed52987); the attributes recorded at intake from the SRC@v4 declaration — language "en" (source_contract), sensitivity "commercial" (source_contract), geographic_scope ["Djibouti","Horn of Africa"] (source_contract) — metadata only (D9) — POL 01a15d56-f5af… · audit seq 743542
+  · B82's trust layer on the signed version (graph.ev_evidence_state, read-only): authenticity VERIFIED — "the detached Ed25519 signature verified with the publisher key ed25519 · 40c9360f1ed52987 (djibouti-customs-2026) over these exact bytes"
+  ✓ E. Lindqvist (auditor) READ the tampered evidence page's authenticity: FAILED (ed25519_detached, no key verified it); the attributes recorded at intake from the SRC@v4 declaration — language "en" (source_contract), sensitivity "commercial" (source_contract), geographic_scope ["Djibouti","Horn of Africa"] (source_contract) — metadata only (D9) — POL 01a15d56-f5c0… · audit seq 743543
+  · B82's trust layer on the tampered version (graph.ev_evidence_state, read-only): authenticity FAILED — "the detached Ed25519 signature did not verify with any of the 1 publisher key(s) in force — these bytes are not what the publisher signed"
+  · the package "B40 — Regensburg consignments on the Djibouti bulletin (SYNTHETIC; a D6 demonstration, never proposed)" 01a1…3e04b2 v1 (draft) stands — an earlier run
+  ✓ C. Brenner derives an option citing the TAMPERED bulletin 01a1…069ec3 REFUSED — 409 EYE-STA-002 — object use rejected (authenticity_failed): EVD 01a15d51-b3e3-7e69-98e8-17a3bc069ec3 v1 rests on EVD 01a15d51-b3e3-7e69-98e8-17a3bc069ec3 v1, whose publisher signature FAILED verification at its admission (ed25519_detached, recorded 2026-10-21T07:16:38Z, authenticity record c499ee23-a414-4727-9f0f-3230b82a4305) — admitted marked and readable, never established as the publisher's content; it is not used for decision_op
+  ✓ NO BUSINESS EFFECT: 1 option(s) before and after
+  · the option on the verified bulletin stands — an earlier run
+  ✓ FROM CURRENT STATE: the tampered version — decision_option REFUSED (authenticity_failed), gate REFUSED (authenticity_failed), publication REFUSED (authenticity_failed), export REFUSED (authenticity_failed); the signed version — decision_option usable, gate usable, publication usable, export usable; the tampered one stays ADMITTED and readable
+  · the claim built on each (the WEAK / INDETERMINATE "authenticity failed" display of B82's trust layer) is HARNESS-PROVEN (phase6-authenticity-b40 VA3/VA4): no approved structured-extraction method for the bulletin's JSON exists on the demonstration, and this act plants no claim
+  · the key register for the customs source: ed25519 · 89825673a0651973 retired, ed25519 · 40c9360f1ed52987 in_force; the declared scheme ed25519_detached
+
+B40-3 (F-P1-03) THE SUPPLIER DOCUMENTS — the content inspector (engine 1, sandboxed): the clean note ADMITTED with its verdict; the active-content PDF and the macro .docm QUARANTINED; WHY, the excerpt (D9), the separation, the rejection
+  · "Regensburg bearings — supplier documents (SYNTHETIC)" is registered (01a1…7e19a9 v1, active) — stands — an earlier run
+  · the three supplier documents are uploaded — stand — an earlier run
+  ✓ the CLEAN delivery note 01a1…514b55: ADMITTED; its verdict recorded as evidence — engine content-inspector 1.0.0, rule set fe1064fc0928…, outcome clean, 0 finding(s), decision pass; confinement --permission --allow-fs-read=<inspector> --allow-fs-read=<item> --disallow-code-generation-from-strings
+  ✓ the supplier PDF: QUARANTINED active_content — "active content (pdf.open_action @54, pdf.additional_actions @255, pdf.javascript @730, pdf.js @742, pdf.javascript @812, pdf.js @824); hidden instructions (pdf.hidden_text_instruction @545, pdf.metada" (cited by code and offset, never quoted)
+  ✓ the inspection checklist .docm: QUARANTINED macro — "macros (ooxml.vba_project @1510, ooxml.macro_enabled @0) — the SRC@v4 content policy quarantines macros (D7); nothing reaches extraction"
+  ✓ NOTHING REACHED EVIDENCE: no evidence-vault blob for the quarantined items (0); nothing reaches extraction
+  · the intake review queue (A. Hoffmann): 2 case(s); ours: —; past expiry: 2 (D16)
+  ✓ A. Hoffmann READ the case's WHY 01a1…e6d082: engine content-inspector 1.0.0 (rule set fe1064fc0928…), findings pdf.open_action @54, pdf.additional_actions @255, pdf.javascript @730, pdf.js @742, pdf.javascript @812, pdf.js @824, pdf.hidden_text_instruction @545, pdf.metadata_zero_width @936; the review reason safety; custody quarantined, inspected, retrieved, quarantine_closed — no content in the answer — POL 01a15d56-f8fd… · audit seq 743548
+  ✓ A. Hoffmann (domain analyst — she already retrieves evidence, D9) READ THE EXCERPT around pdf.hidden_text_instruction: 574 bytes served of 1330 (289–863), the digest re-verified, custody.retrieved written; it carries the hidden white-text instruction — POL 01a15d56-f908… · audit seq 743549
+  ✓ F. Aydın (data steward — no evidence retrieval) asks for the excerpt REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · the supplier PDF's case 01a1…e6d082 is rejected (by M. Dvořák) — stands — an earlier run
+  · the .docm's case 01a1…e0960d is rejected (by M. Dvořák) — stands — an earlier run
+  · D9b — REVIEWER ≠ UPLOADER for manual uploads: H. Weber was refused by the PDP (she holds no review role); the port's own refusal of a COLLECTION MANAGER who uploaded ("the operator who uploaded this item never reviews its quarantine case") is HARNESS-PROVEN (phase6-intake-b40 §IN.2) — the corridor has ONE collection manager, so staging it here would leave a case nobody may review; the upload approval of SP-22 likewise (§IN.4)
+  ✓ the DEF-03 PDF 01a0…2b2dbb (carrier-advisories v1 — a v1–v3 contract) STAYS AS IT WAS: admitted opaque with its flag, "no inspection verdict recorded: not recorded before B40, or the contract is v1–v3 (its recorded rule)" (D8, no back-fill)
+  · THE ENGINE ACTUALLY RUN HERE is engine 1, the content inspector, in its sandboxed child process. The ClamAV engine is NOT admitted (D2): the clamd adapter is built and its real-engine evaluation ran against the UNADMITTED Debian image (evidence/cp6/b40-clamav-evaluation.txt — evaluation evidence, never this deployment's engine); an unavailable or incomplete scan is never clean (fail closed → quarantine: phase6-intake-b40 §IN.3, F48/F49); EXC-P1-001 stays OPEN
+
+B40-4 (F-P1-04) THE THROTTLING PORT AUTHORITY — SRC@v4 over the replay set with planted 429 + Retry-After (D10): the authorization, the backoff per contract, a collection inside the hold refused before egress, the third answer admitted and the intervals RESOLVED
+  · "Port of Djibouti — vessel calls API (SYNTHETIC)" is registered (01a1…2856a0 v1, active) — stands — an earlier run
+  · the throttled collection stands — an earlier run: 2 interval(s), each RESOLVED
+  ·   interval 01a1…010f9b: attempt 1, publisher_429 Retry-After 60 (honoured), the contract's 60 s → applied 60 s, 2026-10-21T07:17:00Z → 2026-10-21T07:18:00Z, a retry planned; RESOLVED by run 01a1…ac843c
+  ·   interval 01a1…562cd6: attempt 2, publisher_429 Retry-After 120 (honoured), the contract's 120 s → applied 120 s, 2026-10-21T07:18:47Z → 2026-10-21T07:20:47Z, a retry planned; RESOLVED by run 01a1…ac843c
+  ✓ THE COVERAGE VIEW (M. Dvořák): 2 RATE-LIMITED interval(s) — 2026-10-21T07:18:47Z–2026-10-21T07:20:47Z resolved; 2026-10-21T07:17:00Z–2026-10-21T07:18:00Z resolved — NOT a silent gap; the third answer admitted (run 01a1…ac843c, 1 item(s)); the last authorization: residency match (EU), window open, robots allowed (Allow: /v1/), rate 30/60 s — POL 01a15d56-fb0a… · audit seq 743552
+  ✓ N. Eriksen (forecast owner — a coverage reader) reads the same intervals: 2 — metadata only
+  · NOT MADE, STATED: a residency mismatch (a contract declaring US in this EU domain) is refused BEFORE egress (residency_refused), and a request outside the declared window is never made (window_closed) — harness-proven (phase6-acquisition-policy-b40 AU); this act registers no mis-declared contract on the demonstration
+
+B40-5 (F-P1-12) THE PARTNER'S ADAPTER — registered, approved by a second person, run in its cell; the unregistered host BLOCKED, the contract SUSPENDED and REQUALIFIED with 1.0.1
+  · the adapter package 1.0.0 9d27…24728b (approved) stands — an earlier run
+  · the manifest names R. Haddad's firm as the author (the partner's customer-written code); an external collaborator may neither register nor approve it — R. Haddad holds no session here, the refusal is harness-proven (phase6-connector-cell-b40: "an external collaborator even holding a manager binding")
+  · "NORDWERK logistics partner — consignments (SYNTHETIC, customer-written adapter)" is registered (01a1…dfe649 v1, active) — stands — an earlier run
+  ✓ 1.0.0 RAN IN ITS CELL and the gateway BLOCKED the unregistered host: run 01a1…53464a FAILED CLOSED — "connector cell refused (unregistered_destination): the contract is suspended, requalification 01ec4e9a-b146-4028-9d1d-69cb97dc8700 required (cursor and custody unchanged); host track.unregistered-carrier.synthetic.example is not a destination the contract regi"; nothing admitted (0); the receipts allowed consignments.partner-logistics.synthetic.example 200, allowed consignments.partner-logistics.synthetic.example 200, blocked:unregistered_destination track.unregistered-carrier.synthetic.example
+  · the contract is active on 1.0.1 and has admitted consignments — stands — an earlier run
+  ✓ 1.0.1 RAN IN ITS CELL: run 01a1…4b6c3c finished — 3 consignment(s) ADMITTED through the unchanged lifecycle; every request on a receipt: allowed consignments.partner-logistics.synthetic.example 200, allowed consignments.partner-logistics.synthetic.example 200 — the off-registry link never requested
+  · the connectors register (A. Hoffmann): nordwerk-logistics-partner-consignments active, the package in force 1.0.1 (requalification), open requalification none
+  ✓ the egress receipts (A. Hoffmann — digests, sizes, destinations, decisions; never bytes): {"allowed":4,"blocked:unregistered_destination":1}
+  · the DESTINATION IDENTITY CHANGE (a different pinned key on the registered host → blocked before the request, quarantined destination_identity_changed) and the credential injected by the gateway are HARNESS-PROVEN (phase6-connector-cell-b40, a loopback TLS host on a port the act-target module refuses for the live addresses) — not staged here. D3: the cell is confined by process and capability; network-level denial is B103 / B109 — stated, never claimed
+
+B40-6 THE RECORDS — B40's components owned and approved by the DSA; a B40 design baseline; the design acceptance DEMONSTRATION records ch9 (F-P1-01) and ch16 (F-P1-03), the exercises linked
+  · B40's library is in the inventory (26 components): stands — an earlier run
+  ✓ L. Haddad (Design System Authority, human gate) APPROVED 0 B40 component(s) (26 stand — an earlier run): 26 components of source-registry, authenticity, intake, acquisition-policy, connector-cell, each with ONE accountable owner — S. Iversen
+  · the B40 design baseline 01a1…ae51e2 v1 stands — an earlier run (attested)
+  ✓ the design acceptance DEMONSTRATION records ch9 (F-P1-01) and ch16 (F-P1-03), each attested by L. Haddad (design), H. Achterberg (assurance) and W. Zielińska (customer): ch9 stands, ch16 stands — 2 records, claim demonstration; 8 journey-harness evidence item(s) linked (the §AC harness phase6-acceptance-b40 and the walk among them); the signed scope-specific records are B111 → H3/R2
+
+B40-7 THE STATE, the env lines for the walk, THE LIMITS
+  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B40_STATE_DEF03_EVD=01a084f5-8c73-7087-b0fb-2796c42b2dbb
+  EYE_B40_FEED_SOURCE=01a15d51-5239-741d-beb2-b69a232fcb4c
+  EYE_B40_FEED_NAME=Red Sea shipping notices (SYNTHETIC)
+  EYE_B40_FEED_CANDIDATE=ae5bde8f-ab1e-47aa-b9be-9263cfa46583
+  EYE_B40_FEED_RETENTION_ACTION=f29d0a8d-57f5-4996-9d21-3a22e956dc75
+  EYE_B40_FEED_RIGHTS_CHANGE=a474c96f-6d07-4ca4-a929-2533c61f41c9
+  EYE_B40_STREAM_SOURCE=01a0deff-5fb9-7e77-8799-c8beef33c61d
+  EYE_B40_STREAM_KEY=red-sea-corridor-stream-late
+  EYE_B40_STREAM_FORECAST=01a0f00b-8d89-7f7a-a271-60f56d6aafd5
+  EYE_B40_STREAM_TERMS=c23a2a7e-2d97-40c7-af4b-ad134c85fa2d
+  EYE_B40_D4_PACKAGE=01a15d51-a5a3-7ffc-9ce6-132ee8598aaa
+  EYE_B40_CUSTOMS_PACKAGE=01a15d51-b572-7eae-bc47-140c7c3e04b2
+  EYE_B40_CUSTOMS_SOURCE=01a15d51-b1df-7417-a65f-a1dfdbb682f7
+  EYE_B40_CUSTOMS_NAME=Djibouti transshipment customs bulletins (SYNTHETIC)
+  EYE_B40_CUSTOMS_KEY_REF=djibouti-customs-2026
+  EYE_B40_CUSTOMS_PBK=46e16557-034e-40e8-9c37-9ebc2cb7a507
+  EYE_B40_CUSTOMS_KEY=46e16557
+  EYE_B40_CUSTOMS_VERIFIED_EVD=01a15d51-b309-79b0-9269-0fb9e39c6cad
+  EYE_B40_CUSTOMS_FAILED_EVD=01a15d51-b3e3-7e69-98e8-17a3bc069ec3
+  EYE_B40_SUPPLIER_CLEAN_EVD=01a15d51-b85b-761c-bf6d-45eced514b55
+  EYE_B40_SUPPLIER_PDF_CASE=01a15d51-b8bd-707d-9172-e43d35e6d082
+  EYE_B40_SUPPLIER_SOURCE=01a15d51-b77a-70f4-acbd-9111a47e19a9
+  EYE_B40_SUPPLIER_NAME=Regensburg bearings — supplier documents (SYNTHETIC)
+  EYE_B40_SUPPLIER_DOCM_CASE=01a15d51-b90d-7347-9e18-77755ae0960d
+  EYE_B40_PORT_RATE_LIMIT=01a15d53-af7e-7ad9-9f76-b5b7d3562cd6
+  EYE_B40_PORT_SOURCE=01a15d51-bc90-7add-92c2-35947f2856a0
+  EYE_B40_PORT_NAME=Port of Djibouti — vessel calls API (SYNTHETIC)
+  EYE_B40_PARTNER_BLOCKED_RUN=01a15d56-8f00-7fde-a7b7-b01eb053464a
+  EYE_B40_PARTNER_GOOD_RUN=01a15d56-90d7-7478-8949-4a432c4b6c3c
+  EYE_B40_PARTNER_SOURCE=01a15d56-4000-7027-b9c2-3d5b4cdfe649
+  EYE_B40_PARTNER_NAME=NORDWERK logistics partner — consignments (SYNTHETIC, customer-written adapter)
+  EYE_B40_PARTNER_REQUALIFICATION=01ec4e9a-b146-4028-9d1d-69cb97dc8700
+  EYE_B40_ADAPTER_100=9d277143-b75d-40f4-a3b3-c8b67724728b
+  EYE_B40_ADAPTER_101=627376d5-7a7c-4de9-bc45-dd6b4f95cd15
+  EYE_B40_ACCEPTANCE_CH9=01a15d56-e395-7912-a4c6-674d79889902
+  EYE_B40_ACCEPTANCE_CH16=01a15d56-e3c1-774f-9ffd-333aeff2db00
+  EYE_B40_BASELINE=01a15d56-e36a-7541-8f2b-3cc2b2ae51e2
+  EYE_B40_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B40_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B40_ANALYST=a.hoffmann
+  EYE_B40_UPLOADER=h.weber
+  EYE_B40_MANAGER=m.dvorak
+  EYE_B40_STEWARD=f.aydin
+  EYE_B40_DOMAIN_ADMIN=t.richter
+  EYE_B40_SPONSOR=w.zielinska
+  EYE_B40_FORECAST_OWNER=n.eriksen
+  EYE_B40_DECISION_OWNER=c.brenner
+  EYE_B40_AUDITOR=e.lindqvist
+  EYE_B40_RETENTION_AUTHORITY=h.bergmann
+  EYE_B40_FEED_ANALYST=a.hoffmann
+  EYE_B40_FEED_MANAGER=m.dvorak
+  EYE_B40_STREAM_OWNER=n.eriksen
+  EYE_B40_STREAM_STATE=restored
+  EYE_B40_CUSTOMS_STEWARD=f.aydin
+  EYE_B40_CUSTOMS_AUDITOR=e.lindqvist
+  EYE_B40_CUSTOMS_SIGNED_EVD=01a15d51-b309-79b0-9269-0fb9e39c6cad
+  EYE_B40_CUSTOMS_TAMPERED_EVD=01a15d51-b3e3-7e69-98e8-17a3bc069ec3
+  EYE_B40_SUPPLIER_UPLOADER=h.weber
+  EYE_B40_SUPPLIER_REVIEWER=a.hoffmann
+  EYE_B40_PORT_MANAGER=m.dvorak
+  EYE_B40_ADAPTER_ADMIN=t.richter
+  EYE_B40_ADAPTER_SOURCE=01a15d56-4000-7027-b9c2-3d5b4cdfe649
+  EYE_B40_ADAPTER_PACKAGE=9d277143-b75d-40f4-a3b3-c8b67724728b
+  EYE_B40_ADAPTER_REQUALIFIED_PACKAGE=627376d5-7a7c-4de9-bc45-dd6b4f95cd15
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — 0123 (§RG, §VA, §IN, §AP, §CR) and its harnesses phase6-{prelude,registry,authenticity,intake,acquisition-policy,connector-cell,clamav-engine,b40-res-evidenced}-b40, the unit cases, the web unit models, the walk. (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: the feed discovered, drafted, promoted, evaluated and approved by a second person (the unevaluated approval and the registrar's own acts refused), the customer approval (claim demonstration), collected, and its rights withdrawn with a deletion obligation waiting for the retention authority; D4 on the late corridor stream — the contract rights withdrawn, the products and owners listed, markers set, a decision-active use refused with no business effect, the unaffected forecast usable, an in-force terms record not lifting the withdrawal, recovery by the governed restoration; the terms record withdrawn and refused again, a contract restoration refused, a new terms version restoring use; the customs key declared and a mistyped one retired on its fingerprint, the signed bulletin verified and the tampered copy admitted FAILED and refused at use; the supplier documents inspected in the sandbox — the clean one admitted with its verdict, the active-content PDF and the macro .docm quarantined, read by WHY and excerpt, rejected by the manager; the port authority's 429s held by the contract's backoff and resolved; the partner adapter blocked at the gateway, suspended, requalified by a second person and admitting through its cell; the B40 library approved and the ch9 / ch16 design acceptance records (claim demonstration). (3) REAL ACCEPTANCE — never claimed (B111, then H3/R2). NOT STAGED (harness-proven): the gate / publication / export route refusals of D4 (RG5; their shared check read here on current state), the claim on authenticity-failed evidence (VA3/VA4), D9b with a collection manager as the uploader (§IN.2) and the upload approval (§IN.4), residency and window refusals (AU), the loopback forms (LB, the pinned partner host), the destination identity change, every fault point F47–F56. The ClamAV engine is NOT admitted (D2) — EXC-P1-001 stays OPEN; the owner decides.
+
+ALL SCENES HELD · 0.1 min
+
+════════ THE WALK ════════
+  ✓   1 e2e/phase6-b40.demo.spec.ts:104:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-1 the analyst opens discovery: the feed's candidate PROMOTED, registered as its source — no longer offered for registration (1.7s)
+  ✓   2 e2e/phase6-b40.demo.spec.ts:125:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-1 the feed's source page: its registry record (SRC@v4 under its evaluation gate, discovered as the candidate), the rights lifecycle, the coverage panel (1.8s)
+  ✓   3 e2e/phase6-b40.demo.spec.ts:147:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-1 the corridor stream's REVOCATION IMPACT for its forecast owner: the resting products with their owners, the withdrawal standing (or none), the server's preview (2.2s)
+  ✓   4 e2e/phase6-b40.demo.spec.ts:182:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-2 the data steward's publisher-key register: the customs source's key in force (key metadata only) (1.3s)
+  ✓   5 e2e/phase6-b40.demo.spec.ts:203:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-2 the auditor opens BOTH bulletins: the signed one VERIFIED; the tampered copy AUTHENTICITY FAILED — admitted, readable, shown weak, refused at decision-active use (2.1s)
+  ✓   6 e2e/phase6-b40.demo.spec.ts:233:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-3 the reviewer opens the intake review queue: the scan rule (only clean admits), the reviewer separation said (926ms)
+  ✓   7 e2e/phase6-b40.demo.spec.ts:249:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-3 the supplier PDF's case — WHY: active content and a hidden instruction cited by code and byte offset (never the text), the engine's identity, custody; the .docm's macro case (2.2s)
+  ✓   8 e2e/phase6-b40.demo.spec.ts:291:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-4 the port authority's acquisition policy: the publisher's 429 as a STATED coverage gap with the contract's backoff; the authorizations (1.2s)
+  ✓   9 e2e/phase6-b40.demo.spec.ts:313:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-5 the domain admin's connectors: the cell's boundary stated, the package and the requalified package approved, the requalification (1.2s)
+  ✓  10 e2e/phase6-b40.demo.spec.ts:338:7 › CP-6 B40 — the act's walk: discovery, rights impact, authenticity, intake, acquisition policy, the connector cell › B40-5 the egress receipts of the adapter source: the unregistered host's request BLOCKED on a receipt (digests and sizes, never content) (1.4s)
+  10 passed (20.8s)
+
+════════ THE CANDIDATE (reports at the head, rehearsal-only directory) ════════
+THE B40 CANDIDATE ACT (the source platform) on eye_demo_b40 (REHEARSAL) — 2026-10-21T07:23:02.173Z — API http://localhost:3411 — target declared rehearsal
+
+C-0 THE STATE — 0123 applied, the build identity, the cast; the registers re-imported and the component manifest registered
+  ✓ migration applied: 0121_b82_trust_evidence_visualization.sql
+  ✓ migration applied: 0122_b80_b82_integration_corrections.sql
+  ✓ migration applied: 0123_b40_source_platform.sql
+  ✓ the API declares its build: head 62693411fe2d… (from env), migration head —, policy bundle bundle-v1
+  ✓ P. Castellano (conformance steward) RE-IMPORTED the registers READ-ONLY in 1.3 s: audit/requirements/v00-v01.csv +0, audit/requirements/v02.csv +0, audit/requirements/v03.csv +0, audit/requirements/v04.csv +0, audit/requirements/v05.csv +0, audit/requirements/v06.csv +0, audit/requirements/v07.csv +0, audit/requirements/v08.csv +0, audit/requirements/v10.csv +0, audit/delivery/feature-rowmap.csv +0, objects.schema_registry +1
+  ✓ P. Castellano REGISTERED the committed component manifest v6: 33 deployable units, 298 components
+
+C-1 THE RELEASE-CANDIDATE DRIFT (§CM) — the earlier candidates read drifted; a new candidate at the deployed head, checked and attested (not a release)
+  · the monitor: {"open":4,"opened":0,"run_id":"6720307a-c289-4354-8b43-8482a7ca87fc","recorded":true,"resolved":1,"holds_lifted":0,"holds_opened":0,"observation_digest":"91f28cb35b95601d04847c255ca0605f28795567afab45aadcd8f62793a47833","findings":[{"kind":"head_drift","fingerprint":"head_drift:98364f78-1477-40f0-9d
+  · candidate ac8e…09aa00 v1 "NORDWERK corridor release candidate 2026-10 (SYNTHETIC — a l…": withdrawn, head 42a10891c042…, migration head 0115_b107_governance_registries_acceptance.sql — open holds: evidence_stale: change impact dfa10f34dba4: a controlling artifact changed under RC:ac8ef1d9-b4e6-402f-978c-06dbfb09aa00; its dependent 
+  · candidate c974…15c44f v1 "NORDWERK corridor release candidate 2026-10 r2 — at the B107…": withdrawn, head 855d69633c9f…, migration head 0117_b107g_expansion_at_activation.sql — open holds: evidence_stale: change impact dfa10f34dba4: a controlling artifact changed under RC:c9741340-0b5d-40f0-8640-eac92e15c44f; its dependent 
+  · candidate 02a1…518faa v1 "NORDWERK corridor release candidate 2026-10 r3 — at the B80 …": withdrawn, head 7833eda358c8…, migration head 0118_b80_shell_foundations.sql — open holds: evidence_stale: change impact dfa10f34dba4: a controlling artifact changed under RC:02a1c8e6-2dec-4246-9237-dac359518faa; its dependent 
+  · candidate b651…2939e3 v1 "NORDWERK corridor release candidate 2026-10 r4 — at the B81 …": withdrawn, head cdff286b6628…, migration head 0119_b81_patterns_layout_content.sql
+  · candidate c61c…d43227 v1 "NORDWERK corridor release candidate 2026-10 r5 — at the B50 …": withdrawn, head f9b022205962…, migration head 0120_b50_knowledge_core.sql
+  · candidate be0d…cded44 v1 "NORDWERK corridor release candidate 2026-10 r6 — at the B82 …": withdrawn, head 235a80a2b65d…, migration head 0121_b82_trust_evidence_visualization.sql
+  · candidate 9836…927c3d v1 "NORDWERK corridor release candidate 2026-10 r7 — at the B80–…": attested, head 0b984194f040…, migration head 0122_b80_b82_integration_corrections.sql — open holds: conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 r7 — at the B80–B82 integration pass head (SYNTHETIC — a ; conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 r7 — at the B80–B82 integration pass head (SYNTHETIC — a ; conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 r7 — at the B80–B82 integration pass head (SYNTHETIC — a ; conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 r7 — at the B80–B82 integration pass head (SYNTHETIC — a 
+  ✓ P. Castellano INGESTED b40-contract.vitest.json (203/203 passed at head 62693411fe2d…)
+  ✓ P. Castellano INGESTED b40-trust.vitest.json (31/31 passed at head 62693411fe2d…)
+  ✓ P. Castellano INGESTED b40-human-authority.vitest.json (118/118 passed at head 62693411fe2d…)
+  ✓ P. Castellano ASSEMBLED 4b36…5d4bd7 v1 at head 62693411fe2d…, migration head 0123_b40_source_platform.sql
+  ✓ the CHECK: CONFORMANT
+  ✓ P. Castellano (the assembler) attests the candidate REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ H. Achterberg (independent assurance) ATTESTED the new candidate v1: attested — a LOCAL CONFORMANCE RECORD, nothing released
+
+C-2 THE SUPERSEDED CANDIDATES — withdrawn by the conformance steward with the reason; the monitor run again
+  ✓ P. Castellano (conformance steward) WITHDREW 9836…927c3d v1 "NORDWERK corridor release candidate 2026-10 r7 — at the …" (was attested): 4 hold(s) lifted — superseded by the candidate 4b36…5d4bd7 at the deployed head 62693411fe2d (0123, B40); this one is bound to head 0b984194f040 (SYNTHETIC)
+  · the monitor again: open 0, resolved 4
+  ✓ open conformance findings: none — the live candidate is bound to the deployed head, manifest, migration and policy
+  · LIMITS — CONSTRUCTION: §CM (0115) and its harness; DEMONSTRATED OPERATION: this act (SYNTHETIC vendor personas; every record claim = demonstration); the candidate is a local conformance record (B65 substituted) — NEVER a release; production admission is R1.
+
+ALL SCENES HELD

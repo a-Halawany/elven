@@ -9,6 +9,8 @@
  *   eligibility          CMP-046 / HX-09: may THIS person do THIS act now — the role, the approver policy, separation of duties, recusal,
  *                        delegation, the gate's state — with the reason in words when not (the act is then DISABLED with that reason).
  *   digestFreeze         CMP-047: the review binds the digest it SHOWED; a different current digest voids it (a new version, never in place).
+ *   payloadReviewState   B40 res: ONLY for a command whose server binds no version or digest, and only where the page passes it — a CLIENT-SIDE
+ *                        review of the exact payload (canonicalPayload), voided by any change; said as such, never as a version binding.
  *   typedPhrase / typedState   PAT-16: the phrase to type (the short digest, or the object's name) and whether what was typed matches it.
  *   commandReviewGate    CMP-044 / PAT-07 / PAT-17: the deliberate control is enabled only when every condition holds — eligible, the
  *                        exact digest frozen, the consequence READ, the rationale stated, the typed phrase matched; the reasons otherwise.
@@ -154,6 +156,39 @@ export function digestFreeze(shown: string | null | undefined, current: string |
   return { frozen: true, reason: null };
 }
 
+/* B40 res (R1) */
+/* ───────────────────────── the payload review (a command whose server contract binds NO version) ───────────────────────── */
+
+/**
+ * Some governed commands bind no object version and no digest on the server: their route takes a payload, and the port re-checks the
+ * authority, the object and the basis — not a version the person read (the impact trigger's record, the challenge's close). For those
+ * ONLY, and only where the page says so explicitly, the review binds the EXACT PAYLOAD the person reviewed: a CLIENT-SIDE PAYLOAD
+ * REVIEW. It is not a server-enforced version binding and is never presented as one; a command whose server binds a version or digest
+ * keeps digestFreeze. A dummy digest is never a substitute.
+ */
+export const PAYLOAD_REVIEW_NOTE = 'client-side payload review — this command carries no version or digest for the server to bind; the review holds the exact payload shown, and any change to it voids the review';
+
+/** The payload in one canonical text (object keys sorted at every depth; arrays in order) — what the review holds and compares. */
+export function canonicalPayload(v: unknown): string {
+  const norm = (x: unknown): unknown => {
+    if (Array.isArray(x)) return x.map(norm);
+    if (x !== null && typeof x === 'object') {
+      const o = x as Record<string, unknown>;
+      return Object.fromEntries(Object.keys(o).sort().filter((k) => o[k] !== undefined).map((k) => [k, norm(o[k])]));
+    }
+    return x;
+  };
+  return JSON.stringify(norm(v)) ?? 'null';
+}
+
+/** Whether the payload the person reviewed is still the payload the command would send now (exactly; nothing is normalised beyond key order). */
+export function payloadReviewState(reviewed: string | null | undefined, current: string): { frozen: boolean; reason: string | null } {
+  if (reviewed === null || reviewed === undefined || reviewed === '') return { frozen: false, reason: 'review the exact payload first — this command binds no server version, so the review holds the payload you see' };
+  if (reviewed !== current) return { frozen: false, reason: 'the payload changed after you reviewed it — review it again (a client-side payload review; the server binds no version here)' };
+  return { frozen: true, reason: null };
+}
+/* end B40 res */
+
 /* ───────────────────────── PAT-16: the typed confirmation ───────────────────────── */
 
 /** The phrase to type: the first 8 characters of the bound digest (lower-case hex); without a digest, the object's own name. */
@@ -179,13 +214,22 @@ export interface ReviewState {
   /** the rationale, when the act requires one (minimum characters) */ rationale?: { value: string; min: number } | null;
   /** PAT-16: the typed confirmation, when the act is irreversible */ typed?: { phrase: string; value: string } | null;
   /** how the act was reached: only a deliberate act can approve, commit or sign (UX-ADR-008) */ source?: ApprovalSource;
+  /* B40 res (R1) */
+  /** ONLY for a command whose server contract binds no version or digest: the client-side payload review REPLACES the digest freeze for
+   *  this act (the reviewed payload and the payload the command would send now, canonical). Absent → the digest freeze, unchanged. */
+  payloadReview?: { reviewed: string | null; current: string } | null;
+  /* end B40 res */
 }
 /** Is the deliberate control enabled? Every unmet condition is a reason, in the order the person meets them. */
 export function commandReviewGate(input: Pick<CommandReviewInput, 'action'>, s: ReviewState): { enabled: boolean; reasons: string[] } {
   const reasons: string[] = [];
   if (!s.eligibility.can) reasons.push(s.eligibility.reason ?? 'you are not eligible for this act');
   if (s.source !== undefined && s.source !== 'deliberate') reasons.push(`a ${s.source} never ${verbOf(input.action)} — open the review and act deliberately`);
-  const d = digestFreeze(s.shownDigest, s.currentDigest);
+  /* B40 res (R1): the explicit payload-review mode, used only where a page passes it; otherwise the digest freeze as before */
+  const d = s.payloadReview !== undefined && s.payloadReview !== null
+    ? payloadReviewState(s.payloadReview.reviewed, s.payloadReview.current)
+    : digestFreeze(s.shownDigest, s.currentDigest);
+  /* end B40 res */
   if (!d.frozen) reasons.push(d.reason!);
   if (!s.consequenceRead) reasons.push('read the consequence preview first — the act is enabled only after it');
   if (s.rationale !== undefined && s.rationale !== null && s.rationale.value.trim().length < s.rationale.min) reasons.push(`state your rationale (${s.rationale.min}+ characters, recorded with your name)`);
@@ -352,6 +396,9 @@ export const COMMAND_EFFECTS: Readonly<Record<string, Omit<ConsequenceView, 'sou
   'decision.board.defer': { effect: 'defers this board version to its next review, with your conditions — nothing is deleted', affected: ['this version', 'its gate.review task'], users: ['the owner of the next review'], reversibility: 'resumed by a person with standing at this gate', residualRisk: 'the decision waits until the next review', audit: 'the gate act, version.deferred, the review task and its timer' },
   'tenancy.tenant.create': { effect: 'creates an active tenant with lifecycle evidence and audit records', affected: ['a new tenant'], users: ['the platform administrators'], reversibility: 'suspended or retired later — never deleted', residualRisk: 'none until domains and principals are added', audit: 'the tenant lifecycle evidence and the audit chain' },
   'observation.source.register': { effect: 'registers the source contract as a DRAFT — it collects nothing until another operator approves it', affected: ['a new source contract (draft)'], users: ['a collection manager who is not you (the approver)'], reversibility: 'the draft is withdrawn or superseded by a new version', residualRisk: 'none until approved', audit: 'the contract version, its review digest and the audit chain' },
+  /* B40 integration (§IN, SP-22): the held upload's decision — a second person approves (release) or declines (reject) it; the page states each */
+  'observation.upload.approve': { effect: 'records your decision on this held upload (approve, or decline) — an approval then releases its case into evidence through the quarantine review; a decline rejects its case and KEEPS the bytes in the quarantine volume, the case and its verdicts', affected: ['the upload approval', 'its quarantine case', 'on approval: a new evidence object'], users: ['the uploader', 'the collection managers'], reversibility: 'the decision stays recorded; admitted evidence is corrected or withdrawn later, never erased', residualRisk: 'every engine answered clean; the content is still the uploader\'s', audit: 'upload.approved or upload.declined, case.admitted or case.rejected, the custody chain and the audit chain' },
+  /* end B40 integration */
 };
 export function consequenceStated(action: string): ConsequenceView | null {
   const c = COMMAND_EFFECTS[action];

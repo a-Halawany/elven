@@ -1,0 +1,105 @@
+CP-6 B40 §IN — ClamAV REAL-ENGINE EVALUATION EVIDENCE (DESIGN D2 / "D2 — the admission result")
+Recorded 2026-10-21 by the §IN builder on branch b40/in (worktree .claude/worktrees/b40-in), fresh database eye_verify_a1_b40_in_1, Redis :6396.
+
+WHAT THIS IS — and is not
+  EVALUATION EVIDENCE OF AN UNADMITTED IMAGE. The engine is the local evaluation engine: clamav/clamav:1.5.4_base-debian, index
+  sha256:dfe9a0c9ea8d7f14034f742010c0f91e0d3f7a719a526c426c60d2e1f5c490eb, its linux/arm64 child pulled by digest, run on loopback
+  127.0.0.1:3310 with the named volume eye-clamav-db. The image is NOT admitted under C15 (1 CRITICAL + 53 HIGH per platform, no fix;
+  the official Alpine image has no linux/arm64 child) — the owner decides (a) dispositions, (b) a derived image, (c) wait. Nothing here
+  adds the image to docker-compose.yml, a C15 manifest or pin. EXC-P1-001 stays OPEN (the owner closes it).
+  CONSTRUCTION + a local real-engine integration run; not demonstrated operation (no act), not real acceptance.
+
+HOW IT WAS RUN
+  docker run -d --name eye-clamav-eval -p 127.0.0.1:3310:3310 -v eye-clamav-db:/var/lib/clamav -e CLAMAV_NO_FRESHCLAMD=true \
+    clamav/clamav@sha256:a852e9d4ba78eac5d444bce31b1b3427e254fd77fe008d856bfd72203f4236ad      (clamd started in 15 s)
+  EYE_CLAMD_ADDR=127.0.0.1:3310 EYE_CLAMD_CONTAINER=eye-clamav-eval EYE_CLAMAV_IMAGE_DIGEST=sha256:a852e9d4…36ad (the arm64 child)
+  EYE_CLAMAV_DB_SOURCE / EYE_CLAMAV_DB_UPDATE_POLICY / EYE_CLAMAV_DB_MANIFEST set explicitly (below);
+  EYE_HEAVY_SLOTS=1 scripts/dev/heavy-slot.sh b40-in -- vitest run --config vitest.int.config.ts test/int/phase6-clamav-engine-b40.test.ts
+    → Test Files 1 passed (1) · Tests 5 passed (5)
+  The container was stopped by the harness (the unavailable case) and then removed; the image and the volume remain.
+  The EICAR test string was assembled in memory (apps/api/test/int/phase6-b40-fixtures.ts eicarTestBytes) and sent as a request body;
+  the harness REMOVES the quarantined blob after use (afterAll) — no file keeps it (checked: no vault file holds it after the run).
+  Run twice (the second run added the removal); both 5/5 with the same verdicts.
+
+THE ENGINE AND SIGNATURE-DATABASE IDENTITY (read from the running engine)
+  ## docker inspect
+  container /eye-clamav-eval image sha256:f5f9916e8856541b7eb3a55552eefe7c26908bc125be2918e36634bbfc07b230 config.image clamav/clamav@sha256:a852e9d4ba78eac5d444bce31b1b3427e254fd77fe008d856bfd72203f4236ad ports {"3310/tcp":[{"HostIp":"127.0.0.1","HostPort":"3310"}]}
+  id sha256:f5f9916e8856541b7eb3a55552eefe7c26908bc125be2918e36634bbfc07b230 repoDigests ["clamav/clamav@sha256:a852e9d4ba78eac5d444bce31b1b3427e254fd77fe008d856bfd72203f4236ad"] os/arch linux/arm64
+  ## clamd / OS
+  ClamAV 1.5.4/28159/Tue Oct 20 06:24:12 2026
+  PRETTY_NAME="Debian GNU/Linux 13 (trixie)"
+  ## the signature databases (sigtool --info, sha256sum) — no update performed for this run (freshclam last run 2026-10-20T22:00Z, CLAMAV_NO_FRESHCLAMD=true)
+  File: /var/lib/clamav/main.cvd
+  Build time: 16 Dec 2025 23:18 +0000
+  Version: 63
+  Signatures: 3287027
+  Verification OK.
+  0b2182d229f46981ec8f535382222f7c9dfdd656b250ad47988b910a8d302365  /var/lib/clamav/main.cvd
+  
+  File: /var/lib/clamav/daily.cvd
+  Build time: 20 Oct 2026 06:24 +0000
+  Version: 28159
+  Signatures: 355771
+  Verification OK.
+  94fead17812734280917fbc623828c1462943762c96895736468ffffc0068eb3  /var/lib/clamav/daily.cvd
+  
+  File: /var/lib/clamav/bytecode.cvd
+  Build time: 11 Sep 2025 08:29 -0400
+  Version: 339
+  Signatures: 80
+  Verification OK.
+  6d4aa01f219e988060fc419f495d07f27e0cdf1a2cccc065971da922c76f7ffb  /var/lib/clamav/bytecode.cvd
+  
+  ## clamd StreamMaxLength
+  #StreamMaxLength 25M
+
+THE SIGNATURE DATABASE — source and update policy, configured explicitly (recorded on every verdict, engine_config)
+  source:        database.clamav.net (official CVD mirror) via freshclam DatabaseMirror, ScriptedUpdates yes; volume eye-clamav-db
+  update policy: deliberate — freshclam --foreground run once (2026-10-20T22:00Z); CLAMAV_NO_FRESHCLAMD=true, no background update;
+                 no update was performed for this run
+  declared manifest (sigtool --info + sha256 at the last update): daily 28159 / main 63 / bytecode 339 (digests above); the daily
+                 entry is joined to the verdict only because the engine REPORTED the same version (VERSION) — never inferred
+
+THE OBSERVED VERDICTS (end to end: upload route → quarantine volume → inspect stage, both engines → admission or quarantine →
+observation.inspection_verdicts beside the record; SRC@v4 upload contract, scan_engines [content-inspector, clamav])
+  engine 127.0.0.1:3310 — VERSION: ClamAV 1.5.4/28159/Tue Oct 20 06:24:12 2026
+  · regensburg-bearings-delivery-note.pdf: run finished admitted 1 quarantined 0; quarantine class: —
+      clamav: outcome clean; findings []; detail None; record point admitted; decision pass
+      clamav identity: engine_version 1.5.4; image_digest sha256:a852e9d4ba78eac5d444bce31b1b3427e254fd77fe008d856bfd72203f4236ad; databases daily 28159 @2026-10-20T06:24:12Z sha256 94fead17812734280917fbc623828c1462943762c96895736468ffffc0068eb3; main 63 @2025-12-16T23:18:00Z sha256 0b2182d229f46981ec8f535382222f7c9dfdd656b250ad47988b910a8d302365; bytecode 339 @2025-09-11T12:29:00Z sha256 6d4aa01f219e988060fc419f495d07f27e0cdf1a2cccc065971da922c76f7ffb
+      content-inspector: outcome clean; engine_version 1.0.0
+  · eicar-probe.txt: run finished admitted 0 quarantined 1; quarantine class: malware_verdict
+      clamav: outcome detected; findings ['clamav:Eicar-Test-Signature']; detail None; record point quarantined; decision quarantine/malware_verdict
+      clamav identity: engine_version 1.5.4; image_digest sha256:a852e9d4ba78eac5d444bce31b1b3427e254fd77fe008d856bfd72203f4236ad; databases daily 28159 @2026-10-20T06:24:12Z sha256 94fead17812734280917fbc623828c1462943762c96895736468ffffc0068eb3; main 63 @2025-12-16T23:18:00Z sha256 0b2182d229f46981ec8f535382222f7c9dfdd656b250ad47988b910a8d302365; bytecode 339 @2025-09-11T12:29:00Z sha256 6d4aa01f219e988060fc419f495d07f27e0cdf1a2cccc065971da922c76f7ffb
+      content-inspector: outcome clean; engine_version 1.0.0
+  · note-failed.txt: run finished admitted 0 quarantined 1; quarantine class: inspection_failed
+      clamav: outcome failed; findings []; detail the engine answered with an error (UNKNOWN COMMAND); record point quarantined; decision quarantine/inspection_failed
+      clamav identity: engine_version 1.5.4; image_digest sha256:a852e9d4ba78eac5d444bce31b1b3427e254fd77fe008d856bfd72203f4236ad; databases daily 28159 @2026-10-20T06:24:12Z sha256 94fead17812734280917fbc623828c1462943762c96895736468ffffc0068eb3; main 63 @2025-12-16T23:18:00Z sha256 0b2182d229f46981ec8f535382222f7c9dfdd656b250ad47988b910a8d302365; bytecode 339 @2025-09-11T12:29:00Z sha256 6d4aa01f219e988060fc419f495d07f27e0cdf1a2cccc065971da922c76f7ffb
+      content-inspector: outcome clean; engine_version 1.0.0
+  · note-incomplete.txt: run finished admitted 0 quarantined 1; quarantine class: inspection_incomplete
+      clamav: outcome incomplete; findings []; detail the engine refused the stream at its size limit (INSTREAM size limit exceeded. ERROR); record point quarantined; decision quarantine/inspection_incomplete
+      clamav identity: engine_version 1.5.4; image_digest sha256:a852e9d4ba78eac5d444bce31b1b3427e254fd77fe008d856bfd72203f4236ad; databases daily 28159 @2026-10-20T06:24:12Z sha256 94fead17812734280917fbc623828c1462943762c96895736468ffffc0068eb3; main 63 @2025-12-16T23:18:00Z sha256 0b2182d229f46981ec8f535382222f7c9dfdd656b250ad47988b910a8d302365; bytecode 339 @2025-09-11T12:29:00Z sha256 6d4aa01f219e988060fc419f495d07f27e0cdf1a2cccc065971da922c76f7ffb
+      content-inspector: outcome clean; engine_version 1.0.0
+  · regensburg-bearings-delivery-note.pdf: run finished admitted 0 quarantined 1; quarantine class: inspection_unavailable
+      clamav: outcome unavailable; findings []; detail the clamd engine at 127.0.0.1:3310 did not answer VERSION — unreachable or not a clamd; record point quarantined; decision quarantine/inspection_unavailable
+      clamav identity: none — the engine did not answer VERSION (unavailable)
+      content-inspector: outcome clean; engine_version 1.0.0
+      how the engine was made unavailable: docker stop eye-clamav-eval
+
+HOW EACH NON-CLEAN CASE WAS PROVOKED (stated)
+  failed:      the harness substituted a malformed command (zINSTREAMX) for zINSTREAM; the ENGINE answered "UNKNOWN COMMAND" (its own error)
+  incomplete:  the harness declared one INSTREAM chunk of 0x7ffffff0 bytes; the ENGINE answered "INSTREAM size limit exceeded. ERROR"
+  unavailable: docker stop eye-clamav-eval before the upload; VERSION got no answer
+  Each fails CLOSED: quarantined with its class (inspection_failed / inspection_incomplete / inspection_unavailable) — never clean (D2).
+
+EXC-P1-001 — the exit evidence (presented, not claimed; the exception stays OPEN)
+  the integrated engine:       engine 1 (the sandboxed content inspector) and engine 2 (the clamd adapter) behind the inspection engine
+                               port, wired into the intake seam (apps/api/src/observation/acquisition/stages/inspect-in.ts)
+  the quarantine verdict evidence: observation.inspection_verdicts (0123 §IN) — every verdict with the engine + database identity
+  the engine integration tests: test/int/phase6-clamav-engine-b40.test.ts 5/5 against the evaluation engine (this file);
+                               test/int/phase6-intake-b40.test.ts (the intake path, F48 / F49, D9b, SP-22);
+                               test/unit/content-inspector-b40.test.ts (engine 1 in its sandbox + the adapter against an in-test stand-in)
+  the corpus results:          the committed SYNTHETIC uploads (clean PDF, supplier PDF with active content + a hidden instruction,
+                               .docm with a macro stub) and a corpus generated at run time (polyglots, embedded / leading executables,
+                               ZIP / PDF-Flate / gzip bombs, hidden OOXML runs, HTML comments, zero-width text, deep nesting, EICAR in memory)
+  what is still missing for the owner: an ADMITTED engine image in the local/dev profile (C15 admission blocked — the owner's decision
+  (a) / (b) / (c)); the rows needing an admitted engine stay partial.

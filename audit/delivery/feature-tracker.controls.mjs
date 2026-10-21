@@ -12,6 +12,7 @@
  *   P2 — an UNQUALIFIED dependency keeps its meaning: B83's F-P7-E-13 on F-P7-E-06 (no slice), derived (--write)
  *        → B82 depends on B111 (the feature's completing stage) — full completion where it is required
  *   (B81 / B82, 2026-10-19: B81's and B82's features now complete later — so N3 and P2 use B83's F-P7-E-13; P1 adds each stage's slice.)
+ *   (B40, 2026-10-21: P1 adds B40's slice — B41, B42, B43, B44, B46 and B109 depend on B40, none on B111 / B54; B40 depends on nothing.)
  * Run: node audit/delivery/feature-tracker.controls.mjs   (exit 1 on any failed control)
  */
 import { execFileSync } from 'node:child_process';
@@ -83,6 +84,12 @@ const stageDeps = (d, stage) => (table(join(d, 'delivery', 'STAGES.csv')).find((
   /* B82 (2026-10-19): F-P7-E-07 completes at B111, F-P7-E-21 at B83 — B83 and B84 depend on B82 (the slice), never on B111 */
   for (const s of ['B83', 'B84']) check(`P1 ${s} depends on B82 (the delivered slice), not on B111`, deps(s).split(' ').includes('B82') && !deps(s).split(' ').includes('B111'), deps(s));
   for (const [f, s] of [['F-P7-E-07', 'B111'], ['F-P7-E-21', 'B83']]) check(`P1 ${f} completes at ${s}`, tracker.find((r) => r.feature_id === f)?.stage === s);
+  /* B40 (2026-10-21): F-P1-04 completes at B40; F-P1-01 and F-P1-03 at B111, F-P1-02 at B54, F-P1-12 at B109 — the dependents on B40's slice
+     (DESIGN D1: B41 and B42 carry residues of F-P1-01 while depending on it — left unqualified that would be a cycle), never on B111 / B54 */
+  for (const s of ['B41', 'B42', 'B43', 'B44', 'B46', 'B109']) check(`P1 ${s} depends on B40 (the delivered slice), not on B111 / B54`, deps(s).split(' ').includes('B40') && !deps(s).split(' ').includes('B111') && !deps(s).split(' ').includes('B54'), deps(s));
+  check('P1 B40 depends on nothing (its own features\' slices are its own)', deps('B40') === '', deps('B40'));
+  for (const [f, s] of [['F-P1-01', 'B111'], ['F-P1-02', 'B54'], ['F-P1-03', 'B111'], ['F-P1-04', 'B40'], ['F-P1-12', 'B109']]) check(`P1 ${f} completes at ${s}`, tracker.find((r) => r.feature_id === f)?.stage === s);
+  check('P1 F-P1-04 is functioning by its rows (all seven implemented at B40)', tracker.find((r) => r.feature_id === 'F-P1-04')?.status === 'functioning');
 }
 // N1 — a slice naming no feature
 { const d = fixture(); setDeps(d, 'F-P7-E-04', 'F-P7-E-01@B80; F-P7-E-99@B80'); const r = run(d); check('N1 a slice naming no feature is refused', r.code === 1 && /names no feature/.test(r.out)); }

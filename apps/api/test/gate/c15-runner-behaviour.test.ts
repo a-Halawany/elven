@@ -765,7 +765,8 @@ describe('C16-R3.1 — scanner dispositions: types, digests and unconditional ma
     // Eight since 2026-10-09: SCX-0012 (linux/amd64) and SCX-0013 (linux/arm64), approved by the
     // owner, govern two Go advisories of 2026-10-08 in the same gosu (docs/SCANNER_DISPOSITIONS.md §3.10).
     // Ten since 2026-10-10: SCX-0014 / SCX-0015 for a third advisory of that release (§3.11–3.12).
-    expect(m.scanner_exclusions.declared).toBe(10);
+    // Twelve since 2026-10-21: narrow CVE-2026-111943 approval, SCX-0016/0017 (§3.13).
+    expect(m.scanner_exclusions.declared).toBe(12);
     expect(m.image_finding_reconciliation.unmatched).toEqual([]);
     expect(m.image_finding_reconciliation.unused_records).toEqual([]);
   }, GATE_TEST_TIMEOUT_MS);

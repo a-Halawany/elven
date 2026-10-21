@@ -14,7 +14,11 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
 
-const ASSETS = ['src/observation/connectors/xml-worker.js'];
+const ASSETS = [
+  'src/observation/connectors/xml-worker.js',
+  // B40 §IN (integration): the sandboxed content inspector's child (Engine 1) — the §0 launcher spawns this file from beside the compiled module
+  'src/observation/inspection/content-inspector.child.mjs',
+];
 
 for (const rel of ASSETS) {
   const from = join(root, rel);

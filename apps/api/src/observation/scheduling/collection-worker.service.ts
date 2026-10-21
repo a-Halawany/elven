@@ -34,6 +34,8 @@ import type { Db } from '../../shared/db.js';
 import { newId } from '../../shared/ids.js';
 import { CollectionOrchestrator } from '../acquisition/orchestrator.service.js';
 import { SchedulerService, type CollectionJobPayload } from './scheduler.service.js';
+/* B40 ap */ import { UnrecoverableError } from 'bullmq';
+import { ContractBackoffAp } from '../acquisition-policy/contract-backoff.service.js'; /* end B40 ap */
 
 interface ReconcileRow {
   tenant_id: string; domain_id: string; source_id: string; contract_version: number;
@@ -59,6 +61,7 @@ export class CollectionWorkerService implements OnApplicationBootstrap {
     @Inject(COMMIT_DB) private readonly commitDb: Db,
     private readonly scheduler: SchedulerService,
     private readonly orchestrator: CollectionOrchestrator,
+    /* B40 ap: the contract's backoff of an SRC@v4 source (DP-10-005) */ private readonly contractBackoff: ContractBackoffAp, /* end B40 ap */
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -130,6 +133,11 @@ export class CollectionWorkerService implements OnApplicationBootstrap {
       // applies (a refusal, by contrast, returns normally and is never retried).
       this.note('scheduled job', e);
       await this.record(payload, jobId, startedAt, 'faulted', openedRunId, `fault: ${(e as Error).message}`, 0, 0, 0).catch((re) => this.note('record attempt', re));
+      /* B40 ap: an SRC@v4 source's fault is retried by the CONTRACT's backoff (recorded, enqueued), not by BullMQ's generic schedule */
+      if (await this.contractBackoff.afterFault(payload, openedRunId, e).catch(() => false)) {
+        throw new UnrecoverableError(`fault (retried by the contract's backoff, not the generic schedule): ${(e as Error).message}`.slice(0, 500));
+      }
+      /* end B40 ap */
       throw e;
     }
     // A run is OPENED only when run.started was persisted; a refusal before that has no run, whatever id was allocated.
@@ -146,6 +154,9 @@ export class CollectionWorkerService implements OnApplicationBootstrap {
       this.note('record attempt', e);
       throw e;
     }
+    /* B40 ap: the contract's retry of an SRC@v4 source after a rate-limited or unavailable run (DP-10-005); a v1–v3 contract is untouched */
+    await this.contractBackoff.afterOutcome(payload, outcome, opened).catch((e: unknown) => this.note('contract backoff', e));
+    /* end B40 ap */
   }
 
   private async record(

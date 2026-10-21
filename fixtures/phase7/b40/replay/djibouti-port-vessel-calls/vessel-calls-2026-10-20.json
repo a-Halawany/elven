@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-20",
+  "port": "DJJIB",
+  "calls": [
+    {
+      "call_id": "VC-0001",
+      "vessel": "SYNTHETIC MV Aldebaran",
+      "state": "arrived",
+      "at": "2026-10-20T03:10:00Z",
+      "port": "DJJIB",
+      "synthetic": true
+    },
+    {
+      "call_id": "VC-0002",
+      "vessel": "SYNTHETIC MV Bellatrix",
+      "state": "berthed",
+      "at": "2026-10-20T05:40:00Z",
+      "port": "DJJIB",
+      "synthetic": true
+    },
+    {
+      "call_id": "VC-0003",
+      "vessel": "SYNTHETIC MV Capella",
+      "state": "departed",
+      "at": "2026-10-20T08:25:00Z",
+      "port": "DJJIB",
+      "synthetic": true
+    }
+  ]
+}

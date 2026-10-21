@@ -1,0 +1,22 @@
+{
+  "captured_by": "scripts/phase6/build-b40-fixtures.mjs",
+  "manifest_version": "v1",
+  "synthetic": true,
+  "set": "nordwerk-logistics-consignments-1.0.1",
+  "note": "SYNTHETIC customer-written adapter package (CP-6 B40 scene 5). package_digest = sha256 over \"<file>\\0<sha256>\\n\" for the files sorted by name (the SDK's packageDigest; protocol eye-cell/1).",
+  "files": [
+    {
+      "file": "adapter.json",
+      "sha256": "aab978844b7db3388a0bc369e9191b678d33b19330f328a64af9bf467efba557",
+      "byte_length": 448
+    },
+    {
+      "file": "index.mjs",
+      "sha256": "2ef5d6ed6b2b5fbb19d616bb748638c4197766f31e9a900335819fc6ab39608d",
+      "byte_length": 1424
+    }
+  ],
+  "package_digest": "3cca44e02495e375d15f5ed669ebb45466418a60fced1668875e67e3e368ef18",
+  "requalifies": "1.0.0",
+  "change": "follows tracking links on declared destinations only"
+}

@@ -111,7 +111,7 @@ export class RegistriesService {
       const engineering = (await cap.engineeringExceptions()).map((e) => ({ ...e, expired: e['status'] === 'open' && exceptionExpired(String(e['expiry_date'] ?? ''), today) }));
       return {
         database_identity: await cap.dbIdentity(), today, sources: latest, reconciliation, counts: await cap.counts(), orphans: await cap.orphans(null, 5, 0), lint: await cap.lint(10),
-        holds: await cap.holds(100), impacts: await cap.impacts(10), verification: await cap.verificationRecords(25), fixtures: await cap.fixtures(),
+        holds: await cap.holds(100), impacts: await cap.impacts(10), verification: await cap.verificationRecords(100) /* B40 integration: 25 → 100 — every release-candidate act ingests three records (r3…r8 = 18 by 2026-10-21), which pushed B107's own reviewed records off the overview; the record read keeps its 500 */, fixtures: await cap.fixtures(),
         engineering_exceptions: engineering, requirement_snapshot: await cap.snapshot(['requirement']), ledger: await cap.ledger(30), read_at: await cap.now(),
       };
     });

@@ -117,6 +117,12 @@ const OBSERVATION_NAV: NavItem[] = [
   { href: '/observation/quarantine', label: 'Quarantine', glyph: '⚠' },
   { href: '/observation/corrections', label: 'Corrections', glyph: '⟳' },
   /* B82-F rt (0122): the declarers' rights terms (the data steward, the collection manager) */ { href: '/observation/rights', label: 'Rights terms', glyph: '§' }, /* end B82-F rt */
+  /* B40 (0123): the source platform's pages — §RG discovery, §CR the connectors and the egress receipts, §VA the publisher-key register */
+  { href: '/observation/sources/discovery', label: 'Discovery', glyph: '⌕' },
+  { href: '/observation/connectors', label: 'Connectors', glyph: '⧉' },
+  { href: '/observation/egress', label: 'Egress', glyph: '⇥' },
+  { href: '/observation/authenticity', label: 'Authenticity', glyph: '✓' },
+  /* end B40 */
   { href: '/intelligence', label: 'Intelligence', glyph: '❝' },
   { href: '/decisions', label: 'Decisions', glyph: '◆' },
   { href: '/decisions/briefings', label: 'Briefings', glyph: '☰' },

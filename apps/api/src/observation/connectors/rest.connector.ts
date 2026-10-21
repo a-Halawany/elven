@@ -19,6 +19,30 @@ import type { AcquiredItem, AcquisitionContext, AcquisitionOutput, BackfillDecla
 // B23 (0084) stream: the stream form's types.
 import { StreamPlanRefused, type AcquiredSegment, type SegmentGap, type StreamCursor, type StreamPlan,
   type StreamPlanRequest, type StreamPullRequest } from './sdk.js';
+/* B40 ap */ import { reportAnswer } from '../acquisition-policy/run-policy.js';
+import { IntakeStageRefused } from '../acquisition/intake-stage-types.js';
+/**
+ * B40 §AP: a publisher's 429 is REPORTED to the throttle seam before the connector does anything else with it — §AP's stage decides (an
+ * SRC@v4 contract: the Retry-After read, the rate-limited interval and the contract's backoff recorded, the request refused `rate_limited`
+ * — it throws). When the seam lets it through (a v1–v3 contract, or no throttle — a caller outside the lifecycle) the connector's RECORDED
+ * path follows unchanged (D8: a 429 stays the transport failure, the replayed answer what it was). No method this connector stamps on an
+ * item changes, so its code digest does not (the B40 §0 throttle call's precedent).
+ */
+async function reportThrottled(ctx: AcquisitionContext, endpoint: string, status: number, retryAfter: string | undefined): Promise<void> {
+  if (status === 429 && ctx.throttle !== undefined) await ctx.throttle(reportAnswer(endpoint, status, retryAfter));
+}
+/**
+ * B40 §AP, THE STREAM FORM: a window the throttle stage refuses for a reason that leaves the walk sound — rate_limited (the publisher's 429, the
+ * contract's backoff holding the rest of the run, its own rate), window_closed, robots_disallowed — is an EXPLICIT INCOMPLETE RANGE of that
+ * class (SegmentGap, the classes 0123 §0 widened): no request is sent for it, the stream moves past it and closes `closed_incomplete`, the
+ * coverage view lists it. Any other refusal (rights, licence, policy, unavailable) is not a gap: it propagates and the run fails closed.
+ */
+const STREAM_GAP_CLASSES = new Set(['rate_limited', 'window_closed', 'robots_disallowed']);
+function streamGapOf(e: unknown): SegmentGap | null {
+  if (!(e instanceof IntakeStageRefused) || !STREAM_GAP_CLASSES.has(e.reasonClass)) return null;
+  return { reasonClass: e.reasonClass as SegmentGap['reasonClass'], detail: `${e.stage} refused (${e.reasonClass}): ${e.message}`.slice(0, 1000) };
+}
+/* end B40 ap */
 
 /**
  * 1.2.0 adds the CLOSED-RANGE BACKFILL (Phase 4 §4a). The framing method refs
@@ -139,12 +163,14 @@ export class RestConnector implements Connector {
     const revalidated: NonNullable<AcquisitionOutput['revalidated']> = [];
     for (const endpoint of binding.endpoints) {
       ctx.budget.spendRequest();
+      await ctx.throttle?.({ endpoint }); // B40 §0 throttle (§AP): resolves when the request may go, throws to refuse it
       requestsMade += 1;
 
       if (replay !== null) {
         // The SAME connector, the SAME framing, recorded bytes instead of the wire.
         const got = await replay.fetch(binding.replaySet, endpoint);
         if (got === null) continue;
+        /* B40 ap */ await reportThrottled(ctx, endpoint, got.entry.status, got.entry.retained_headers['retry-after']); /* end B40 ap */
         ctx.budget.spendBytes(got.body.byteLength);
         bytesTransferred += got.body.byteLength;
         const transport = {
@@ -191,6 +217,7 @@ export class RestConnector implements Connector {
           });
           continue;
         }
+        /* B40 ap */ await reportThrottled(ctx, endpoint, res.status, res.headers['retry-after']); /* end B40 ap */
         if (res.status < 200 || res.status >= 300) {
           throw new EgressRefused('transport_failure', `endpoint answered ${res.status}`);
         }
@@ -265,8 +292,10 @@ export class RestConnector implements Connector {
     while (!progress.done && requests < budget) {
       const step = nextRequest(decl, progress);
       ctx.budget.spendRequest();
+      await ctx.throttle?.({ endpoint: step.url }); // B40 §0 throttle (§AP)
       requests += 1;
       const res = await this.egress({ url: step.url, headers: {}, ...credentialsOf(ctx), policy: binding.egress });
+      /* B40 ap */ await reportThrottled(ctx, step.url, res.status, res.headers['retry-after']); /* end B40 ap */
       if (res.status < 200 || res.status >= 300) {
         throw new EgressRefused('transport_failure', `backfill endpoint answered ${res.status}`);
       }
@@ -392,7 +421,25 @@ export class RestConnector implements Connector {
           yield { ...base, items: [], gap: { reasonClass: 'publisher_gap', detail: page.gap ?? 'the replay set declares no page for this window' }, requests: 1, bytes: 0 };
           continue;
         }
+        /* B40 ap: a refused window is an explicit range of its class (streamGapOf), the rest propagates */
+        try {
+          await ctx.throttle?.({ endpoint: page.url }); // B40 §0 throttle (§AP)
+        } catch (e) {
+          const held = streamGapOf(e);
+          if (held === null) throw e;
+          yield { ...base, items: [], gap: held, requests: 0, bytes: 0 };
+          continue;
+        }
         const got = await replay.fetch(binding.replaySet, page.url);
+        if (got !== null) {
+          try { await reportThrottled(ctx, page.url, got.entry.status, got.entry.retained_headers['retry-after']); } catch (e) {
+            const held = streamGapOf(e);
+            if (held === null) throw e;
+            yield { ...base, items: [], gap: held, requests: 1, bytes: 0 };
+            continue;
+          }
+        }
+        /* end B40 ap */
         if (got === null || got.entry.status < 200 || got.entry.status >= 300) {
           yield { ...base, items: [], gap: { reasonClass: 'publisher_gap', detail: got === null ? 'the replay set holds no recorded response for this page' : `the recorded page answered ${got.entry.status}` }, requests: 1, bytes: 0 };
           continue;
@@ -433,10 +480,19 @@ export class RestConnector implements Connector {
       ctx.budget.spendRequest();
       let res: EgressResult | null = null;
       let gap: SegmentGap | null = null;
+      /* B40 ap: a refused window is an explicit range of its class (streamGapOf) — no request sent; the rest propagates */
       try {
+        await ctx.throttle?.({ endpoint: step.url }); // B40 §0 throttle (§AP)
+      } catch (e) {
+        gap = streamGapOf(e);
+        if (gap === null) throw e;
+      }
+      /* end B40 ap */
+      if (gap === null) try {
         res = await this.egress({ url: step.url, headers: {}, ...credentialsOf(ctx), policy: binding.egress });
-        if (res.status < 200 || res.status >= 300) gap = { reasonClass: 'publisher_gap', detail: `the publisher answered ${res.status} for this window` };
-        else {
+        /* B40 ap */ try { await reportThrottled(ctx, step.url, res.status, res.headers['retry-after']); } catch (e) { const held = streamGapOf(e); if (held === null) throw e; gap = held; } /* end B40 ap */
+        if (gap === null && (res.status < 200 || res.status >= 300)) gap = { reasonClass: 'publisher_gap', detail: `the publisher answered ${res.status} for this window` };
+        else if (gap === null) {
           const envelope = errorEnvelope(res.body);
           if (envelope !== null) gap = { reasonClass: 'publisher_gap', detail: `the page is an error envelope: ${envelope}` };
         }
@@ -452,7 +508,7 @@ export class RestConnector implements Connector {
         through = step.windowEnd;
         yield { partition: req.partition, rangeFrom: step.windowStart, rangeTo: step.windowEnd, cursorBefore: before,
                 cursorAfter: { position: progress.cursor, through: step.windowEnd }, items: [], gap, last: progress.done,
-                requests: 1, bytes: 0 };
+                requests: res === null ? 0 : 1 /* B40 ap: a window the throttle refused sent no request */, bytes: 0 };
         continue;
       }
       const body = (res as EgressResult).body;

@@ -45,6 +45,8 @@ import { StreamPlanRefused, type AcquiredSegment, type StreamCursor, type Stream
 import type { StreamAnswer, StreamSegmentArgs } from '../observation.capabilities.js';
 import { buildHeader, timeDeclaration } from '../../objects/header-builder.js';
 import type { TimeValue } from '@eye/contracts'; // B50 hd
+/* B40 §0 */ import { IntakeStageRefused, IntakeStages, type AuthenticityDecision, type InspectDecision, type IntakeStageContext } from './intake-stages.js';
+import { isSourceContractV4 } from '../sources/source-contract.js'; /* end B40 §0 */
 
 export interface RunRequest {
   sourceId: string;
@@ -209,7 +211,33 @@ export class AcquisitionLifecycle {
     private readonly pipeline: PipelineService,
     private readonly vault: VaultService,
     private readonly credentials: SourceCredentialStore,
+    /* B40 §0: the intake seam — authorize / throttle / inspect / authenticate (pass-through until §AP, §IN, §VA fill their files) */
+    private readonly stages: IntakeStages,
   ) {}
+
+  /* B40 §0 — what every intake stage is told about the run (built from the contract row the lifecycle already holds) */
+  private stageContext(req: RunRequest, contract: ContractRow, runId: string): IntakeStageContext {
+    return {
+      form: (req as { stream?: unknown }).stream !== undefined ? 'stream' : 'command',
+      tenantId: contract.tenant_id, domainId: contract.domain_id, sourceId: req.sourceId, contractVersion: req.contractVersion,
+      runId, purposeId: req.purposeId, correlationId: req.correlationId,
+      contract: {
+        source_key: contract.source_key, connector_kind: contract.connector_kind, acquisition_mode: contract.acquisition_mode,
+        lifecycle_state: contract.lifecycle_state, rights_state: contract.rights_state, classification_ceiling: contract.classification_ceiling,
+        residency: contract.residency, purposes: contract.purposes, endpoints: contract.endpoints, contract: contract.contract,
+      },
+      v4: isSourceContractV4(contract.contract),
+    };
+  }
+
+  /* B40 §0 — the per-request throttle handed to the connector (AcquisitionContext.throttle): resolves when the request may go, throws to refuse it */
+  private throttleFor(sctx: IntakeStageContext): (request: { endpoint: string }) => Promise<void> {
+    return async (request) => {
+      const d = await this.stages.throttle(sctx, request);
+      if (d.kind === 'refuse') throw new IntakeStageRefused('throttle', d.reasonClass, d.reason, d.retryAfterSeconds);
+    };
+  }
+  /* end B40 §0 */
 
   /** The envelope a governed operation needs. Built server-side; never client-supplied. */
   private envelope(req: RunRequest, action: string, objectType: string, objectId: string | null, tenantId: string, domainId: string): Envelope {
@@ -412,6 +440,17 @@ export class AcquisitionLifecycle {
       }
       fault.at('f09.after_revalidation_before_egress');
 
+      // B40 §0 authorize (§AP): the run's acquisition authorization, at the pre-egress revalidation — a refusal cancels the run BEFORE any request
+      const sctx = this.stageContext(req, stillActive, runId);
+      const authorized = await this.stages.authorize(sctx);
+      if (authorized.kind === 'refuse') {
+        const why = `acquisition not authorized (${authorized.reasonClass}): ${authorized.reason}`;
+        await this.appendEvent(req, tenantId, domainId, runId, contract, 'observation.run.cancel', 'run.cancelled', {
+          reason: why, reason_class: authorized.reasonClass, authorization_id: authorized.authorizationId,
+        });
+        return { runId, state: 'cancelled', admitted, quarantined, noop, reason: why };
+      }
+
       // ── step 4: bounded external acquisition, OUTSIDE any transaction ───────
       const binding = this.bindingFor(contract);
       // B11: the contract's credential, resolved by REFERENCE from the deployment at this moment — a reference the deployment
@@ -435,6 +474,7 @@ export class AcquisitionLifecycle {
         binding, checkpoint, budget: meter,
         replayRoot: this.cfg['eye.connector.replay_root'],
         ...(credential === undefined ? {} : { credential }),
+        throttle: this.throttleFor(sctx), // B40 §0 throttle (§AP): before every request
       });
       fault.at('f11.after_acquisition_before_open');
 
@@ -828,11 +868,25 @@ export class AcquisitionLifecycle {
       if (!isFramedParent) drift = await this.checkDeclaredSchema(item, binding);
     }
 
+    /* B40 §0 inspect (§IN) after fetch, beside the heuristic verdict (it never weakens it), then authenticate (§VA) before admission — each
+       pass-through in §0; a quarantine decision of either quarantines the item with its own reason class */
+    const sctx = this.stageContext(req, contract, runId);
+    const inspection: InspectDecision = await this.stages.inspect(sctx, { item, stored, heuristic: verdict });
+    const authn: AuthenticityDecision | null = verdict.ok && drift.ok && inspection.kind === 'pass'
+      ? await this.stages.authenticate(sctx, { item, stored }) : null;
+    const staged = { sctx, decisions: { inspect: inspection, authenticate: authn } };
+    if (verdict.ok && drift.ok && (inspection.kind === 'quarantine' || authn?.kind === 'quarantine')) {
+      const d = inspection.kind === 'quarantine' ? inspection : authn as Extract<AuthenticityDecision, { kind: 'quarantine' }>;
+      await this.quarantineItem(req, contract, runId, item, stored, verdict, drift, { ...staged, override: { reasonClass: d.reasonClass, reason: d.reason } });
+      return { kind: 'quarantined' };
+    }
+    /* end B40 §0 */
+
     if (!verdict.ok || !drift.ok) {
       // QUARANTINE, NOT ADMIT-AND-FLAG. The bytes stay in the quarantine volume
       // and never reach the evidence volume; a silently admitted gap becomes a
       // fact, which is the failure mode this whole path exists to prevent.
-      await this.quarantineItem(req, contract, runId, item, stored, verdict, drift);
+      await this.quarantineItem(req, contract, runId, item, stored, verdict, drift, { ...staged, override: null });
       return { kind: 'quarantined' };
     }
 
@@ -847,7 +901,7 @@ export class AcquisitionLifecycle {
         await this.quarantineItem(req, contract, runId, item, stored, {
           ...verdict, ok: false, class: 'malformed_archive',
           reason: `admitted candidate could not be verified against the quarantine original (${e.reason})`,
-        }, { ok: true });
+        }, { ok: true }, { ...staged, override: null });
         return { kind: 'quarantined' };
       }
       throw e;
@@ -1037,7 +1091,8 @@ export class AcquisitionLifecycle {
         // 8e, write 3 of 7: the EVD canonical object — the bytes, their digest,
         // and the FOUR SEPARATE authenticity concepts, never collapsed into one.
         await this.admitEvd(cap, req, contract, item, obsObjectId, evdObjectId, manifestId, candidate, verdict, parentEvdObjectId,
-          evdVersion, revisionOf === null ? null : `${revisionOf.evdObjectId}@${revisionOf.objectVersion}`);
+          evdVersion, revisionOf === null ? null : `${revisionOf.evdObjectId}@${revisionOf.objectVersion}`,
+          authn?.kind === 'admit' ? authn.payloadContentAuthenticity : 'unknown'); // B40 §0: `unknown` unless §VA verified (D6)
         fault.at('f23b.after_evd_before_custody');
 
         // 8e, write 4 of 7: the custody entry.
@@ -1062,6 +1117,9 @@ export class AcquisitionLifecycle {
           correlationId: req.correlationId,
         });
         fault.at('f23c.after_custody_before_pol');
+        // B40 §0: the intake stages' records beside the admission they describe (§IN's verdicts, §VA's authenticity outcome) — §0 writes nothing
+        await this.stages.recordAt(cap, sctx, { kind: 'admitted', evdObjectId, evdVersion, manifestId, contentDigest: candidate.contentDigest, itemKey: item.itemKey },
+          staged.decisions);
 
         await cap.appendRunEvent({
           eventId: newId(), tenantId, domainId, runId,
@@ -1212,6 +1270,8 @@ export class AcquisitionLifecycle {
     candidate: { locator: string; contentDigest: string; byteLength: number },
     verdict: ReturnType<typeof inspectContent>, parentEvdObjectId: string | null,
     version = 1, supersedes: string | null = null,
+    /* B40 §0: the EVD@v1 payload's content_authenticity — `unknown` unless the authenticate stage (§VA) verified it */
+    contentAuthenticity: 'verified' | 'unknown' | 'not_applicable' = 'unknown',
   ): Promise<void> {
     const payload = {
       obs_object_id: obsObjectId,
@@ -1243,7 +1303,7 @@ export class AcquisitionLifecycle {
         byte_integrity: 'verified',
         source_origin: item.transport.originAllowlisted === true ? 'verified'
           : item.transport.originAllowlisted === false ? 'unverified' : 'not_applicable',
-        content_authenticity: 'unknown',
+        content_authenticity: contentAuthenticity, // B40 §0 (was the literal 'unknown'; the default keeps it)
       },
     };
     const header = this.header({
@@ -1335,13 +1395,16 @@ export class AcquisitionLifecycle {
     stored: { locator: string; contentDigest: string; byteLength: number },
     verdict: ReturnType<typeof inspectContent>,
     drift: { ok: true } | { ok: false; missing: string[]; reason: string },
+    /* B40 §0: the intake stages' decisions (recorded beside the case) and, when a stage decided the quarantine, its reason class */
+    staged: { sctx: IntakeStageContext; decisions: { inspect: InspectDecision | null; authenticate: AuthenticityDecision | null };
+              override: { reasonClass: string; reason: string } | null },
   ): Promise<void> {
     const tenantId = contract.tenant_id;
     const domainId = contract.domain_id;
     const caseId = newId();
     const manifestId = newId();
-    const reasonClass = !verdict.ok ? verdict.class : 'schema_drift';
-    const reason = !verdict.ok ? verdict.reason : (drift as { reason: string }).reason;
+    const reasonClass = staged.override !== null ? staged.override.reasonClass : !verdict.ok ? verdict.class : 'schema_drift';
+    const reason = staged.override !== null ? staged.override.reason : !verdict.ok ? verdict.reason : (drift as { reason: string }).reason;
 
     await this.pipeline.write(
       this.envelope(req, 'observation.item.quarantine', 'QAR', caseId, tenantId, domainId),
@@ -1394,6 +1457,9 @@ export class AcquisitionLifecycle {
           details: { item_key: item.itemKey, case_id: caseId, reason_class: reasonClass },
           correlationId: req.correlationId,
         });
+        // B40 §0: the intake stages' records beside the case (§IN's verdicts, §VA's unknown signer) — §0 writes nothing
+        await this.stages.recordAt(cap, staged.sctx, { kind: 'quarantined', caseId, manifestId, contentDigest: stored.contentDigest, itemKey: item.itemKey },
+          staged.decisions);
         return {
           result: { caseId }, targetType: 'QAR', targetId: caseId, targetVersion: '1',
           outboxEvent: null,
@@ -1555,6 +1621,16 @@ export class AcquisitionLifecycle {
           { kind: 'interrupt', streamId, reasonClass: 'contract', reason: 'the contract was not active at the pre-egress revalidation', inFlight: [], rangeClass: 'interrupted' });
         return tally('cancelled', 'contract not active before egress');
       }
+      // B40 §0 authorize (§AP): the stream run's acquisition authorization, at its pre-egress revalidation — a refusal interrupts BEFORE any request
+      const sctx = this.stageContext(req, stillActive, runId);
+      const authorized = await this.stages.authorize(sctx);
+      if (authorized.kind === 'refuse') {
+        const why = `acquisition not authorized (${authorized.reasonClass}): ${authorized.reason}`;
+        stream = await this.endStreamRun(req, runId, contract, 'observation.run.cancel', 'run.cancelled',
+          { reason: why, reason_class: authorized.reasonClass, authorization_id: authorized.authorizationId, stream_id: streamId },
+          { kind: 'interrupt', streamId, reasonClass: 'authorization', reason: why, inFlight: [], rangeClass: 'interrupted' });
+        return tally('cancelled', why);
+      }
       let credential: { header: string; value: string } | undefined;
       if (binding.credential !== undefined && binding.acquisitionMode === 'live') {
         const value = this.credentials.resolve(binding.credential.ref);
@@ -1569,7 +1645,8 @@ export class AcquisitionLifecycle {
       }
       const meter = new BudgetMeter(binding.budgets);
       const pull = (req.connector.acquireStream as NonNullable<Connector['acquireStream']>)(
-        { binding, checkpoint: null, budget: meter, replayRoot: this.cfg['eye.connector.replay_root'], ...(credential === undefined ? {} : { credential }) },
+        { binding, checkpoint: null, budget: meter, replayRoot: this.cfg['eye.connector.replay_root'], ...(credential === undefined ? {} : { credential }),
+          throttle: this.throttleFor(sctx) }, // B40 §0 throttle (§AP): before every request
         { partition, rangeFrom: stream.range_from, rangeTo: stream.range_to, cursor: stream.cursor as StreamCursor },
       )[Symbol.asyncIterator]();
 
@@ -2052,6 +2129,7 @@ export function isInfrastructureFault(e: unknown): boolean {
 function describe(e: unknown): string {
   if (e instanceof BudgetExceeded) return `budget exceeded: ${e.message}`;
   if (e instanceof EgressRefused) return `egress refused (${e.refusalClass})`;
+  if (e instanceof IntakeStageRefused) return `${e.stage} refused (${e.reasonClass}): ${e.message.slice(0, 240)}`; // B40 §0
   if (e instanceof VaultIntegrityError) return `vault integrity (${e.reason})`;
   if (e instanceof ReplayIntegrityError) return `replay fixture integrity failure: ${e.message}`;
   if (e instanceof Error) return e.message.slice(0, 300);

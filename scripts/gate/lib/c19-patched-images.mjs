@@ -147,7 +147,7 @@ export const SERVICES = Object.freeze({
      * re-scopes ALL of them, on both platforms, or the ones left behind fail as unused. A control holds this list equal to the tracked records that name the
      * configured pin.
      */
-    records: Object.freeze(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005', 'SCX-0010', 'SCX-0011', 'SCX-0012', 'SCX-0013', 'SCX-0014', 'SCX-0015']),
+    records: Object.freeze(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005', 'SCX-0010', 'SCX-0011', 'SCX-0012', 'SCX-0013', 'SCX-0014', 'SCX-0015', 'SCX-0016', 'SCX-0017']),
   }),
   redis: Object.freeze({
     tag: 'redis:8-alpine',

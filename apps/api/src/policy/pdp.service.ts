@@ -1334,6 +1334,10 @@ const BUNDLE_V1: Rule[] = [
       { role: 'platform_admin', atScope: 'PLATFORM' },
       { role: 'collection_manager', atScope: 'DOMAIN' },
     ],
+    // B40 integration (§AC's finding): releasing or rejecting a quarantined item is a named human's act — the PEP now refuses a non-human
+    // principal here too, not only the database port (`quarantine review rejected (actor)`, 0123 §IN). The expiry sweeper closes cases under
+    // observation.sweeper.reconcile, untouched.
+    obligations: [{ type: 'human_gate' }],
     requiresPurpose: true,
   },
   {
@@ -1523,6 +1527,145 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'observation.rights.terms.read', exact: true, requiredAnyRole: [{ role: 'data_steward', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }],
     obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B82-F rt */
+  /* B40 §0 (0123): the parts' EXACT rules go in their own block below, each placed BEFORE the `observation.` collection prefix rule (which
+     would otherwise match them first and admit a domain analyst or the collection agent) — DESIGN D15; no role (D14), nothing widened.
+     Reserved empty by the prelude; §AC adds no rule. */
+  /* B40 rg */
+  /* B40 §RG (0123_b40_x_rg; F-P1-01, DESIGN D4/D5/D13). EXACT rules, before the `observation.` collection prefix rule (which would otherwise
+     match them first and admit the collection agent); no earlier prefix rule is a prefix of any of these names (`observation.source.rights`
+     is not a prefix of `observation.source.change_rights`; none starts `observation.read`). No role (D14); nothing widened; D9: none of these
+     reads returns evidence content (registry metadata, refs and owners only).
+       DISCOVERY      a domain analyst or collection manager proposes / declines a candidate (human-gated; the port re-checks the person, the
+                      role, the acting principal); the PROMOTION is the existing `observation.source.register` (unchanged).
+       EVALUATION     a collection manager (the port refuses the registrar of the version and an agent — D5), human-gated.
+       RIGHTS         the rights lifecycle (narrow / withdraw / restore) — a collection manager, human-gated (the port re-checks; D4).
+       CUSTOMER       the tenant's customer sponsor or tenant administrator (TENANT bindings), human-gated; never the registrar or approver (D13).
+       STEWARDSHIP    a data steward or collection manager, human-gated.
+       INCIDENTS      a collection manager or domain analyst opens (owned by a collection manager — PER-11), a collection manager resolves.
+       READS          the registry record and the candidates: `observation.read`'s readers WITHOUT the collection agent; the revocation impact
+                      and the change preview: `observation.source_impact.read`'s readers (B24) — audited reads. */
+  { actionPrefix: 'observation.source.discover', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.source.evaluate', exact: true, requiredAnyRole: [{ role: 'collection_manager', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.source.change_rights', exact: true, requiredAnyRole: [{ role: 'collection_manager', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.source.customer_approve', exact: true, requiredAnyRole: [{ role: 'customer_sponsor', atScope: 'TENANT' }, { role: 'tenant_admin', atScope: 'TENANT' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.source.stewardship', exact: true, requiredAnyRole: [{ role: 'data_steward', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.source.incident', exact: true, requiredAnyRole: [{ role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.registry.read', exact: true, requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'customer_sponsor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'data_steward', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  ...(['observation.rights.impact.read', 'observation.source.change_impact.read'] as const).map((actionPrefix): Rule => ({ actionPrefix, exact: true, requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' },
+      { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' })),
+  /* end B40 rg */
+  /* B40 va */
+  /* B40 §VA (0123_b40_x_va; F-P1-02: L1-C06, V00-T-033, ES-29-002, V02-T-038). EXACT rules, placed BEFORE the `observation.` collection prefix
+     rule and the `objects.read` / `objects.` rules (which would otherwise match them first and admit a domain analyst or the collection agent);
+     no earlier rule is a prefix of any of them (`observation.read` is not a prefix of `observation.authenticity.*`; `observation.evidence.retrieve`
+     not of `observation.evidence.attribute.set`; no earlier `objects.` or `retention.` prefix rule exists). DESIGN D14: no role; D15: nothing widened.
+       THE PUBLISHER KEYS (observation.authenticity.key.declare / .retire): a named DATA STEWARD or COLLECTION MANAGER — human-gated; the ports
+       re-check the person and the role (governance.assert_approver) and the acting principal; never an agent.
+       THE EVIDENCE ATTRIBUTE OVERRIDE (observation.evidence.attribute.set): a named DATA STEWARD — human-gated, re-checked in the port.
+       THE TRANSFORMATION RULES: PROPOSED by a data steward, DECIDED and RETIRED by the privacy officer — never the proposer (the port), never an
+       agent — human-gated.
+       THE READS — METADATA ONLY (D9: no evidence-content permission is widened; observation.evidence.retrieve is unchanged):
+         observation.authenticity.read (the key register, an evidence object's outcome and attributes) — observation.read's human readers plus the
+         data steward and the privacy officer; NOT the collection agent (the stage reads its keys through the intake read, not a route);
+         objects.obligations.read (inheritance, the rule register) — the readers of the graph's provenance among the data and decision roles;
+         retention.register.read (the per-tenant register) — TENANT readers only: the tenant administrator, the auditor, the retention authority. */
+  ...((): Rule[] => {
+    const d = (role: string) => ({ role, atScope: 'DOMAIN' as Scope });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const audit: Obligation[] = [{ type: 'audit_access' }];
+    const tenantReaders = [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }, { role: 'auditor', atScope: 'TENANT' as Scope }];
+    const authenticityReaders = [...tenantReaders, ...['domain_admin', 'domain_analyst', 'collection_manager', 'data_steward', 'privacy_officer'].map(d)];
+    const obligationReaders = [...tenantReaders, { role: 'retention_authority', atScope: 'TENANT' as Scope },
+      ...['domain_admin', 'domain_analyst', 'collection_manager', 'data_steward', 'privacy_officer', 'knowledge_owner', 'record_authority', 'retention_steward',
+          'risk_owner', 'decision_owner', 'decision_approver'].map(d)];
+    return [
+      { actionPrefix: 'observation.authenticity.key.declare', exact: true, requiredAnyRole: ['data_steward', 'collection_manager'].map(d), obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.authenticity.key.retire', exact: true, requiredAnyRole: ['data_steward', 'collection_manager'].map(d), obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.authenticity.read', exact: true, requiredAnyRole: authenticityReaders, obligations: audit, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.evidence.attribute.set', exact: true, requiredAnyRole: [d('data_steward')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'objects.transformation_rule.propose', exact: true, requiredAnyRole: [d('data_steward')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'objects.transformation_rule.decide', exact: true, requiredAnyRole: [d('privacy_officer')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'objects.transformation_rule.retire', exact: true, requiredAnyRole: [d('privacy_officer')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'objects.obligations.read', exact: true, requiredAnyRole: obligationReaders, obligations: audit, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'retention.register.read', exact: true, requiredAnyRole: [...tenantReaders, { role: 'retention_authority', atScope: 'TENANT' as Scope }], obligations: audit, requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B40 va */
+  /* B40 in */
+  /* B40 §IN (0123 §IN; F-P1-03; DESIGN D9, D9b, D14, D15). EXACT rules, before the `observation.` collection prefix rule (which would otherwise
+     admit a domain analyst or the collection agent first). READING the intake review queue, a case's WHY and an evidence version's verdicts —
+     METADATA only (engine identity, outcomes, finding codes and offsets; never content, D9): observation.read's HUMAN readers (the collection
+     agent is absent — it writes verdicts through the admission's own action, it does not read the queue). The case's EXCERPT is not this
+     action: it is a read of the bytes under the existing `observation.evidence.retrieve` (no widening). DECIDING a held upload (SP-22) — a
+     collection manager or the domain admin, human-gated; the PORT re-checks the person, the role, and that the decider is not the uploader.
+     No role is added (D14). */
+  { actionPrefix: 'observation.inspection.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' },
+      { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.upload.approve', exact: true, requiredAnyRole: [{ role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B40 in */
+  /* B40 ap */
+  /* B40 §AP (0123 §AP.7; F-P1-04). EXACT, before the `observation.` collection prefix rule (D15). READING a source's acquisition policy —
+     the declaration, the runs' authorizations, the robots cache, the rate-limited intervals and the contract's backoff, the incomplete
+     ranges — exactly the readers of the coverage remediation read (observation.coverage_remediation.read, B28: the collection roles, the
+     coverage and decision owners an interval concerns, the tenant's administrator and auditor); never the collection agent. Metadata only
+     (D9): no evidence-content permission is added or widened; the port re-checks the bound action and the read scope. §AP adds no human act:
+     the authorization, the robots fetch, the rate-limited interval and the response fingerprint are written by the run's own machinery under
+     the scheduler's machine capability, fenced by the run's lease (0123 §AP.6). */
+  { actionPrefix: 'observation.acquisition.read', exact: true, requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' },
+      { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B40 ap */
+  /* B40 cr */
+  /* B40 §CR (0123_b40_x_cr; F-P1-12 — DP-14-003, IA-28-001/-005, IA-47-005; DESIGN D12, D14, D15). EXACT rules, placed BEFORE the
+     `observation.` collection prefix rule (which would admit a domain analyst and the collection agent to every one of them). No role is
+     added, nothing is widened; every port re-checks the bound action, the scope, the acting principal and the person / role / separation.
+       REGISTERING an adapter package — a collection manager (human-gated); APPROVING / rejecting it — a domain admin or a collection manager
+       (human-gated; the port refuses the registrant, an agent and an external collaborator — the second person, D12).
+       THE RUN'S OWN ACTS — loading the package in force (`observation.adapter.load`, a read), recording the transfer receipts
+       (`observation.egress.record`) and suspending the connector for requalification (`observation.connector.suspend`) — the source's
+       COLLECTION AGENT only (its run acts as it; the ports re-check the agent registered for the source and the run holding the lease); the
+       managers may read the binding too.
+       REQUALIFICATION — submitted by a collection manager, approved by a domain admin or a collection manager ≠ the submitter (human-gated);
+       CREDENTIAL ROTATION — a collection manager (human-gated).
+       THE READS — the connectors register and the egress receipts: exactly `observation.read`'s human readers (metadata, digests and byte
+       counts — never bytes, D9), audited. */
+  ...((): Rule[] => {
+    const d = (role: string) => ({ role, atScope: 'DOMAIN' as Scope });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const humanReaders = [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }, { role: 'auditor', atScope: 'TENANT' as Scope },
+      d('domain_admin'), d('domain_analyst'), d('collection_manager')];
+    return [
+      { actionPrefix: 'observation.adapter.register', exact: true, requiredAnyRole: [d('collection_manager')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.adapter.approve', exact: true, requiredAnyRole: [d('domain_admin'), d('collection_manager')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.adapter.load', exact: true, requiredAnyRole: [d('collection_agent'), d('collection_manager')], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.egress.record', exact: true, requiredAnyRole: [d('collection_agent')], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.connector.suspend', exact: true, requiredAnyRole: [d('collection_agent')], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.connector.requalification.submit', exact: true, requiredAnyRole: [d('collection_manager')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.connector.requalification.approve', exact: true, requiredAnyRole: [d('domain_admin'), d('collection_manager')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.connector.credential.rotate', exact: true, requiredAnyRole: [d('collection_manager')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.connectors.read', exact: true, requiredAnyRole: humanReaders, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'observation.egress.read', exact: true, requiredAnyRole: humanReaders, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B40 cr */
   {
     // The COLLECTION surface: run lifecycle, admission, quarantine, checkpoints,
     // coverage measurement and sweeper reconciliation. Held by the agent role and

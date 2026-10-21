@@ -1,0 +1,76 @@
+{
+  "amd64": {
+    "qualifies": true,
+    "advisory": "GO-2026-6809",
+    "alias": "CVE-2026-111943",
+    "finding_level": "module",
+    "findings": [
+      {
+        "osv": "GO-2026-6809",
+        "fixed_version": "v1.26.10",
+        "trace": [
+          {
+            "module": "stdlib",
+            "version": "v1.24.6"
+          }
+        ]
+      }
+    ],
+    "crypto/x509_symbols": 0,
+    "positive_controls": {
+      "os": 46,
+      "fmt": 56,
+      "syscall": 79,
+      "github.com/moby/sys/user": 15,
+      "golang.org/x/sys/unix": 13
+    },
+    "elf_machine": 62,
+    "identity": {
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "platform": "linux/amd64",
+      "child_digest": "sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66",
+      "binary_path": "/usr/local/bin/gosu",
+      "binary_sha256": "52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0",
+      "binary_bytes": 1769900
+    },
+    "report_sha256": "94495d09ceb8f549e25e749a94f6851819409d6959c93b428c66d8cb8283b19e",
+    "symbols_sha256": "5178bf56d45e755e1247e296c91ff83436230d7d4ff9f15c87c93e890eb35114"
+  },
+  "arm64": {
+    "qualifies": true,
+    "advisory": "GO-2026-6809",
+    "alias": "CVE-2026-111943",
+    "finding_level": "module",
+    "findings": [
+      {
+        "osv": "GO-2026-6809",
+        "fixed_version": "v1.26.10",
+        "trace": [
+          {
+            "module": "stdlib",
+            "version": "v1.24.6"
+          }
+        ]
+      }
+    ],
+    "crypto/x509_symbols": 0,
+    "positive_controls": {
+      "os": 46,
+      "fmt": 56,
+      "syscall": 79,
+      "github.com/moby/sys/user": 15,
+      "golang.org/x/sys/unix": 13
+    },
+    "elf_machine": 183,
+    "identity": {
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "platform": "linux/arm64",
+      "child_digest": "sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f",
+      "binary_path": "/usr/local/bin/gosu",
+      "binary_sha256": "3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44",
+      "binary_bytes": 1830424
+    },
+    "report_sha256": "bfde0a9e04941c9dc534a1393c9e2476a0009771456fe3a16ce4e5bb40a6d9a4",
+    "symbols_sha256": "9c9160a614546cf8be50eb30c8cd3b546fdeae8199d66879ed239bf551f111e3"
+  }
+}

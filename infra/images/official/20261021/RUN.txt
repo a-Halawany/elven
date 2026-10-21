@@ -1,0 +1,9 @@
+CVE-2026-111943 / GO-2026-6809 — independent qualification, 2026-10-21
+
+Fresh analysis of EACH binary separately, extracted with docker create --platform and docker cp from the exact child digest. postgres-index.json and postgres-<arch>-manifest.json are raw registry bytes: their SHA-256 equals the index/child digest; the index explicitly maps each linux architecture to its recorded child. extraction-<arch>.json Image equals the child manifest config digest. identity-<arch>.json records the measured binary digest and size. ELF e_machine independently confirms the architecture. Every identity matches SCANNER_DISPOSITIONS.md §3.11.
+
+analysis-runtime.txt.execution.json records the pinned golang image and all analysis commands, timestamps and successful exit. GOTOOLCHAIN=local; go1.25.14; govulncheck v1.1.4 (build and executable hash captured). Per architecture, go tool nm succeeds before analysis proceeds; full symbol output and stderr are retained. The reports explicitly include GO-2026-6809, its CVE alias and a finding whose trace contains only stdlib v1.24.6, with no package or function. DB last modified 2026-10-21T00:27:29Z. A zero scanner exit is not used as qualification.
+
+QUALIFICATION.json records the independent results and positive control counts. Both symbol tables detect os, fmt, syscall, github.com/moby/sys/user and golang.org/x/sys/unix; neither contains crypto/x509 anywhere. The advisory's sole affected package is crypto/x509 (Certificate.Verify). Both qualify as NOT_AFFECTED, vulnerable_code_not_present. No result is inferred from the other architecture or from a missing advisory.
+
+This is the owner's narrowly scoped approval of 2026-10-21 for this advisory alone. It does not extend §3.11 to another Go release or alter any existing disposition. Expiry 2026-11-05 and §4 exposure restrictions remain.

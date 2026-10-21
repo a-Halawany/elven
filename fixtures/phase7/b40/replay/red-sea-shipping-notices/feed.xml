@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Red Sea shipping notices (SYNTHETIC)</title>
+    <link>https://notices.red-sea.synthetic.example/navarea-ix</link>
+    <description>SYNTHETIC notices to mariners for the Red Sea and the Gulf of Aden — a B40 fixture; the publisher does not exist.</description>
+    <item>
+      <guid isPermaLink="false">RSN-2026-0141</guid>
+      <title>Bab el-Mandeb: increased naval presence reported in the southern approach; vessels advised to maintain AIS (SYNTHETIC)</title>
+      <pubDate>Wed, 14 Oct 2026 06:00:00 GMT</pubDate>
+      <description>SYNTHETIC notice to mariners for the B40 demonstration; not issued by any authority.</description>
+    </item>
+    <item>
+      <guid isPermaLink="false">RSN-2026-0142</guid>
+      <title>Gulf of Aden: temporary anchorage restriction east of Djibouti roads (SYNTHETIC)</title>
+      <pubDate>Thu, 15 Oct 2026 09:30:00 GMT</pubDate>
+      <description>SYNTHETIC notice to mariners for the B40 demonstration; not issued by any authority.</description>
+    </item>
+    <item>
+      <guid isPermaLink="false">RSN-2026-0143</guid>
+      <title>Red Sea, 15N 041E: drifting obstruction reported; keep a sharp lookout (SYNTHETIC)</title>
+      <pubDate>Sat, 17 Oct 2026 12:15:00 GMT</pubDate>
+      <description>SYNTHETIC notice to mariners for the B40 demonstration; not issued by any authority.</description>
+    </item>
+    <item>
+      <guid isPermaLink="false">RSN-2026-0144</guid>
+      <title>Bab el-Mandeb: notice RSN-2026-0141 remains in force (SYNTHETIC)</title>
+      <pubDate>Mon, 19 Oct 2026 04:45:00 GMT</pubDate>
+      <description>SYNTHETIC notice to mariners for the B40 demonstration; not issued by any authority.</description>
+    </item>
+  </channel>
+</rss>

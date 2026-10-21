@@ -45,6 +45,7 @@ export class RssConnector implements Connector {
       return { items: [], checkpoint: ctx.checkpoint ?? {}, bytesTransferred: 0, requestsMade: 0 };
     }
     ctx.budget.spendRequest();
+    await ctx.throttle?.({ endpoint }); // B40 §0 throttle (§AP): resolves when the request may go, throws to refuse it
 
     let body: Buffer;
     let transport: AcquiredItem['transport'];

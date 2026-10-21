@@ -1,0 +1,20 @@
+{
+  "name": "@eye/connector-sdk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The Eye connector SDK (CP-6 B40 §CR, F-P1-12): the connector contract, the connector-cell protocol eye-cell/1, the egress gateway client and the cell runtime. Dependency-free (node built-ins only); no build step — the published files are the files that run.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./cell-runtime": "./cell-runtime.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "cell-runtime.js"
+  ]
+}

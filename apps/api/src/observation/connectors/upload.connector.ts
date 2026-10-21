@@ -29,6 +29,10 @@ export interface UploadedFile {
      source); validated at the intake (upload.controller.ts). When given, documentTime is not. */
   documentTimeValue?: TimeValue | null;
   /* end B50 hd */
+  /* B40 va: the publisher's DETACHED signature the operator supplied with the file (base64 Ed25519, or a detached compact JWS) — carried as the
+     item's `x-publisher-signature` transport header for the authenticate stage (an SRC@v4 contract's declared scheme); never invented */
+  signature?: string | null;
+  /* end B40 va */
 }
 
 export class UploadConnector implements Connector {
@@ -66,7 +70,7 @@ export class UploadConnector implements Connector {
           methodRef: UPLOAD_METHOD_REF,
           endpoint: null,
           httpStatus: null,
-          retainedHeaders: {},
+          retainedHeaders: /* B40 va */ typeof f.signature === 'string' && f.signature !== '' ? { 'x-publisher-signature': f.signature } : /* end B40 va */ {},
           // No transport claim is available for an operator upload, so none is made.
           tlsVerified: null,
           originAllowlisted: null,

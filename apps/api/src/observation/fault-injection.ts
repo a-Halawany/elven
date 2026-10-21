@@ -80,6 +80,14 @@ export type InjectionPoint =
   | 'f41.after_noop_before_response'
   | 'f42.new_observation_before_obs_insert'
   | 'f44.after_shared_digest_resolved_before_commit'
+  /* B40 cr — CP-6 B40 §CR (0123_b40_x_cr; D17): the connector cell's egress gateway and its records. Each fails CLOSED: F54 the gateway
+     cannot start (no cell is spawned, no request leaves, the run fails); F55 the transfer receipts cannot be written (nothing the cell
+     framed is admitted — no item without its receipts); F56 the suspension / requalification cannot be written (the run fails closed
+     all the same, its refusal receipt recorded, and the reason says the requalification was NOT recorded). */
+  | 'f54.gateway_down'
+  | 'f55.receipt_write'
+  | 'f56.requalification_write'
+  /* end B40 cr */
   // CP-6 B11 — the archive executor's copy into the archive tier (0070 §2; D3): before the write, and after the rename before the port records the move
   | 'b11.archive_copy_partial'
   | 'b11.archive_after_copy_before_record'
@@ -93,7 +101,27 @@ export type InjectionPoint =
   // policy columns (memory.expected_items — arrival 1 on every withdrawn read) and the absent rows' versions (arrival 2, only when the log
   // names a row the projection lacks). Fires on the first arrival, or on the nth when armed with armNth(): a caller answers by the
   // withdrawn rule — 503 EYE-DEG-001 for a read, a degraded memory source for a briefing — never a raw failure.
-  | 'b21.memory_fallback_content_unavailable';
+  | 'b21.memory_fallback_content_unavailable'
+  /* B40 va — F47 (DESIGN D17): the authenticate stage's check (stages/authenticate-va.ts) faults before it answers — the item is recorded
+     `unavailable` (never verified, never silently trusted: payload content_authenticity unknown, provenance PARTIAL) */
+  | 'f47.authenticity_check'
+  /* end B40 va */
+  /* B40 in */
+  // CP-6 B40 §IN (DESIGN D2, D17; V03-T-276) — the inspection engines fail CLOSED: F48 the sandboxed content inspector crashes or times out
+  // (raised where the stage asks the sandbox; the stage answers `unavailable` → the item is quarantined inspection_unavailable); F49 the clamd
+  // engine is unavailable (raised where the adapter would connect; the same answer). Never a clean verdict.
+  | 'f48.inspector_crash_or_timeout'
+  | 'f49.clamd_unavailable'
+  /* end B40 in */
+  /* B40 ap — CP-6 B40 §AP (0123 §AP; D17): the acquisition-time policy's four boundaries, each failing CLOSED — the rate bucket unreachable
+     (F50 → the request refused `unavailable`), the Retry-After unreadable (F51 → `unparsed`: the contract's schedule applies, never sooner),
+     robots.txt not fetched (F52 → the run refused `unavailable` before any request), the residency profile not resolved (F53 → the run
+     refused `unavailable` before any request) */
+  | 'f50.rate_bucket_unavailable'
+  | 'f51.retry_after_parse'
+  | 'f52.robots_fetch_failure'
+  | 'f53.residency_lookup'
+  /* end B40 ap */;
 
 /** Raised by an armed injection point. Distinguishable from a real failure. */
 export class InjectedFault extends Error {

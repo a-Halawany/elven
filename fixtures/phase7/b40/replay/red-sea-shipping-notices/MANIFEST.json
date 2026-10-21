@@ -1,0 +1,23 @@
+{
+  "captured_by": "scripts/phase6/build-b40-fixtures.mjs",
+  "manifest_version": "v1",
+  "synthetic": true,
+  "set": "red-sea-shipping-notices",
+  "source_key": "red-sea-shipping-notices",
+  "note": "SYNTHETIC replay set (CP-6 B40 scene 1): four notices to mariners. The host resolves nowhere; nothing was captured from a publisher.",
+  "entries": [
+    {
+      "url": "https://notices.red-sea.synthetic.example/navarea-ix/rss",
+      "retrieved_at": "2026-10-20T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/rss+xml; charset=utf-8",
+        "last-modified": "Mon, 19 Oct 2026 04:45:00 GMT"
+      },
+      "file": "feed.xml",
+      "sha256": "17061d5a93778f578944b6c1a9e0a3d11c094e1156aa45ea0792c671217f167e",
+      "byte_length": 1792,
+      "acquisition_mode": "replay"
+    }
+  ]
+}

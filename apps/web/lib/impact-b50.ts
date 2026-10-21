@@ -167,3 +167,26 @@ export function triggerStateText(row: { state?: unknown; last_error?: unknown; c
   if (row.trigger_kind === 'human_challenge') return `${base}; ${row.closed_at ? 'challenge closed' : 'challenge open'}`;
   return base;
 }
+
+/* B40 res (R1) */
+/* ───────────────────────── the review binding of the two trigger commands (their ACTUAL server contracts) ───────────────────────── */
+
+/**
+ * Neither trigger command binds a version or a digest on the server: …/impact/triggers/:kind/record takes {objectType, objectId, reason,
+ * basis} (the port resolves the object's LATEST version itself and records it), and …/impact/triggers/:triggerId/close takes {reason}
+ * (the port checks the challenge is still open, the closer's role and that the closer did not open it). Neither carries an idempotency
+ * key. Each control is therefore bound by a CLIENT-SIDE PAYLOAD REVIEW of exactly what it sends (lib/authority-b81 payloadReviewState) —
+ * never a dummy digest, and never presented as a server-enforced version binding.
+ */
+export const TRIGGER_RECORD_CONTRACT = 'your role for this kind at the domain, that you are a named person, that the object is recorded in this domain (its latest version is recorded with the trigger) and the basis — no version you read is bound';
+export const CHALLENGE_CLOSE_CONTRACT = 'that the challenge is still open, that you hold knowledge owner or domain administrator here and did not open it, and the reason — no version you read is bound';
+
+/** What "Record the trigger" sends — the route (its kind) and the payload exactly as triggerPayload builds it. The review holds this. */
+export function triggerReviewPayload(f: TriggerForm): { action: string; payload: ReturnType<typeof triggerPayload> } {
+  return { action: `graph.impact.trigger.${f.kind}`, payload: triggerPayload(f) };
+}
+/** What "Close the challenge" sends — the route (the challenge) and its reason, trimmed as sent. The review holds this. */
+export function closeReviewPayload(triggerId: string, reason: string): { action: string; triggerId: string; payload: { reason: string } } {
+  return { action: 'graph.impact.trigger.close', triggerId, payload: { reason: reason.trim() } };
+}
+/* end B40 res */

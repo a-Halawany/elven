@@ -1,0 +1,20 @@
+{
+  "page": 1,
+  "next": "https://consignments.partner-logistics.synthetic.example/v1/consignments?page=2",
+  "items": [
+    {
+      "consignment_id": "NWL-7701",
+      "consignee": "NORDWERK ANTRIEBSTECHNIK GmbH (SYNTHETIC)",
+      "lane": "DJJIB→DEHAM→Regensburg",
+      "status": "in_transit",
+      "synthetic": true
+    },
+    {
+      "consignment_id": "NWL-7702",
+      "consignee": "NORDWERK ANTRIEBSTECHNIK GmbH (SYNTHETIC)",
+      "lane": "DJJIB→DEHAM→Regensburg",
+      "status": "transshipped",
+      "synthetic": true
+    }
+  ]
+}

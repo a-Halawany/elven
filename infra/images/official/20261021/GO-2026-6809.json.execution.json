@@ -1,0 +1,9 @@
+{
+  "argv": [
+    "curl",
+    "-fsSL",
+    "https://vuln.go.dev/ID/GO-2026-6809.json"
+  ],
+  "exit_code": 0,
+  "finished_at": "2026-10-21T16:36:01.688987+00:00"
+}

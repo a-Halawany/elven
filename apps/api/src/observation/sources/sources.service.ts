@@ -16,7 +16,7 @@ import type { EyeConfig } from '../../config/config.js';
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { ObservationReads, RegistryWrites } from '../observation.capabilities.js';
-import { validateSourceContract, type SourceContractV1 } from './source-contract.js';
+import { schemaRefOf, validateSourceContract, type SourceContractV1 } from './source-contract.js';
 import { SchedulerService, type ScheduleRuntime } from '../scheduling/scheduler.service.js';
 import { SourceCredentialStore } from './source-credentials.js';
 import { buildHeader } from '../../objects/header-builder.js';
@@ -156,8 +156,8 @@ export class SourcesService {
       // SRC@v2 (migration 0028) adds the optional backfill declaration and the
       // publisher's attribution notice; a contract using neither is still a v1.
       // B11 (migration 0070 §1): SRC@v3 adds the credential header; a contract not naming it is admitted as before.
-      schemaRef: c.security_and_operations.credential_header != null ? 'SRC@v3'
-        : c.security_and_operations.backfill !== undefined || c.authority_and_rights.attribution != null ? 'SRC@v2' : 'SRC@v1',
+      // B40 §0 (migration 0123 §0): SRC@v4 — a contract carrying the v4 blocks (or the adapter kind); v1–v3 are chosen exactly as before.
+      schemaRef: schemaRefOf(c),
       ontologyRef: null,
       correctionOf: null,
       supersedes: c.lifecycle.supersedes_version != null

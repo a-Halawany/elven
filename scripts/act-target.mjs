@@ -84,3 +84,22 @@ export function actTargetOrExit(env = process.env, opts = {}) {
     process.exit(2);
   }
 }
+
+/* B40 ap */
+/**
+ * CP-6 B40 §AP (DESIGN D10): a SYNTHETIC server an act, a candidate act, a walk or a harness starts (the loopback throttling publisher) must
+ * listen on a port that is NONE of the demonstration's live addresses — the live API and web (EYE_LIVE_API / EYE_LIVE_WEB, defaults :3401 /
+ * :3000), the demo's synthetic recipients and listeners (:3411, :2525, :3443–:3446), the database (:5432) and the demonstration's Redis
+ * (:6379, :6392). Refused with ActTargetRefused otherwise; purely local (no I/O), so it is checked BEFORE the server binds. Port 0 (an
+ * ephemeral port) is refused too: the caller binds, then asks again with the port it got, before any request is sent to it.
+ */
+export function assertSyntheticListener(port, env = process.env) {
+  const n = Number(port);
+  if (!Number.isInteger(n) || n < 1 || n > 65535) throw new ActTargetRefused(`a synthetic listener names its port (1–65535), not ${JSON.stringify(port)}`);
+  const live = [endpoint('EYE_LIVE_API', env.EYE_LIVE_API ?? DEFAULT_LIVE_API), endpoint('EYE_LIVE_WEB', env.EYE_LIVE_WEB ?? DEFAULT_LIVE_WEB)]
+    .map((e) => Number(e.key.split(':').pop()));
+  const reserved = new Set([...live, 3401, 3000, 3411, 2525, 3443, 3444, 3445, 3446, 5432, 6379, 6392]);
+  if (reserved.has(n)) throw new ActTargetRefused(`port ${n} is a live demonstration address (${[...reserved].sort((a, b) => a - b).join(', ')}); a synthetic server listens elsewhere`);
+  return n;
+}
+/* end B40 ap */

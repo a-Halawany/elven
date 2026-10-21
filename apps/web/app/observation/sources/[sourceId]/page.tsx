@@ -33,6 +33,8 @@ import { HEALTH_LEVELS, healthSeries } from '../../../../lib/chart-reads-b82';
 import { healthSpec, readExport } from '../../../../lib/chart-specs-b82';
 /* end B82 cf */
 /* B81 re: FileIntake's upload mode placed (CMP-040) — an upload source's evidence upload */ import { EvidenceUpload } from './upload-b81'; /* end B81 re */
+/* B40 rg: the registry, stewardship and the rights lifecycle (0123_b40_x_rg; the withdraw / restore control through the Command Review) */ import { RegistrySection } from './registry-b40'; /* end B40 rg */
+/* B40 integration: §AP's coverage panel (the acquisition policy's rate-limited and incomplete intervals, and its page) */ import { CoverageGapPanel } from '../../../../components/acquisition-policy'; /* end B40 integration */
 
 interface SourceDetail {
   source: Record<string, unknown>;
@@ -45,7 +47,7 @@ interface SourceDetail {
 }
 
 export default function SourceDetailPage() {
-  const { scope, isCollectionManager } = useShell();
+  const { scope, isCollectionManager, me } = useShell();
   const params = useParams<{ sourceId: string }>();
   const sourceId = params.sourceId;
   const [d, setD] = useState<SourceDetail | null>(null);
@@ -249,6 +251,21 @@ export default function SourceDetailPage() {
           />
         </div>
       </section>
+
+      {/* B40 rg — the registry record, the evaluation, the customer approval, stewardship, incidents and THE RIGHTS LIFECYCLE (DESIGN D4) */}
+      <div style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
+        <RegistrySection scope={scope} sourceId={sourceId} me={me} onChanged={load} />
+      </div>
+      {/* end B40 rg */}
+
+      {/* B40 integration — §AP's acquisition policy at the fold: the coverage gaps (rate-limited and incomplete intervals) and the policy's page;
+          §VA's publisher keys of this source on the authenticity register */}
+      <section aria-labelledby="acquisition-b40" style={{ marginBlockStart: 'var(--eye-space-16)' }}>
+        <h2 id="acquisition-b40" style={{ marginBlockStart: 0, fontSize: 'var(--eye-type-heading-3)' }}>Acquisition policy and authenticity</h2>
+        <CoverageGapPanel scope={scope} sourceId={sourceId} />
+        <p><Link href="/observation/authenticity">Open the authenticity register (the publisher keys of each source)</Link></p>
+      </section>
+      {/* end B40 integration */}
 
       {/* B81 re: an operator-upload source takes its evidence here (the connector's limits, the contract's media types, the disclosure first) */}
       {String(s['connector_kind']) === 'upload' && (

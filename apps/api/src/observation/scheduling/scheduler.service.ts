@@ -562,6 +562,30 @@ export class SchedulerService implements OnModuleDestroy {
     return job.id ?? null;
   }
 
+  /* B40 ap */
+  /**
+   * CP-6 B40 §AP (DP-10-005): THE CONTRACT'S RETRY of an SRC@v4 source — one collection, delayed by the contract's backoff (the hold the
+   * rate-limited interval recorded, never sooner than the publisher asked), on the domain's own queue, with a job id derived from the
+   * rate-limited record (a re-delivery of the same decision adds nothing). attempts: 1 — the contract's backoff IS the retry policy of a v4
+   * source; BullMQ's generic schedule (`attempts: 3`, exponential) stays for v1–v3 contracts only. The payload carries no authority (rule 3).
+   */
+  async enqueueContractRetry(tenantId: string, domainId: string, payload: CollectionJobPayload, delaySeconds: number, retryKey: string): Promise<string | null> {
+    if (!this.enabled) return null;
+    const job = await this.queue(tenantId, domainId).add('collect', payload, {
+      jobId: `ap-retry.${retryKey}`, delay: Math.max(1, Math.round(delaySeconds)) * 1000, attempts: 1, removeOnComplete: 500, removeOnFail: 200,
+    });
+    this.ensureWorker(tenantId, domainId);
+    return job.id ?? null;
+  }
+  /** TEST CONTROL ONLY: a delayed contract retry of the domain's queue (its delay and payload), or null. */
+  async contractRetryForTests(tenantId: string, domainId: string, retryKey: string): Promise<{ state: string; delay: number; data: CollectionJobPayload } | null> {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('contractRetryForTests is available only in the test runtime');
+    const job = await this.queue(tenantId, domainId).getJob(`ap-retry.${retryKey}`);
+    if (job === undefined || job === null) return null;
+    return { state: await job.getState(), delay: Number(job.opts.delay ?? 0), data: job.data };
+  }
+  /* end B40 ap */
+
   /**
    * What the runtime actually holds for a source: whether the deployment executes
    * schedules, whether THIS process runs a worker for the domain, and whether Redis

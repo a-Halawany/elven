@@ -1,0 +1,21 @@
+{
+  "captured_by": "scripts/phase6/build-b40-fixtures.mjs",
+  "manifest_version": "v1",
+  "synthetic": true,
+  "set": "nordwerk-logistics-consignments-1.0.0",
+  "note": "SYNTHETIC customer-written adapter package (CP-6 B40 scene 5). package_digest = sha256 over \"<file>\\0<sha256>\\n\" for the files sorted by name (the SDK's packageDigest; protocol eye-cell/1).",
+  "files": [
+    {
+      "file": "adapter.json",
+      "sha256": "f201217344aa1482ba0ed5e0324541446f7b748644656f2ce4cf43c859096441",
+      "byte_length": 448
+    },
+    {
+      "file": "index.mjs",
+      "sha256": "8a5e74363a9062eb4ac1655f2b63a91292be1553b0b05b123facc97297f6e31a",
+      "byte_length": 1317
+    }
+  ],
+  "package_digest": "25b6f8fb926877662bbdefbe584d3b9c42117facbc0e66dfc59d39926bac346d",
+  "planted_defect": "DEF-B40-05: follows tracking_detail_url to an unregistered host — the gateway blocks it, the run fails closed, the contract is suspended, requalification required"
+}

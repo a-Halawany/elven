@@ -1,0 +1,14 @@
+{
+  "page": 2,
+  "next": null,
+  "items": [
+    {
+      "consignment_id": "NWL-7703",
+      "consignee": "NORDWERK ANTRIEBSTECHNIK GmbH (SYNTHETIC)",
+      "lane": "DJJIB→DEHAM→Regensburg",
+      "status": "held_at_customs",
+      "synthetic": true,
+      "tracking_detail_url": "https://track.unregistered-carrier.synthetic.example/NWL-7703"
+    }
+  ]
+}

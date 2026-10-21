@@ -473,7 +473,7 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
      (held)` and `export rejected (held)` → 409. Placed at the head: the B36 publication 422 row and the unclassed `^export rejected` 422
      row below would shadow them. No earlier row raises these texts. */
   { match: /^object use rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
-  { match: /^object use rejected \((incomplete_header|unfit|integrity_failed|inaccessible|rights_expired)\)|^(publication|export) rejected \(held\)/i, status: 409, code: 'EYE_STA_002' }, // B82 §EV: integrity_failed, inaccessible, rights_expired
+  { match: /^object use rejected \((incomplete_header|unfit|integrity_failed|inaccessible|rights_expired|rights_withdrawn|authenticity_failed)\)|^(publication|export) rejected \(held\)/i, status: 409, code: 'EYE_STA_002' }, // B82 §EV: integrity_failed, inaccessible, rights_expired // B40 §0: rights_withdrawn (§RG, D4), authenticity_failed (§VA, D6)
   { match: /^object use rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B50 §0 */
   /* B50 (0120 §HD, §LC, §PV, §CI) — the parts' nouns, centrally, in the CLASS form `<noun> rejected (<class>): …` (anchored; ahead of the
@@ -496,6 +496,23 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(display truth|citation resolution|evidence segment|rights terms|geographic reference|trust verification|trust attestation|trust investigation) rejected \((state|stale|duplicate|held|expired)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(display truth|citation resolution|evidence segment|rights terms|geographic reference|trust verification|trust attestation|trust investigation) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B82 */
+  /* B40 (0123) — B40's nouns, centrally, in the CLASS form `<noun> rejected (<class>): …` (anchored), answered in the server's words:
+     §RG `source candidate`, `source evaluation`, `source approval`, `rights change`, `customer approval`, `stewardship`, `source incident`,
+     `source registry`; §VA `publisher key`, `evidence authenticity`, `evidence attribute`, `transformation rule`, `obligations`, `retention
+     register`; §IN `quarantine review`, `upload approval`, `inspection verdict`, `intake review`; §AP `acquisition policy`, `acquisition
+     authorization`; §CR `adapter package`, `egress receipt`, `connector suspension`, `requalification`, `credential rotation`, `connector cell`,
+     and §CR's `transition rejected (held)` on the existing transition route (a contract held for requalification — before this row the
+     generic 23514 conflict answered it and hid the server's words). 403 actor|authority|separation_of_duties|access (+ `retention register
+     (scope)`: the tenant register is read at TENANT scope — the caller's standing) · 404 unknown_* · 409 state|stale|duplicate|held|expired
+     (+ `source approval (unevaluated|evaluation|rights_withdrawn)` and `evidence attribute (unchanged)`: states of the record the steward
+     resolves) · 422 the rest. No earlier row starts with these nouns (`^stewardship case` is B107's; the unclassed `approval rejected:`,
+     `transition rejected:` and `rights update rejected:` texts keep their rows). The parts' local maps are removed (connector-cell.controller.ts
+     cellRefusal answers through this mapper); test/unit/observation-errors-b40.test.ts runs every text the folded 0123 raises through it. */
+  { match: /^(source candidate|source evaluation|source approval|rights change|customer approval|stewardship|source incident|source registry|publisher key|evidence authenticity|evidence attribute|transformation rule|obligations|retention register|quarantine review|upload approval|inspection verdict|intake review|acquisition policy|acquisition authorization|adapter package|egress receipt|connector suspension|requalification|credential rotation|connector cell) rejected \((actor|authority|separation_of_duties|access)\)|^retention register rejected \(scope\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(source candidate|source evaluation|source approval|rights change|customer approval|stewardship|source incident|source registry|publisher key|evidence authenticity|evidence attribute|transformation rule|obligations|retention register|quarantine review|upload approval|inspection verdict|intake review|acquisition policy|acquisition authorization|adapter package|egress receipt|connector suspension|requalification|credential rotation|connector cell) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(source candidate|source evaluation|source approval|rights change|customer approval|stewardship|source incident|source registry|publisher key|evidence authenticity|evidence attribute|transformation rule|obligations|retention register|quarantine review|upload approval|inspection verdict|intake review|acquisition policy|acquisition authorization|adapter package|egress receipt|connector suspension|requalification|credential rotation|connector cell) rejected \((state|stale|duplicate|held|expired)\)|^source approval rejected \((unevaluated|evaluation|rights_withdrawn)\)|^evidence attribute rejected \(unchanged\)|^transition rejected \(held\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(source candidate|source evaluation|source approval|rights change|customer approval|stewardship|source incident|source registry|publisher key|evidence authenticity|evidence attribute|transformation rule|obligations|retention register|quarantine review|upload approval|inspection verdict|intake review|acquisition policy|acquisition authorization|adapter package|egress receipt|connector suspension|requalification|credential rotation|connector cell) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B40 */
   /* B35 reopen (0101 §P3) — the reopen's NEW causes refuse in the CLASS form `reopen rejected (<class>): …` (unknown_challenge, unknown_appeal,
      unknown_change → 404; cause_state → 409; cause → 422). Placed at the head: the unclassed `^reopen rejected` 422 row below would shadow them.
      The older unclassed reopen texts keep their rows. */

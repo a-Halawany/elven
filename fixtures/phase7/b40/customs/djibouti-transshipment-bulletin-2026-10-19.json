@@ -1,0 +1,23 @@
+{
+  "bulletin_id": "DJ-CUS-2026-1019-07",
+  "issued_at": "2026-10-19T07:00:00Z",
+  "publisher": "Djibouti transshipment customs (SYNTHETIC)",
+  "hub": "Djibouti transshipment hub",
+  "synthetic": true,
+  "consignments": [
+    {
+      "reference": "NWL-7701",
+      "consignee": "NORDWERK ANTRIEBSTECHNIK GmbH (SYNTHETIC)",
+      "destination": "Regensburg",
+      "status": "cleared",
+      "cleared_at": "2026-10-18T16:20:00Z"
+    },
+    {
+      "reference": "NWL-7703",
+      "consignee": "NORDWERK ANTRIEBSTECHNIK GmbH (SYNTHETIC)",
+      "destination": "Regensburg",
+      "status": "held",
+      "hold_reason": "documentation review"
+    }
+  ]
+}

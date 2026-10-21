@@ -107,6 +107,7 @@ change. C15 stays blocking; no waiver is added.
 | **2026-10-09** | required `supply-chain` job of ci run **37930914426** (PR #82, the pinned trivy 0.73.0) + read-only registry reads of every official postgres 18 variant (`infra/images/official/20261009/registry/RESOLUTION.txt`) + govulncheck on both `gosu` binaries | `postgres@sha256:77f58511…`, `redis@sha256:38117873…` | `postgres:18-alpine` → `77f58511…` (THE SAME index, built 2026-09-17); every postgres 18 variant (alpine3.24, alpine3.23, trixie, bookworm; newest 2026-10-06) ships `gosu` 1.19 built with `go1.24.6` | none of the watched OS ones; **two new HIGH Go stdlib rows in `gosu`** on both platforms — CVE-2026-78667 (GO-2026-6609, `net/http`) and CVE-2026-97031 (GO-2026-6607, `crypto/tls`), affected `< 1.26.9` and `1.27.0`–`1.27.1`, published 2026-10-08 | C15 **FAILS** on 2 UNGOVERNED findings × 2 platforms; **no patched official image exists**, so no re-pin; govulncheck: both module-level only, `net/http` and `crypto/tls` not linked; SCX-0012/0013 **DRAFTED** for the owner (§8.6; dispositions §3.10), not in force |
 | **2026-10-09** (later) | the owner's approval of SCX-0012/0013 applied (dispositions §3.10), after the conditions were re-checked per architecture (`infra/images/official/20261009/govulncheck/BINDING.txt`); the gate's validation and matching code over the committed tree and the real scan reports; a real local run of the gate with the pinned scanners (§8.6) | unchanged | unchanged: `postgres:18-alpine` → `77f58511…` | the two gosu rows now governed: SCX-0012 (`linux/amd64`) and SCX-0013 (`linux/arm64`), NOT_AFFECTED, expiry 2026-11-05 | **8 records, 0 rejected; 48 findings, 0 unmatched, 0 unused**; the six re-bound to the document's new digest with nothing else changed |
 | **2026-10-10** | the `supply-chain` job on PR #84 (ci run **37988719052**, job 114017128886) + a local FINAL gate run on `1974624` with the pinned scanners (DB built 2026-10-09T19:06Z) | unchanged | unchanged: `postgres:18-alpine` → `77f58511…` | **a third Go stdlib row in `gosu`** on both platforms: CVE-2026-78669 (GO-2026-6611; `net/http`, `net/http/internal/http2`, `golang.org/x/net/http2`) | gate FAIL (50 findings, 8 records, 2 unmatched); the owner approved SCX-0014/0015 and a STANDING AUTHORIZATION for the 2026-10-08 release in these exact binaries (dispositions §3.11); application 1 applied after the per-architecture check (§3.12): **10 records, 0 rejected; 50 findings, 0 unmatched, 0 unused** |
+| **2026-10-21** | the `supply-chain` job on PR #95 (ci run **39575962445** at `02d4a13e`) + a local FINAL gate run on `46930e5` with the pinned scanners (DB built 2026-10-21T13:15Z) | unchanged | unchanged: `postgres:18-alpine` → `77f58511…` | **a fourth Go stdlib row in `gosu`** on both platforms, of a NEW release: CVE-2026-111943 (GO-2026-6809, published 2026-10-21; `crypto/x509`) | gate FAIL (52 findings, 10 records, 2 unmatched); outside the standing authorization (a different release), so to the owner; the owner approved SCX-0016/0017 narrowly for this advisory alone (dispositions §3.13), applied after an independent per-architecture qualification: **12 records, 0 rejected; 52 findings, 0 unmatched, 0 unused** |
 
 ## 8. The return to the official images (2026-09-22)
 
@@ -361,3 +362,25 @@ added (§3.12); the eight existing records re-bound to the document's new digest
 expected record list, count and newest approval date moved; the C15 trace fixture re-recorded from a real gate run.
 Of the release's other advisories, every one present in `gosu` qualifies except GO-2026-6604 (Windows-only, no
 finding, `os` linked); none is reported at HIGH/CRITICAL today, so none has a record.
+
+### 8.8 An advisory of a later Go release, and the owner's narrow approval (2026-10-21)
+
+**What fired.** PR #95's `supply-chain` job (ci run 39575962445 at `02d4a13e`) reported CVE-2026-111943 (GO-2026-6809,
+"Distrust compromised intermediate certificates in crypto/x509", published 2026-10-21) as UNGOVERNED HIGH on both
+postgres children. Still no patched official image; the upstream index is unchanged at `77f58511…`.
+
+**Why it went to the owner.** §3.11's standing authorization covers the 2026-10-08 release only; this advisory is of
+another release, so no record was added (`evidence/cp6/b40-c15-cve-2026-111943.txt`).
+
+**The owner's decision (2026-10-21).** NOT_AFFECTED for this advisory ALONE on the exact unchanged index, children and
+`gosu` digests, after fresh independent qualification of BOTH architectures; a failed qualification permits neither
+NOT_AFFECTED nor a substituted RISK_ACCEPTED; expiry 2026-11-05 and §4 kept; **§3.11 is not widened**.
+
+**Applied.** `infra/images/official/20261021/` (raw index and child manifests hashing to the pins, extraction per child,
+binary digests and ELF architectures, govulncheck v1.1.4 binary mode listing GO-2026-6809 module-level only, full
+`go tool nm` with positive controls and no `crypto/x509`), qualified a second time independently from a fresh
+extraction; SCX-0016 (`linux/amd64`) and SCX-0017 (`linux/arm64`) added (dispositions §3.13); the ten existing records
+re-bound to the document's new digest, nothing else changed; the controls' record list, count and run date moved;
+gitleaks §6c scopes the reports' upstream fix-commit URLs as §6/§6b do; the C15 trace fixture and
+`real-image-results.json` re-recorded from the local FINAL run on `46930e5`: **supply-chain gate PASS** — 12 records,
+0 rejected, 52 findings (26 `gosu` rows per postgres child, redis 0), 0 unmatched, 0 unused, cache unchanged.
