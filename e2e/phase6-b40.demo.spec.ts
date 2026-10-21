@@ -75,6 +75,18 @@ const noSidewaysScroll = async (page: Page, where: string) => {
   expect(sw, `${where}: the page scrolls sideways (${sw} > ${cw})`).toBeLessThanOrEqual(cw + 1);
 };
 /** Each width in its own signed-in context, closed after. */
+/** A TENANT-homed principal (the customs auditor) has no home domain: the shell offers the working-domain chooser first — the id is pasted
+ *  (B82's walk idiom). The act prints the domain as EYE_B40_DOMAIN. */
+async function chooseWorkingDomain(page: Page, path: string): Promise<void> {
+  await page.goto(path);
+  const chooser = page.getByRole('form', { name: 'Working domain' });
+  await baseExpect(chooser.or(page.locator('h1')).first()).toBeVisible();
+  if (await chooser.count() > 0) {
+    await chooser.getByLabel(/^Domain id/).fill(required('EYE_B40_DOMAIN'));
+    await chooser.getByRole('button', { name: 'Open this domain' }).click();
+  }
+}
+
 async function atEachWidth(browser: Browser, who: string, walk: (page: Page, vp: { width: number; height: number }) => Promise<void>): Promise<void> {
   for (const vp of WIDTHS) {
     const page = await signedIn(browser, who, vp);
@@ -142,7 +154,7 @@ test.describe('CP-6 B40 — the act\'s walk: discovery, rights impact, authentic
       await expect(page.getByRole('heading', { name: 'What rests on this source', level: 2 })).toBeVisible();
       const resting = page.getByRole('region', { name: 'Resting products and their owners' });
       await expect(resting).toBeVisible();
-      for (const kind of ['Forecast', 'Warning', 'Scenario']) await expect(resting.getByRole('cell', { name: kind, exact: true }).first()).toBeVisible();
+      for (const kind of ['Forecast', 'Warning', 'Scenario']) await expect(resting.getByRole('cell', { name: new RegExp(`(^|\\s)${kind}$`) }).first()).toBeVisible();   // the cell's name carries its column label ("Kind Forecast")
       await expect(page.getByRole('heading', { name: 'The withdrawal standing', level: 2 })).toBeVisible();
       if (WITHDRAWN) {
         await expect(page.getByText('Withdrawn by', { exact: true })).toBeVisible();
@@ -192,7 +204,7 @@ test.describe('CP-6 B40 — the act\'s walk: discovery, rights impact, authentic
     const SIGNED = required('EYE_B40_CUSTOMS_SIGNED_EVD');
     const TAMPERED = required('EYE_B40_CUSTOMS_TAMPERED_EVD');
     await atEachWidth(browser, CUSTOMS_AUDITOR, async (page, vp) => {
-      await page.goto(`/observation/evidence/${SIGNED}`);
+      await chooseWorkingDomain(page, `/observation/evidence/${SIGNED}`);
       await expect(page.getByRole('heading', { level: 1 })).toContainText(`Evidence ${SIGNED.slice(0, 8)}…`);
       await oneH1(page);
       await expect(page.getByRole('heading', { name: 'Authenticity — four separate concepts', level: 2 })).toBeVisible();
@@ -204,7 +216,7 @@ test.describe('CP-6 B40 — the act\'s walk: discovery, rights impact, authentic
       await noSidewaysScroll(page, `the signed bulletin at ${vp.width} px`);
       await shot(page, `05-bulletin-signed-${vp.width}`);
 
-      await page.goto(`/observation/evidence/${TAMPERED}`);
+      await chooseWorkingDomain(page, `/observation/evidence/${TAMPERED}`);
       await expect(page.getByRole('heading', { level: 1 })).toContainText(`Evidence ${TAMPERED.slice(0, 8)}…`);
       await oneH1(page);
       await expect(page.getByText(/^AUTHENTICITY FAILED: /).first()).toBeVisible();
