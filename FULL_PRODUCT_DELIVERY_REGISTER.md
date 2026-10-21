@@ -85,6 +85,7 @@ same checks and the hosted C15 job:
 | `sharp` override `'>=0.35.0'` → exact `0.35.4` (`pnpm-workspace.yaml`) | the first version carrying the libheif fix; a range is not a reviewed decision |
 | `multer` override exact `2.3.0` (`pnpm-workspace.yaml`) | the first version carrying all three DoS fixes; `@nestjs/platform-express` still declares 2.2.0 through 12.0.1 |
 | `vitest` 4.1.10 → 4.1.11 (all four workspaces) | GHSA-82fw-gwwq-j7x9 (moderate, development only); the audit receipt is exactly clean |
+| `vitest` 4.1.11 → 4.1.12 (all four workspaces; 2026-10-22, CP6 §B40.12) | GHSA-qxg6-89mg-rqv8 and GHSA-xp26-3454-mjgp in `@vitest/mocker` (moderate, development only), published after #95's green run; the audit receipt is exactly clean |
 | C17 bundled native stack: `@img/sharp-libvips-linux-x64` 1.3.2 → 1.3.3 | the sharp fix ships libvips 8.18.6 with 13 re-versioned bundled libraries; the code-owned contract, the legal-file table, the manifest (`scripts/gate/bundled-components.json`, re-pinned by digest), the vendored texts (`vendor/sharp-libvips/1.3.3/legal`, libffi's 2026 text re-fetched at v3.8.0, the rest byte-identical) and the source-offer record (build recipe v1.3.3 at commit `6e5971d3…`) were moved together; no disposition was added or weakened |
 
 Local receipts on the remediated closure: `pnpm audit --audit-level high` — no known vulnerabilities;
