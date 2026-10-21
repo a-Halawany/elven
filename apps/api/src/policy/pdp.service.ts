@@ -1334,6 +1334,10 @@ const BUNDLE_V1: Rule[] = [
       { role: 'platform_admin', atScope: 'PLATFORM' },
       { role: 'collection_manager', atScope: 'DOMAIN' },
     ],
+    // B40 integration (§AC's finding): releasing or rejecting a quarantined item is a named human's act — the PEP now refuses a non-human
+    // principal here too, not only the database port (`quarantine review rejected (actor)`, 0123 §IN). The expiry sweeper closes cases under
+    // observation.sweeper.reconcile, untouched.
+    obligations: [{ type: 'human_gate' }],
     requiresPurpose: true,
   },
   {

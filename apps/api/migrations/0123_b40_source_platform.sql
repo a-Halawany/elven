@@ -87,7 +87,8 @@ ALTER TABLE observation.custody_events DROP CONSTRAINT custody_events_event_chec
     'custody.acquired', 'custody.quarantined', 'custody.verified', 'custody.candidate_verified', 'custody.admitted', 'custody.finalized',
     'custody.retrieved', 'custody.tombstoned', 'custody.integrity_failed', 'custody.archived', 'custody.exported', 'custody.restored',
     'custody.delivered', 'custody.revocation_notified', 'custody.imported', 'custody.retrieval_degraded',
-    'custody.inspected', 'custody.authenticity_recorded'));   -- B40 §0 (§IN, §VA)
+    'custody.inspected', 'custody.authenticity_recorded',      -- B40 §0 (§IN, §VA)
+    'custody.quarantine_closed'));                            -- B40 integration (§AC's finding): a rejected or expired case's custody chain ends in its own entry
 
 -- the cause of an impact marker: a source's HEALTH (every marker so far, B22/B24/B28) or its RIGHTS (§RG's withdrawal, D4)
 ALTER TABLE observation.source_impact_markers ADD COLUMN cause text NOT NULL DEFAULT 'health' CONSTRAINT sim_cause CHECK (cause IN ('health', 'rights'));
@@ -4064,6 +4065,16 @@ BEGIN
       || CASE WHEN v_uploader IS NOT NULL THEN jsonb_build_object('uploaded_by', v_uploader, 'reviewer_is_not_uploader', true) ELSE '{}'::jsonb END   -- B40 in
       || CASE WHEN v_held THEN jsonb_build_object('upload_approval', v_approval.approval_id) ELSE '{}'::jsonb END,                                    -- B40 in
     p_correlation);
+
+  -- B40 integration (§AC's finding): a REJECTED or EXPIRED case's custody chain ends in its own entry (it stopped at custody.inspected): the
+  -- quarantined bytes' digest, the case, the outcome and the reason — never the content. A release ends in the admission's custody.admitted.
+  IF p_outcome IN ('rejected', 'expired') THEN                                                                                               -- B40 integration
+    PERFORM observation.append_custody(gen_random_uuid(), p_tenant, p_domain, v_row.manifest_id, NULL::uuid, NULL::uuid, v_row.source_id,  -- B40 integration
+      v_row.contract_version, v_row.run_id, 'custody.quarantine_closed',                                                                     -- B40 integration
+      'principal:' || coalesce(v_actor::text, 'unknown'), NULL::uuid, NULL, NULL,                                                          -- B40 integration (the reviewer, or the sweeper's principal on expiry)
+      'quarantine.close', '1.0.0', 'quarantine-close@1.0.0', v_row.content_digest, NULL::boolean,                                            -- B40 integration
+      jsonb_build_object('case_id', p_case_id, 'outcome', p_outcome, 'reason_class', v_row.reason_class, 'reason', p_reason), p_correlation);  -- B40 integration
+  END IF;                                                                                                                                    -- B40 integration
 
   -- B40 integration (§VA × §IN, DESIGN D6): releasing an UNKNOWN-SIGNER case records the authenticity of the EVD version the release admitted
   -- (the release's custody.admitted, written before this close in the same transaction) as `unavailable` — the signer was never established,

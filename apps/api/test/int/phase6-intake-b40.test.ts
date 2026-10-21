@@ -244,6 +244,21 @@ describe('§IN.2 active content, hidden instructions and macros are QUARANTINED 
     const ev = await one(sql`select details from observation.quarantine_events where case_id = ${String(docmCase['case_id'])}::uuid and event = 'case.rejected'`);
     expect(ev['details']).toMatchObject({ uploaded_by: uploader.principalId, reviewer_is_not_uploader: true });
     expect(await rows(sql`select 1 from observation.blob_manifests where manifest_id = ${String(docmCase['manifest_id'])}::uuid and vault = 'quarantine'`)).toHaveLength(1);
+    // B40 integration (§AC's finding): the rejected case's custody chain ends in its own entry — the digest, the case, the outcome; never content
+    const closing = await rows(sql`select actor, content_digest, details from observation.custody_events
+      where event = 'custody.quarantine_closed' and details ->> 'case_id' = ${String(docmCase['case_id'])}`);
+    expect(closing).toHaveLength(1);
+    expect(closing[0]).toMatchObject({ actor: `principal:${h.manager.principalId}`, content_digest: String(docmCase['content_digest']) });
+    expect(closing[0]!['details']).toMatchObject({ outcome: 'rejected', reason_class: 'macro' });
+  }, 60_000);
+
+  it('B40 integration (§AC\'s finding): an AGENT holding collection_manager is refused quarantine review at the PEP (human_gate) — not only by the database port', async () => {
+    const rc = new RestConnector();
+    const agent = await h.sessions.openRunSession({ agentId: h.fx.agentId, tenantId: h.fx.tenantId, domainId: h.fx.domainId, agentVersion: rc.version, codeDigest: rc.codeDigest, correlationId: uuidv7() });
+    const r = await refusal(review(agent, String(supplierCase['case_id']), 'discard', 'an agent reviewing (must be refused at the PEP)'));
+    expect(r.status).toBe(403);
+    expect(r.message).not.toMatch(/^quarantine review rejected \(actor\)/);                     // refused before the port: the PEP's human gate
+    expect((await one(sql`select state from observation.quarantine_current where case_id = ${String(supplierCase['case_id'])}::uuid`))['state']).toBe('open');
   }, 60_000);
   it('a COLLECTED item keeps today\'s rule (the hosted journey 8): the manager who triggered the run reviews its quarantine case', async () => {
     const v = await h.newVersion({ from: '2023-01-01', to: '2023-01-20', windowDays: 366 });
