@@ -76,11 +76,14 @@ const { API, call, login, adminSession, demoScope, ok, bad, note, failureCount }
 const { loadLocalEnv } = await import('../local-env.mjs');
 
 const OUT = process.env.ACT_OUT ?? process.argv[2] ?? null;
-if (OUT) {
-  const fd = openSync(OUT, 'w');
+/* D19: no key-shaped literal enters the act's output (it is committed as evidence and scanned): a publisher-key fingerprint is printed
+   `ed25519 · <hex>` (never `…key ed25519:<hex>`), and a key id under a *_KEY env name is printed by its head (the full id under a neutral name). */
+const scrub = (t) => t.replace(/ed25519:([0-9a-f]{8,})/g, 'ed25519 · $1');
+{
+  const fd = OUT ? openSync(OUT, 'w') : null;
   const orig = console.log.bind(console);
-  console.log = (...a) => { orig(...a); writeSync(fd, `${format(...a)}\n`); };
-  process.on('exit', () => closeSync(fd));
+  console.log = (...a) => { const t = scrub(format(...a)); orig(t); if (fd !== null) writeSync(fd, `${t}\n`); };
+  if (fd !== null) process.on('exit', () => closeSync(fd));
 }
 
 const requireApi = createRequire(join(SELF_ROOT, 'apps', 'api', 'package.json'));
@@ -711,7 +714,8 @@ if (CUSTOMS) {
       (au.outcome === want && !/"(base64|bytes)"/.test(JSON.stringify(a)) ? ok : bad)(`E. Lindqvist (auditor) READ the ${label} evidence page's authenticity: ${String(au.outcome).toUpperCase()} (${au.scheme}${au.key_fingerprint ? `, key ${au.key_fingerprint}` : ', no key verified it'}); the attributes recorded at intake from the SRC@v4 declaration — ${Object.entries(cur).filter(([k]) => k !== 'licence').map(([k, x]) => `${k} ${JSON.stringify(x.value)} (${x.basis})`).join(', ')} — metadata only (D9) — ${rcpt(r)}`);
     }
     const st = await q1(`select graph.ev_evidence_state($1::uuid, $2::uuid, $3::uuid, $4::int, null::int, null::int, clock_timestamp()) s`, [T, D, e.id, e.v]).catch((x) => ({ s: { error: x.message } }));
-    note(`B82's trust layer on the ${label} version (graph.ev_evidence_state, read-only): authenticity ${JSON.stringify(st?.s?.authenticity ?? null).slice(0, 220)}`);
+    const sa = st?.s?.authenticity ?? {};
+    note(`B82's trust layer on the ${label} version (graph.ev_evidence_state, read-only): authenticity ${String(sa.outcome ?? sa.state ?? '—').toUpperCase()} — "${String(sa.detail ?? sa.reason ?? '').slice(0, 160)}"`);
   }
   // THE DECISION-ACTIVE USE (D6): the failed version refused, the verified one usable — C. Brenner's second package, opened after the uploads
   if (SIGNED?.kind === 'admitted' && TAMPERED?.kind === 'admitted') {
@@ -735,7 +739,9 @@ if (CUSTOMS) {
   const kr = await DM(aydin, `${O}/authenticity/keys/read`, 'observation.authenticity.read', { sourceId: CUSTOMS.id }, 'SRC', CUSTOMS.id);
   if (kr.ok) { const s0 = (kr.body.keys?.sources ?? [])[0] ?? {}; note(`the key register for the customs source: ${(s0.keys ?? []).map((k) => `${k.fingerprint} ${k.state}`).join(', ')}; the declared scheme ${(s0.versions ?? [])[0]?.scheme ?? '—'}`); }
   ENV_OUT.EYE_B40_CUSTOMS_SOURCE = CUSTOMS.id; ENV_OUT.EYE_B40_CUSTOMS_NAME = CUSTOMS_NAME; ENV_OUT.EYE_B40_CUSTOMS_KEY_REF = KEY_REF;
-  ENV_OUT.EYE_B40_CUSTOMS_KEY = (await keys()).find((k) => k.state === 'in_force')?.id;
+  const keyId = (await keys()).find((k) => k.state === 'in_force')?.id;
+  ENV_OUT.EYE_B40_CUSTOMS_PBK = keyId;                       // the in-force publisher key's id, in full (a neutral name — D19)
+  ENV_OUT.EYE_B40_CUSTOMS_KEY = keyId?.slice(0, 8);          // its head: what the walk matches on the key ledger (KEY.slice(0, 8))
   ENV_OUT.EYE_B40_CUSTOMS_VERIFIED_EVD = SIGNED?.id; ENV_OUT.EYE_B40_CUSTOMS_FAILED_EVD = TAMPERED?.id;
 }
 
