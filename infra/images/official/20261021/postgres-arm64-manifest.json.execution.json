@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "docker",
+    "buildx",
+    "imagetools",
+    "inspect",
+    "--raw",
+    "postgres@sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f"
+  ],
+  "exit_code": 0,
+  "finished_at": "2026-10-21T16:35:42.857715+00:00"
+}

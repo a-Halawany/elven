@@ -48,12 +48,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-23",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
+      "evidence_sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
+          "sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8"
         },
         {
           "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
@@ -105,12 +105,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-23",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
+      "evidence_sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
+          "sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8"
         },
         {
           "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
@@ -159,12 +159,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-23",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
+      "evidence_sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
+          "sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8"
         },
         {
           "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
@@ -226,12 +226,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-23",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
+      "evidence_sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
+          "sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8"
         },
         {
           "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
@@ -313,12 +313,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-23",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
+      "evidence_sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
+          "sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8"
         },
         {
           "path": "infra/images/published/20260910/postgres-arm64.trivy.txt",
@@ -384,12 +384,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-23",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
+      "evidence_sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
+          "sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8"
         },
         {
           "path": "infra/images/published/20260910/postgres-arm64.trivy.txt",
@@ -451,12 +451,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-10-09",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
+      "evidence_sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
+          "sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8"
         },
         {
           "path": "infra/images/official/20261009/govulncheck/gosu-amd64.govulncheck.json",
@@ -550,12 +550,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-10-09",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
+      "evidence_sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
+          "sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8"
         },
         {
           "path": "infra/images/official/20261009/govulncheck/gosu-arm64.govulncheck.json",
@@ -652,12 +652,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-10-10",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
+      "evidence_sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
+          "sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8"
         },
         {
           "path": "infra/images/official/20261010/RUN.txt",
@@ -734,12 +734,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-10-10",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
+      "evidence_sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
+          "sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8"
         },
         {
           "path": "infra/images/official/20261010/RUN.txt",
@@ -791,6 +791,358 @@
         }
       ],
       "reviewed_on": "2026-10-10"
+    },
+    {
+      "id": "SCX-0016",
+      "advisory_ids": [
+        "CVE-2026-111943"
+      ],
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "scan_platform": "linux/amd64",
+      "package_name": "stdlib",
+      "package_purl": "pkg:golang/stdlib@v1.24.6",
+      "installed_version": "v1.24.6",
+      "severities": [
+        "HIGH"
+      ],
+      "result_target": "usr/local/bin/gosu",
+      "reason": "APPROVED BY THE OWNER 2026-10-21, narrow approval for CVE-2026-111943 / GO-2026-6809 alone (docs/SCANNER_DISPOSITIONS.md §3.13), NOT_AFFECTED — vulnerable_code_not_present. Exact unchanged linux/amd64 child sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66, gosu SHA-256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0 of the §3.11 index. Fresh independent govulncheck v1.1.4 binary analysis explicitly includes this advisory and reports ONLY module-level stdlib v1.24.6, no package or function trace. Successful symbol extraction detects known linked packages as positive controls but no crypto/x509, the advisory's sole affected package (Certificate.Verify). Index, child, extraction config, binary hash and ELF architecture independently verified. Evidence and per-architecture hashes: infra/images/official/20261021/QUALIFICATION.json. This one-advisory approval does not widen §3.11; expiry 2026-11-05, §4 restrictions unchanged.",
+      "compensating_controls": [
+        "Fresh per-architecture govulncheck explicitly includes GO-2026-6809 at module level only; successful symbol extraction with positive controls proves crypto/x509 absent, vulnerable_code_not_present.",
+        "Image index, platform child and extracted gosu digests independently match §3.11; any changed artifact requires a new governed review.",
+        "gosu runs once at container start and is neither a long-lived process nor a network listener; it serves no HTTP and speaks no HTTP/2.",
+        "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
+        "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004.",
+        "Existing monthly patch cadence and §4 exposure restrictions apply; expiry remains 2026-11-05. This approval covers only CVE-2026-111943 / GO-2026-6809."
+      ],
+      "owner": "founding-engineer",
+      "approver": "product-owner (direct narrowly scoped approval of 2026-10-21, docs/SCANNER_DISPOSITIONS.md §3.13; this advisory only)",
+      "evidence": "docs/SCANNER_DISPOSITIONS.md",
+      "approved_on": "2026-10-21",
+      "expires_on": "2026-11-05",
+      "evidence_sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8",
+      "classification": "NOT_AFFECTED",
+      "evidence_files": [
+        {
+          "path": "docs/SCANNER_DISPOSITIONS.md",
+          "sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8"
+        },
+        {
+          "path": "infra/images/official/20261010/RUN.txt",
+          "sha256": "4cdb85f91e5163298c3145b30755eba91b0e151a081fa39e2a0a1d606ec6acb2"
+        },
+        {
+          "path": "infra/images/official/20261010/advisories/GO-2026-6611.json",
+          "sha256": "5e89ac4314a24eac41111b71ef4544f22836c7b1baf48747e31c5c1d8282c3de"
+        },
+        {
+          "path": "infra/images/official/20261010/qualification/QUALIFICATION.txt",
+          "sha256": "94b4813ffeb98be29a68792eba7b3476c6f781efa04b0a62eec1a94f65adfa49"
+        },
+        {
+          "path": "infra/images/official/20261010/qualification/input-amd64.txt",
+          "sha256": "8e83a1c8b4c03f59befadaed1cf5da2434f64e609aa70cda6c71563a34344943"
+        },
+        {
+          "path": "infra/images/official/20261010/qualification/modules-amd64.txt",
+          "sha256": "88cae636607f3aa4c27bf86f7919c5b686590d49234565e042cd41a0fa2ca25f"
+        },
+        {
+          "path": "infra/images/official/20261010/qualification/nm-amd64.txt",
+          "sha256": "5178bf56d45e755e1247e296c91ff83436230d7d4ff9f15c87c93e890eb35114"
+        },
+        {
+          "path": "infra/images/official/20261009/govulncheck/gosu-amd64.govulncheck.json",
+          "sha256": "36f7429b19deef69b33732bd1762f7a2911461ecf13d6d47be7d8297d9d58f10"
+        },
+        {
+          "path": "infra/images/official/20261009/gosu/IDENTITY.txt",
+          "sha256": "b82da54791d6a4e39f233ddb6dc8935ad6daf14c964a890837d4bdb9f778353a"
+        },
+        {
+          "path": "infra/images/official/20260922/inventory/official-postgres-amd64.txt",
+          "sha256": "143d02e50a77e35806f4259d8e49b24c655eeb6b7c84ae169c4b61b771d3c942"
+        },
+        {
+          "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
+          "sha256": "e0f901da541867530146e9869337d17b1ac880c0d2f2312240f9d857bc830359"
+        },
+        {
+          "path": "infra/images/official/20260922/scans/scan-summary.txt",
+          "sha256": "939d2f54536fd6fcf328a4f38236c57eae18ac93ee0173b285e313bda7965fb9"
+        },
+        {
+          "path": "infra/images/official/20261021/GO-2026-6809.json",
+          "sha256": "67d1ae42283683c4fe26081cb174da0b945370d846ebafce11bedd14c1b99151"
+        },
+        {
+          "path": "infra/images/official/20261021/QUALIFICATION.json",
+          "sha256": "95a23c0f4771590b37174f35a3f380444b9abd26917dcfffb73dc7cc7dca74b9"
+        },
+        {
+          "path": "infra/images/official/20261021/RUN.txt",
+          "sha256": "298d3e82140ae1c638c7ee23992d8aabe0efb2da0a7879a7a9a15dd58532a8ff"
+        },
+        {
+          "path": "infra/images/official/20261021/analysis-runtime.txt",
+          "sha256": "73918becf5bc914da78d512e39235857f1239fcc43d0b6fb2ada7670bfb33555"
+        },
+        {
+          "path": "infra/images/official/20261021/analysis-runtime.txt.execution.json",
+          "sha256": "51508ac6afe94a4312ae35781c5cf5453a790c98c2b7cc5ef3889d4d4c804af2"
+        },
+        {
+          "path": "infra/images/official/20261021/extraction-amd64.json",
+          "sha256": "28d3824ed23b3679f1e03975dc834b32201473c3ee62577b4618edb7b30c186e"
+        },
+        {
+          "path": "infra/images/official/20261021/extraction-amd64.json.execution.json",
+          "sha256": "73d6544c48da93cd883bebfa8fe9e1235cbe8a7fb1e531231e6535b98e0c71c1"
+        },
+        {
+          "path": "infra/images/official/20261021/extraction-amd64.json.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "infra/images/official/20261021/gosu-amd64.govulncheck.exit",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        },
+        {
+          "path": "infra/images/official/20261021/gosu-amd64.govulncheck.json",
+          "sha256": "94495d09ceb8f549e25e749a94f6851819409d6959c93b428c66d8cb8283b19e"
+        },
+        {
+          "path": "infra/images/official/20261021/gosu-amd64.govulncheck.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "infra/images/official/20261021/govulncheck-build.txt",
+          "sha256": "939031a11083655731020550d7ee738b2d301aa58d760c305047b481623c42aa"
+        },
+        {
+          "path": "infra/images/official/20261021/govulncheck-sha256.txt",
+          "sha256": "e61af8c549495fd57a72a070dd1325a75e2839d0e23b6f659d75b66e97cab98c"
+        },
+        {
+          "path": "infra/images/official/20261021/identity-amd64.json",
+          "sha256": "4b70d689521685bc5da9cc78f6599483e34fc775b9c552af7531df93d5d0d93b"
+        },
+        {
+          "path": "infra/images/official/20261021/input-amd64.txt",
+          "sha256": "f821e26c71a6f62ad03dfbdb4f131e8198324ebc55ce7e678074a6e430c6d705"
+        },
+        {
+          "path": "infra/images/official/20261021/modules-amd64.txt",
+          "sha256": "92ece41723f4a2dafedb81e3d3e58c7261e0f6883c74ac7553f06bc4d59c2b68"
+        },
+        {
+          "path": "infra/images/official/20261021/nm-amd64.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "infra/images/official/20261021/nm-amd64.txt",
+          "sha256": "5178bf56d45e755e1247e296c91ff83436230d7d4ff9f15c87c93e890eb35114"
+        },
+        {
+          "path": "infra/images/official/20261021/postgres-amd64-manifest.json",
+          "sha256": "d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66"
+        },
+        {
+          "path": "infra/images/official/20261021/postgres-amd64-manifest.json.execution.json",
+          "sha256": "c954515a37fb29b3a8596c6dace23254a15ce8ae8bd78762322a4d8544f443e0"
+        },
+        {
+          "path": "infra/images/official/20261021/postgres-amd64-manifest.json.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "infra/images/official/20261021/postgres-index.json",
+          "sha256": "77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873"
+        },
+        {
+          "path": "infra/images/official/20261021/postgres-index.json.execution.json",
+          "sha256": "06b0a4bcee90a8e6c086e543c241aef8c5df74a838dba0fb936e00e242bf7615"
+        }
+      ],
+      "reviewed_on": "2026-10-21"
+    },
+    {
+      "id": "SCX-0017",
+      "advisory_ids": [
+        "CVE-2026-111943"
+      ],
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "scan_platform": "linux/arm64",
+      "package_name": "stdlib",
+      "package_purl": "pkg:golang/stdlib@v1.24.6",
+      "installed_version": "v1.24.6",
+      "severities": [
+        "HIGH"
+      ],
+      "result_target": "usr/local/bin/gosu",
+      "reason": "APPROVED BY THE OWNER 2026-10-21, narrow approval for CVE-2026-111943 / GO-2026-6809 alone (docs/SCANNER_DISPOSITIONS.md §3.13), NOT_AFFECTED — vulnerable_code_not_present. Exact unchanged linux/arm64 child sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f, gosu SHA-256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44 of the §3.11 index. Fresh independent govulncheck v1.1.4 binary analysis explicitly includes this advisory and reports ONLY module-level stdlib v1.24.6, no package or function trace. Successful symbol extraction detects known linked packages as positive controls but no crypto/x509, the advisory's sole affected package (Certificate.Verify). Index, child, extraction config, binary hash and ELF architecture independently verified. Evidence and per-architecture hashes: infra/images/official/20261021/QUALIFICATION.json. This one-advisory approval does not widen §3.11; expiry 2026-11-05, §4 restrictions unchanged.",
+      "compensating_controls": [
+        "Fresh per-architecture govulncheck explicitly includes GO-2026-6809 at module level only; successful symbol extraction with positive controls proves crypto/x509 absent, vulnerable_code_not_present.",
+        "Image index, platform child and extracted gosu digests independently match §3.11; any changed artifact requires a new governed review.",
+        "gosu runs once at container start and is neither a long-lived process nor a network listener; it serves no HTTP and speaks no HTTP/2.",
+        "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
+        "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004.",
+        "Existing monthly patch cadence and §4 exposure restrictions apply; expiry remains 2026-11-05. This approval covers only CVE-2026-111943 / GO-2026-6809."
+      ],
+      "owner": "founding-engineer",
+      "approver": "product-owner (direct narrowly scoped approval of 2026-10-21, docs/SCANNER_DISPOSITIONS.md §3.13; this advisory only)",
+      "evidence": "docs/SCANNER_DISPOSITIONS.md",
+      "approved_on": "2026-10-21",
+      "expires_on": "2026-11-05",
+      "evidence_sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8",
+      "classification": "NOT_AFFECTED",
+      "evidence_files": [
+        {
+          "path": "docs/SCANNER_DISPOSITIONS.md",
+          "sha256": "915e41eaebf8ce7d9c1ccd461d544f345efb7c8bae2962d08b0695efd84a49f8"
+        },
+        {
+          "path": "infra/images/official/20261010/RUN.txt",
+          "sha256": "4cdb85f91e5163298c3145b30755eba91b0e151a081fa39e2a0a1d606ec6acb2"
+        },
+        {
+          "path": "infra/images/official/20261010/advisories/GO-2026-6611.json",
+          "sha256": "5e89ac4314a24eac41111b71ef4544f22836c7b1baf48747e31c5c1d8282c3de"
+        },
+        {
+          "path": "infra/images/official/20261010/qualification/QUALIFICATION.txt",
+          "sha256": "94b4813ffeb98be29a68792eba7b3476c6f781efa04b0a62eec1a94f65adfa49"
+        },
+        {
+          "path": "infra/images/official/20261010/qualification/input-arm64.txt",
+          "sha256": "132d9dc3cc759e1a328201e3f481c72e8becc44cd353cb5afb367f959c115a5a"
+        },
+        {
+          "path": "infra/images/official/20261010/qualification/modules-arm64.txt",
+          "sha256": "d54fa6f960e7d5a6aff58cc635e04e2fd374eb63f13a025227bbcd7525623c14"
+        },
+        {
+          "path": "infra/images/official/20261010/qualification/nm-arm64.txt",
+          "sha256": "9c9160a614546cf8be50eb30c8cd3b546fdeae8199d66879ed239bf551f111e3"
+        },
+        {
+          "path": "infra/images/official/20261009/govulncheck/gosu-arm64.govulncheck.json",
+          "sha256": "36f7429b19deef69b33732bd1762f7a2911461ecf13d6d47be7d8297d9d58f10"
+        },
+        {
+          "path": "infra/images/official/20261009/gosu/IDENTITY.txt",
+          "sha256": "b82da54791d6a4e39f233ddb6dc8935ad6daf14c964a890837d4bdb9f778353a"
+        },
+        {
+          "path": "infra/images/official/20260922/inventory/official-postgres-arm64.txt",
+          "sha256": "9762a9301c23bfc75894afbe859f5cf5a8f5e782d5638fa3e762e9c510e60733"
+        },
+        {
+          "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
+          "sha256": "e0f901da541867530146e9869337d17b1ac880c0d2f2312240f9d857bc830359"
+        },
+        {
+          "path": "infra/images/official/20260922/scans/scan-summary.txt",
+          "sha256": "939d2f54536fd6fcf328a4f38236c57eae18ac93ee0173b285e313bda7965fb9"
+        },
+        {
+          "path": "docs/images/ARM64_RISK_DECISION.md",
+          "sha256": "6b6518d03ddc01c86deb7644fa638a6a2cea149bcba6987f14352e18ae513aca"
+        },
+        {
+          "path": "infra/images/official/20261021/GO-2026-6809.json",
+          "sha256": "67d1ae42283683c4fe26081cb174da0b945370d846ebafce11bedd14c1b99151"
+        },
+        {
+          "path": "infra/images/official/20261021/QUALIFICATION.json",
+          "sha256": "95a23c0f4771590b37174f35a3f380444b9abd26917dcfffb73dc7cc7dca74b9"
+        },
+        {
+          "path": "infra/images/official/20261021/RUN.txt",
+          "sha256": "298d3e82140ae1c638c7ee23992d8aabe0efb2da0a7879a7a9a15dd58532a8ff"
+        },
+        {
+          "path": "infra/images/official/20261021/analysis-runtime.txt",
+          "sha256": "73918becf5bc914da78d512e39235857f1239fcc43d0b6fb2ada7670bfb33555"
+        },
+        {
+          "path": "infra/images/official/20261021/analysis-runtime.txt.execution.json",
+          "sha256": "51508ac6afe94a4312ae35781c5cf5453a790c98c2b7cc5ef3889d4d4c804af2"
+        },
+        {
+          "path": "infra/images/official/20261021/extraction-arm64.json",
+          "sha256": "02fba86c5ffb512ca3784f363add6fc57713c8426a48dc1df8fb648559cf3aae"
+        },
+        {
+          "path": "infra/images/official/20261021/extraction-arm64.json.execution.json",
+          "sha256": "041411007db8d8b127ae8222427f3bde9dd4f03a32ac13378ad7d18a36cbc7ec"
+        },
+        {
+          "path": "infra/images/official/20261021/extraction-arm64.json.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "infra/images/official/20261021/gosu-arm64.govulncheck.exit",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        },
+        {
+          "path": "infra/images/official/20261021/gosu-arm64.govulncheck.json",
+          "sha256": "bfde0a9e04941c9dc534a1393c9e2476a0009771456fe3a16ce4e5bb40a6d9a4"
+        },
+        {
+          "path": "infra/images/official/20261021/gosu-arm64.govulncheck.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "infra/images/official/20261021/govulncheck-build.txt",
+          "sha256": "939031a11083655731020550d7ee738b2d301aa58d760c305047b481623c42aa"
+        },
+        {
+          "path": "infra/images/official/20261021/govulncheck-sha256.txt",
+          "sha256": "e61af8c549495fd57a72a070dd1325a75e2839d0e23b6f659d75b66e97cab98c"
+        },
+        {
+          "path": "infra/images/official/20261021/identity-arm64.json",
+          "sha256": "aae0209a207f5a626a0bd804ee309c5f8d578b69eed09656232d5c93bffa0414"
+        },
+        {
+          "path": "infra/images/official/20261021/input-arm64.txt",
+          "sha256": "9519228f246232bb0bc995fc6dee54151f0c9376a7f8b8280eba45b1de937d21"
+        },
+        {
+          "path": "infra/images/official/20261021/modules-arm64.txt",
+          "sha256": "b07065ab5c36e035221683940e816359d6de23bb37c3249dd88c34719c461e82"
+        },
+        {
+          "path": "infra/images/official/20261021/nm-arm64.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "infra/images/official/20261021/nm-arm64.txt",
+          "sha256": "9c9160a614546cf8be50eb30c8cd3b546fdeae8199d66879ed239bf551f111e3"
+        },
+        {
+          "path": "infra/images/official/20261021/postgres-arm64-manifest.json",
+          "sha256": "89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f"
+        },
+        {
+          "path": "infra/images/official/20261021/postgres-arm64-manifest.json.execution.json",
+          "sha256": "f14edc5e3a2c41a0d48480ec843cb1b4d211c65fe4e3122d1ccc5c8cd16e3216"
+        },
+        {
+          "path": "infra/images/official/20261021/postgres-arm64-manifest.json.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "infra/images/official/20261021/postgres-index.json",
+          "sha256": "77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873"
+        },
+        {
+          "path": "infra/images/official/20261021/postgres-index.json.execution.json",
+          "sha256": "06b0a4bcee90a8e6c086e543c241aef8c5df74a838dba0fb936e00e242bf7615"
+        }
+      ],
+      "reviewed_on": "2026-10-21"
     }
   ],
   "evidence_binding": "Every record cites docs/SCANNER_DISPOSITIONS.md and binds it by exact SHA-256. The gate recomputes the digest from the tracked bytes on every run, so a one-byte edit invalidates the records until re-approved. The previous references to PHASE0_EVIDENCE.md were a general gate summary that did not identify these findings, digests, platform or scanner identity, and so could not be reviewed as the basis for these decisions.",

@@ -1,0 +1,8 @@
+{
+  "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+  "platform": "linux/arm64",
+  "child_digest": "sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f",
+  "binary_path": "/usr/local/bin/gosu",
+  "binary_sha256": "3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44",
+  "binary_bytes": 1830424
+}

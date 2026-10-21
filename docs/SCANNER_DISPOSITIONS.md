@@ -1171,6 +1171,22 @@ postgres child — governed by the records naming that child's platform (SCX-000
 SCX-0005 6, SCX-0012 2, SCX-0014 1 on `d8703cd7…`; SCX-0010 21, SCX-0011 1, SCX-0013 2, SCX-0015 1 on `89f74717…`);
 0 unmatched, 0 unused, 0 out of scope; redis 0.
 
+### 3.13 SCX-0016 / SCX-0017 — CVE-2026-111943 (GO-2026-6809), narrow approval of 2026-10-21
+
+**Owner's decision.** Approve a narrowly scoped NOT_AFFECTED disposition for this advisory only, limited to the exact unchanged image index, platform children and gosu binary digests in §3.11, after fresh independent qualification of BOTH architectures. A successful scanner exit or missing advisory entry alone is insufficient; failed qualification permits neither NOT_AFFECTED nor a substitute RISK_ACCEPTED. Keep expiry **2026-11-05** and existing exposure restrictions. This decision **does not widen the standing authorization to future releases**; §3.11 remains limited to the 2026-10-08 release.
+
+**Observed finding.** PR #95 ci run 39575962445 at `02d4a13e` reports 52 image findings, 10 records and two unmatched HIGH rows. Each new record matches only `CVE-2026-111943`, image `postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873`, its named platform, package `stdlib`, PURL `pkg:golang/stdlib@v1.24.6`, installed version `v1.24.6`, severity `HIGH`, result target `usr/local/bin/gosu`.
+
+| Record | Platform | Child SHA-256 | gosu SHA-256 | Classification / justification | Expiry |
+|---|---|---|---|---|---|
+| SCX-0016 | linux/amd64 | d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66 | 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0 | NOT_AFFECTED / vulnerable_code_not_present | 2026-11-05 |
+| SCX-0017 | linux/arm64 | 89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f | 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44 | NOT_AFFECTED / vulnerable_code_not_present | 2026-11-05 |
+
+**Independent evidence before application.** `infra/images/official/20261021/RUN.txt` explains the method; `QUALIFICATION.json` contains each architecture's checks and evidence hashes. Fresh govulncheck v1.1.4 binary-mode JSON explicitly contains GO-2026-6809 and its CVE alias on EACH architecture, with a module-only stdlib v1.24.6 trace and no package/function trace. The Go database is current to 2026-10-21T00:27:29Z. Full `go tool nm` extraction succeeds separately, finds the positive controls os (46), fmt (56), syscall (79), github.com/moby/sys/user (15) and golang.org/x/sys/unix (13) in EACH binary, and finds zero crypto/x509 symbols. The sole affected package crypto/x509 (Certificate.Verify) is therefore absent. Raw index and child manifests hash to the pins, each extraction container's image config matches its child manifest, and both measured binary hashes and ELF architectures match. The analysis runtime image, executable provenance, commands and exits are retained.
+
+**Restrictions.** §4 applies in full: local-only development, PostgreSQL on loopback, gosu used only to drop privileges and exec at startup. No production or widened exposure is approved. A changed image, child or binary requires a new governed review. Existing records retain their scope, classification, approval/review dates and expiry; only their binding to this updated document is refreshed. SCX-0016/0017 are new target-specific records, not additions to SCX-0002/0003 or to §3.11's application log.
+
+
 ## 4. Prohibited exposure
 
 These dispositions are valid **only** for the Phase 0 LOCAL-ONLY development profile

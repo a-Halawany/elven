@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "docker",
+    "run",
+    "--rm",
+    "-v",
+    "/Users/halawany/Documents/Codex/2026-10-21/approve-a-narrowly-scoped-not-affected/work:/input:ro",
+    "-v",
+    "/Users/halawany/work/personal/mohammed/new_project/.claude/worktrees/b40/infra/images/official/20261021:/out",
+    "golang@sha256:699337d620559a59b4a2bb298ad59611e535d2ee755a34cf2d2a98f37578dc80",
+    "sh",
+    "-c",
+    "set -eu\nexport GOTOOLCHAIN=local\ngo version\ngo install golang.org/x/vuln/cmd/govulncheck@v1.1.4\ngo version -m /go/bin/govulncheck > /out/govulncheck-build.txt\nsha256sum /go/bin/govulncheck > /out/govulncheck-sha256.txt\nfor arch in amd64 arm64; do\n  sha256sum /input/gosu-$arch > /out/input-$arch.txt\n  go version -m /input/gosu-$arch > /out/modules-$arch.txt\n  go tool nm /input/gosu-$arch > /out/nm-$arch.txt 2>/out/nm-$arch.stderr\n  set +e\n  /go/bin/govulncheck -mode=binary -format=json /input/gosu-$arch > /out/gosu-$arch.govulncheck.json 2>/out/gosu-$arch.govulncheck.stderr\n  status=$?\n  set -e\n  echo \"$status\" > /out/gosu-$arch.govulncheck.exit\ndone\n"
+  ],
+  "exit_code": 0,
+  "finished_at": "2026-10-21T16:36:01.437189+00:00"
+}

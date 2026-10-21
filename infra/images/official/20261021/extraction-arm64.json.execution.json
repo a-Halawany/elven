@@ -1,0 +1,9 @@
+{
+  "argv": [
+    "docker",
+    "inspect",
+    "dc158cbca15f04486bb20c565366f33ac667855b7fbbf4dabd22f66e8ad4f407"
+  ],
+  "exit_code": 0,
+  "finished_at": "2026-10-21T16:35:42.918140+00:00"
+}
