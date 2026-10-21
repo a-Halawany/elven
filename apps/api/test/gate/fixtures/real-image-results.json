@@ -1,6 +1,9 @@
 {
   "0": {
-    "OS": null,
+    "OS": {
+      "Family": "alpine",
+      "Name": "3.24.2"
+    },
     "Results": [
       {
         "Target": "postgres@sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66 (alpine 3.24.2)",
@@ -6185,7 +6188,10 @@
     ]
   },
   "1": {
-    "OS": null,
+    "OS": {
+      "Family": "alpine",
+      "Name": "3.23.6"
+    },
     "Results": [
       {
         "Target": "redis@sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23 (alpine 3.23.6)",
@@ -7513,7 +7519,10 @@
     ]
   },
   "2": {
-    "OS": null,
+    "OS": {
+      "Family": "alpine",
+      "Name": "3.24.2"
+    },
     "Results": [
       {
         "Target": "postgres@sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f (alpine 3.24.2)",
@@ -13697,7 +13706,10 @@
     ]
   },
   "3": {
-    "OS": null,
+    "OS": {
+      "Family": "alpine",
+      "Name": "3.23.6"
+    },
     "Results": [
       {
         "Target": "redis@sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44 (alpine 3.23.6)",
