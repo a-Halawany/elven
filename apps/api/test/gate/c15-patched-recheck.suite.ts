@@ -488,10 +488,10 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
     const m = await import(/* @vite-ignore */ join(LIB, 'scanner-exclusions.mjs'));
     const doc = readExclusions();
     const run = (d: unknown) => m.validateRecords(d, {
-      // 2026-10-10: the day the owner approved SCX-0014/0015 (docs/SCANNER_DISPOSITIONS.md §3.12),
-      // the newest approval (SCX-0012/0013 2026-10-09, §3.10; the six re-issues 2026-09-23, §3.9); a
+      // 2026-10-21: the day the owner approved SCX-0016/0017 (docs/SCANNER_DISPOSITIONS.md §3.13),
+      // the newest approval (SCX-0014/0015 2026-10-10, §3.12; SCX-0012/0013 2026-10-09, §3.10); a
       // record approved after the run date is correctly refused, so the run date is the newest approval.
-      runDate: '2026-10-10', root: REPO, isTracked: () => true,
+      runDate: '2026-10-21', root: REPO, isTracked: () => true,
       readEvidence: (rel: string) => { try { return readFileSync(join(REPO, rel)); } catch { return null; } },
     }).problems;
     expect(run(doc)).toEqual([]);
@@ -531,7 +531,7 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
       // approval was given, not the day the re-issues were drafted (2026-09-22) and not the dates
       // of the previous approvals (2026-09-10 amd64, 2026-09-11 arm64).
       // SCX-0012/0013 are new records, approved by the owner on 2026-10-09 (§3.10); SCX-0014/0015 on
-      // 2026-10-10 (§3.12).
+      // 2026-10-10 (§3.12); SCX-0016/0017 on 2026-10-21 (§3.13).
       const approved = r.id === 'SCX-0012' || r.id === 'SCX-0013' ? '2026-10-09'
         : r.id === 'SCX-0016' || r.id === 'SCX-0017' ? '2026-10-21'
         : r.id === 'SCX-0014' || r.id === 'SCX-0015' ? '2026-10-10' : '2026-09-23';

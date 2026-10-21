@@ -245,13 +245,14 @@ export function buildPassingR34Evidence(
    * re-issues for the OFFICIAL postgres index the compose file returned to on 2026-09-22 (all six
    * approved 2026-09-23, docs/SCANNER_DISPOSITIONS.md §3.9) moved it to 2026-09-23; the owner's
    * approval of SCX-0012/0013 (approved 2026-10-09, §3.10) moved it to 2026-10-09; SCX-0014/0015
-   * (approved 2026-10-10, §3.12) move it to 2026-10-10.
+   * (approved 2026-10-10, §3.12) moved it to 2026-10-10; SCX-0016/0017 (the owner's narrow approval
+   * of 2026-10-21, §3.13) move it to 2026-10-21.
    *
    * The literal is deliberate. It has to be changed on purpose whenever a disposition is added,
    * which is exactly the coupling that makes a stale fixture fail loudly instead of quietly
    * verifying an evidence package against records it never saw.
    */
-  const runDate = '2026-10-10';
+  const runDate = '2026-10-21';
   const { contract, derived } = derivationFor(repo, runDate);
   const candidateManifest = candidateSourceManifest(repo);
   const expectedSha = derived.meta.sourceSha as string;
