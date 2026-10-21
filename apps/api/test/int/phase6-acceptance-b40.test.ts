@@ -52,7 +52,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { sql } from 'kysely';
 import { uuidv7 } from 'uuidv7';
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -92,6 +92,11 @@ import { BASE, Phase4Harness, uploadContract } from './phase4-helpers.js';
 import { inCommitContext } from './phase1-helpers.js';
 import { bootDecisionWorld, decisionCalls, type DecisionWorld } from './phase6-fixtures.js';
 import { B40_FILES, eicarTestBytes, evaluateForApproval, fixtureBytes, publisherKeyPair, signDetached, srcV4Contract, tamperedCopy, v4Blocks } from './phase6-b40-fixtures.js';
+
+// The publication path signs with the deployment's executive key: the harness binds its OWN, generated at run time (never a key
+// literal; the B36 publishing harness's idiom) — the hosted runner carries no demonstration key (ci 39567862982: `signature rejected
+// (unbound)` reached before the rights refusal this file proves).
+process.env['EYE_EXECUTIVE_SIGNING_KEY_DEMO'] = generateKeyPairSync('ed25519').privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64');
 
 // The B6 rule: the scheduler (the outbox publisher's routing, the subscription worker, the collection queue) is enabled BEFORE the boot.
 const ENV_BEFORE = Object.fromEntries(['EYE_SCHEDULER_ENABLED', 'EYE_CONNECTOR_PER_SOURCE_CONCURRENCY', 'EYE_VAULT_QUARANTINE_ROOT', 'EYE_VAULT_EVIDENCE_ROOT',
@@ -588,11 +593,13 @@ describe('J9.4 · UNAUTHORIZED ROLE — the PDP and the human gate', () => {
     expect((await refusal(rights(hoffmann, feed.sourceId, { contractVersion: 1, operation: 'withdraw', reason: 'an analyst (SYNTHETIC)', evidence: 'none (SYNTHETIC)' }))).status).toBe(403);
     expect((await refusal(customer(dvorak, feed.sourceId, { contractVersion: 1, decision: 'approve', scopeStatement: 'a scope (SYNTHETIC)', reason: 'a reason (SYNTHETIC)', claim: 'construction' }))).status).toBe(403);
     expect((await refusal(propose(w.owner, { name: 'Feed (SYNTHETIC)', publisher: 'Pub (SYNTHETIC)', howFound: 'a search (SYNTHETIC)', purposes: ['m'], assessment: 'an assessment (SYNTHETIC)' }))).status).toBe(403);
-    for (const p of [
-      rights(agentOf(dvorak), feed.sourceId, { contractVersion: 1, operation: 'withdraw', reason: 'an agent (SYNTHETIC)', evidence: 'none (SYNTHETIC)' }),
-      evaluate(agentOf(dvorak), feed.sourceId, evaluation(1)),
-      propose(agentOf(hoffmann), { name: 'Feed (SYNTHETIC)', publisher: 'Pub (SYNTHETIC)', howFound: 'a search (SYNTHETIC)', purposes: ['m'], assessment: 'an assessment (SYNTHETIC)' }),
-    ]) { const r = await refusal(p); expect(r.status).toBe(403); expect(r.message).toMatch(/human gate/); }
+    // LAZY (thunks): each act starts only when awaited — an eager array left the later rejections unhandled when an earlier check threw
+    // (ci 39567862982: "human gate: observation.source.discover …" reported as an unhandled error)
+    for (const act of [
+      () => rights(agentOf(dvorak), feed.sourceId, { contractVersion: 1, operation: 'withdraw', reason: 'an agent (SYNTHETIC)', evidence: 'none (SYNTHETIC)' }),
+      () => evaluate(agentOf(dvorak), feed.sourceId, evaluation(1)),
+      () => propose(agentOf(hoffmann), { name: 'Feed (SYNTHETIC)', publisher: 'Pub (SYNTHETIC)', howFound: 'a search (SYNTHETIC)', purposes: ['m'], assessment: 'an assessment (SYNTHETIC)' }),
+    ]) { const r = await refusal(act()); expect(r.status).toBe(403); expect(r.message).toMatch(/human gate/); }
     expect(await count(sql`select count(*)::int n from observation.source_rights_changes where source_id = ${feed.sourceId}::uuid`)).toBe(0);
   });
 });

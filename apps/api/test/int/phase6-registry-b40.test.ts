@@ -33,7 +33,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';
 import { uuidv7 } from 'uuidv7';
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -55,6 +55,11 @@ import { validateSourceContract } from '../../src/observation/sources/source-con
 import { Phase4Harness, syntheticEgress, uploadContract } from './phase4-helpers.js';
 import { bootDecisionWorld, decisionCalls, type DecisionWorld } from './phase6-fixtures.js';
 import { srcV4Contract } from './phase6-b40-fixtures.js';
+
+// The publication path signs with the deployment's executive key: the harness binds its OWN, generated at run time (never a key
+// literal; the B36 publishing harness's idiom) — the hosted runner carries no demonstration key (ci 39567862982: `signature rejected
+// (unbound)` reached before the rights refusal this file proves).
+process.env['EYE_EXECUTIVE_SIGNING_KEY_DEMO'] = generateKeyPairSync('ed25519').privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64');
 
 // The B6 rule: the scheduler (the outbox publisher's routing, the subscription worker) is enabled BEFORE the boot, at module top.
 process.env['EYE_SCHEDULER_ENABLED'] = 'true';

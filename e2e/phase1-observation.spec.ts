@@ -285,9 +285,10 @@ test.describe('Phase 1 — Observation Operations (A12)', () => {
     await page.goto(`/observation/sources/${sourceId}`);
     await page.getByLabel('Reason (recorded with the decision)').fill('attempting to approve my own registration');
     await page.getByRole('button', { name: 'Approve', exact: true }).click();
-    // The refusal names the rule; the contract stays a draft.
+    // The refusal names the rule; the contract stays a draft — its lifecycle label, matched whole. Since B40 the rights-change preview on this
+    // page lists each version as "v1 pending/draft → …", which a substring match also resolves (ci 39567862982, strict mode).
     await expect(page.locator('main').getByRole('alert')).toContainText(/may never approve it|no qualifying role binding/i);
-    await expect(page.getByText('draft')).toBeVisible();
+    await expect(page.getByText(/^draft$/i)).toBeVisible();
   });
 
   test('3. a second operator approves and activates it', async ({ page }) => {

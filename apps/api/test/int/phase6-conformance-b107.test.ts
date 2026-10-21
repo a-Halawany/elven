@@ -258,11 +258,11 @@ describe('CM1 · the component manifest (ES-01-001, ES-02-002, ES-31..40-002, IA
       return true;
     };
     const before = await unresolvedNow();
-    const planted = { req: await plant('requirement', 'V3:L1-C01'), iface: await plant('interface', 'L1-I01'), s2: await plant('schema', 'SRC@v2'), s3: await plant('schema', 'SRC@v3') };
+    const planted = { req: await plant('requirement', 'V3:L1-C01'), iface: await plant('interface', 'L1-I01'), s2: await plant('schema', 'SRC@v2'), s3: await plant('schema', 'SRC@v3'), s4: await plant('schema', 'SRC@v4') };   // B40: SRC@v4 is the current version since 0123
     const r = (await register()).manifest;
     expect(r).toMatchObject({ unchanged: true, version: 1 });
     const links = r['links'] as Row;
-    expect(Number(links['links_added'])).toBeGreaterThanOrEqual((planted.req ? 1 : 0) + (planted.iface ? 1 : 0) + (planted.s2 || planted.s3 ? 1 : 0));
+    expect(Number(links['links_added'])).toBeGreaterThanOrEqual((planted.req ? 1 : 0) + (planted.iface ? 1 : 0) + (planted.s2 || planted.s3 || planted.s4 ? 1 : 0));
     const after = await unresolvedNow();
     expect(after.requirements).toBe(before.requirements - (planted.req ? 1 : 0));   // V3:L1-C01 resolved now (by the plant, or by §RG's import before it)
     expect(links['unresolved']).toMatchObject({ requirements: after.requirements, interfaces: after.interfaces });
@@ -271,7 +271,7 @@ describe('CM1 · the component manifest (ES-01-001, ES-02-002, ES-31..40-002, IA
     expect(mapsTo).toEqual({ n: 1 });
     const schema = await rows(sql`select q.external_key from governance.links_live l join governance.artifacts c on c.artifact_id = l.from_artifact and c.superseded_at is null
       join governance.artifacts q on q.artifact_id = l.to_artifact where c.external_key = 'L1-C01' and l.relation = 'consumes' and q.kind = 'schema' and q.external_key like 'SRC@%'`);
-    expect(schema).toEqual([{ external_key: 'SRC@v3' }]);   // the CURRENT version of the type (B107 integration: SRC's — §RG's import may have registered L1-C01's other types too)
+    expect(schema).toEqual([{ external_key: 'SRC@v4' }]);   // the CURRENT version of the type (SRC@v4 since B40's 0123; planted above so the case never depends on another file's order) (B107 integration: SRC's — §RG's import may have registered L1-C01's other types too)
     expect(Number(((await register()).manifest['links'] as Row)['links_added'])).toBe(0);
   });
   it('CORRECTION: a changed manifest is a new version (a unit gone RETIRED, its links retired); the committed one is v3 and restores it', async () => {
