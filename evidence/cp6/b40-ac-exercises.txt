@@ -1,0 +1,110 @@
+CP-6 B40 §AC — THE CHAPTER JOURNEYS AND THE EXERCISES (PR-09-006 / AT-09, DP-16-006 / PR-16-006 / AT-16; the exercises of DP-09-006,
+DF-03, CAP-OB-12, L1-C05, AR-011) — recorded by apps/api/test/int/phase6-acceptance-b40.test.ts (EYE_B40_AC_EVIDENCE_OUT)
+
+WHAT THIS IS — and is not
+  CONSTRUCTION EVIDENCE on SYNTHETIC data: the harness ran on a FRESH database (eye_verify_a1_b40_ac_3, migrations 0001–0123 from the
+  integration head 82275763's folded 0123), Redis :6399, an isolated vault (a temporary directory, removed after the run), branch b40/ac.
+  NOT demonstrated operation (that is the act, scripts/phase6/act-b40.mjs, and its walk e2e/phase6-b40.demo.spec.ts) and NOT acceptance:
+  the signed, scope-bound chapter acceptance (product owner + independent assurance + customer authority) is the shared
+  non-demonstration recording path at B111, then H3/R2 — never claimed. The rows stay partial and mapped to F-P1-01 / F-P1-03.
+  recorded_at 2026-10-21T01:12:12.009Z
+
+THE RUNS
+  EYE_HEAVY_SLOTS=1 scripts/dev/heavy-slot.sh b40-ac -- vitest run --config vitest.int.config.ts test/int/phase6-acceptance-b40.test.ts
+    with the LOCAL EVALUATION ClamAV engine (EYE_CLAMD_ADDR=127.0.0.1:3310 …)  → Test Files 1 passed · Tests 40 passed (40)
+    without it (EYE_CLAMD_ADDR unset)                                            → Tests 36 passed | 4 skipped (40) — J16.10 SKIPPED and says
+      why: "no clamd engine is configured for this deployment (EYE_CLAMD_ADDR is not set). The real-engine journey cases are NOT proven"
+
+J9.1 · COVERAGE VALIDATION of the declared universe (the shipping-notice feed after its first collection)
+  admitted EVD with evidence attributes from the SRC@v4 declaration: geographic_scope=["Red Sea", "Gulf of Aden"]; language="en"; licence=contract licence; sensitivity="commercial"
+  authenticity: unsigned   (scheme none — "content authenticity unknown" for an unsigned source, D6)
+  universe v1; dimensions:
+    expected_coverage  unknown                the contract declares no expected item count for this window
+    actual_coverage    unknown                no denominator is derivable, so a percentage would be invented
+    freshness          measured               
+    completeness       unknown                completeness cannot be measured: this source’s evidence is not addressable one item per declared interval, so which intervals it covers is not knowable without interpreting the payload
+    latency            insufficient_evidence  no admitted item carries a publisher time to measure against
+    authenticity       measured               content authenticity of 1 admitted version(s) in the window (publisher signature, none): 0 verified; 1 unsigned. TLS and digests establish transport and byte integrity only.
+    correction_lag     insufficient_evidence  no correction has been observed for this source
+    blind_spots        unknown                identifying blind spots requires a model of the source’s intended world coverage, which arrives with the knowledge graph in Phase 3
+    degraded_regions   unknown                regional degradation requires geospatial resolution of the source’s coverage, which Phase 1 does not perform
+
+J9.8 · THE REVOCATION DRILL (DP-09-006) and "rights revoked while QUEUED" (A9), DESIGN D4's proofs end to end (fixture source S)
+  before: products resting on S: forecast, scenario; claims on S's evidence 1; owners 2;
+          a collection job QUEUED (state: delayed) against S's SRC@v4 version v3; an export approved; a board pack drafted
+  the withdrawal (M. Dvořák, with evidence): suspended v3; resting 6; attention items 3; markers set 2 (cause rights); schedule removed
+  the QUEUED job executed after it: failed — "contract revalidation failed: contract is suspended, not active" — requests sent to the publisher: 0; nothing admitted
+  refused with NO business effect: decision.derive_option; decision gate ready; publication approval; export execution; assert_usable(CLM) × 4 uses
+  unaffected scope usable (U's evidence and claim for every use; an option citing U written); reading as it was (the analyst's verified read;
+  the decision owner still refused — D9); from current state (inside one transaction: confirmed → usable, withdrawn → refused; rolled back)
+  both rights sources: an in-force rights-terms record did NOT lift the contract withdrawal
+  recovery (the governed restoration with evidence): v3 reactivated, markers after 0, the use admitted, the gate act recorded;
+          the SAME queued job then finished: admitted 1, requests sent 1
+  history intact: withdraw + restore on the ledger (a rewrite refused, append-only); the evidence rows unchanged
+
+J16.2 · THE ACTIVE-CONTENT CORPUS (DF-03, DP-16-006, AR-011) through the REAL intake — SRC@v4 upload contract, every content rule `quarantine`
+  Every item generated at run time except the two committed SYNTHETIC fixtures; no live malware; nothing written to the repository.
+  item → quarantine class · engine outcome · findings (codes; offsets recorded, content never)
+  regensburg-bearings-supplier-quality-report.pdf    → active_content         content-inspector:clean  [pdf.open_action, pdf.additional_actions, pdf.javascript, pdf.js, pdf.hidden_text_instruction, pdf.metadata_zero_width]
+  regensburg-bearings-inspection-checklist.docm      → macro                  content-inspector:clean  [ooxml.vba_project, ooxml.macro_enabled]
+  corpus-launch.pdf                                  → active_content         content-inspector:clean  [pdf.open_action, pdf.embedded_file, pdf.javascript, pdf.js, pdf.launch]
+  corpus-hidden-stream.pdf                           → hidden_instruction     content-inspector:clean  [pdf.hidden_text_instruction]
+  corpus-post-eof.pdf                                → hidden_instruction     content-inspector:clean  [pdf.post_eof_instruction]
+  corpus-polyglot.pdf                                → malware_verdict        content-inspector:detected  [pdf.post_eof_data, polyglot.pdf_zip]
+  corpus-embedded-pe.txt                             → malware_verdict        content-inspector:detected  [exe.embedded_pe]
+  corpus-elf.txt                                     → malware_verdict        content-inspector:detected  [exe.elf]
+  corpus-bundle.zip                                  → malware_verdict        content-inspector:detected  [zip.executable_entry, exe.entry_pe]
+  corpus-bomb.zip                                    → compression_ratio      content-inspector:detected  [bomb.zip_declared, bomb.zip]
+  corpus-bomb.pdf                                    → malware_verdict        content-inspector:detected  [bomb.pdf_flate]
+  corpus-bomb.gz                                     → malware_verdict        content-inspector:detected  [bomb.gzip]
+  corpus-nested.zip                                  → inspection_incomplete  content-inspector:incomplete  [limit.scan]
+  corpus-hidden.docx                                 → hidden_instruction     content-inspector:clean  [ooxml.hidden_text_instruction]
+  corpus-comment.html                                → hidden_instruction     content-inspector:clean  [text.hidden_instruction]
+  corpus-zero-width.json                             → hidden_instruction     content-inspector:clean  [text.zero_width]
+  eicar-probe.txt (EICAR assembled in memory; both engines named, NO engine configured in this journey) → inspection_unavailable (clamav:unavailable, content-inspector:clean) — fail closed; bytes removed after use
+  ADMITTED: none. Evidence-vault bytes from any corpus run: none.
+
+J16.3 · THE QUARANTINE-ESCAPE EXERCISE (CAP-OB-12) — a probe run by the §0 launcher exactly as the inspector is
+  fs_write                 ERR_ACCESS_DENIED
+  fs_read_outside_grant    ERR_ACCESS_DENIED
+  child_process            ERR_ACCESS_DENIED
+  worker                   ERR_ACCESS_DENIED
+  code_generation          EvalError
+  environment              ['__CF_USER_TEXT_ENCODING']  (the parent's is never inherited; macOS adds __CF_USER_TEXT_ENCODING at process start)
+  network                  CONNECTED — NOT denied by the launcher (Node 24 permission model has no network switch) — carried to B103 / B109 (D3); the inspector opens no socket
+  flags                    --permission --allow-fs-read=<probe dir>/probe.mjs --disallow-code-generation-from-strings --max-old-space-size=64 --no-warnings
+  the inspector child imports no socket / process / worker module (static check of content-inspector.child.mjs)
+  a RELEASED item re-inspected: held upload approved by a second person and released; released bytes = quarantined bytes (same digest: True);
+    at intake clean → re-inspected clean. FINDING: the release path does not re-run the engines (quarantine.service release → the existing admission); the exercise re-inspected the released bytes (verdict rows on the released EVD: 0).
+
+J16.4/J16.5 · REVIEWER SEPARATION and CUSTODY CLOSURE
+  the uploader (a collection manager) refused (separation_of_duties, 403); an analyst refused (PDP 403); the collection agent's run session refused (403);
+  an AGENT principal holding collection_manager passes the PEP (the rule carries no human gate) and the PORT refuses it: "quarantine review rejected (actor): releasing or rejecting a quarantined item is a named human's act; an agent or a system never reviews"
+  the rejected case's custody: custody.quarantined, custody.inspected — every digest the manifest's, the bytes on disk re-hashed (722d0ef94be95901…); a rewrite refused
+
+J16.6 · DOWNSTREAM NON-USE
+  the customs bulletin (key generated at run time): signed copy VERIFIED and usable; the TAMPERED copy ADMITTED marked FAILED — refused for decision_option, gate, publication, export; still readable (verified bytes)
+  quarantined cases checked: 18 — evidence objects 0, admissions 0; their bytes only in the quarantine vault
+
+J16.8 · THE FAULT EXERCISE — fail closed, never clean
+  F48 the inspector crashed: inspection_unavailable (unavailable; the sandboxed inspector could not run (injected fault at f48.inspector_crash_or_timeout))
+  F49 clamd unavailable:     inspection_unavailable (clamav:unavailable, content-inspector:clean)
+
+J16.9 · THE EVIDENCE-RESTORE EXERCISE (L1-C05) — a recorded drill, not a service (B64 owns the restore centre)
+  the backup copy taken and checked against the manifest digest 63f7da560592d807…; the vault blob removed (the loss)
+  the retrieval REFUSED, nothing served: 409 "evidence bytes failed integrity verification and were not served"; custody appended: custody.integrity_failed
+  restored from the backup (its digest checked first) → the retrieval verified; custody: custody.admitted, custody.inspected, custody.authenticity_recorded, custody.finalized, custody.integrity_failed, custody.retrieved; the bytes re-hashed;
+  the earlier chain unchanged (the loss and the recovery appended, nothing rewritten)
+
+J16.10 · THE REAL ClamAV ENGINE (DESIGN D2) — EVALUATION EVIDENCE OF AN UNADMITTED IMAGE (EXC-P1-001 stays OPEN; the owner decides (a)/(b)/(c))
+  docker run -d --name eye-clamav-eval -p 127.0.0.1:3310:3310 -v eye-clamav-db:/var/lib/clamav -e CLAMAV_NO_FRESHCLAMD=true \
+    clamav/clamav@sha256:a852e9d4ba78eac5d444bce31b1b3427e254fd77fe008d856bfd72203f4236ad   (the arm64 child of 1.5.4_base-debian; not admitted)
+  engine 127.0.0.1:3310 — VERSION: ClamAV 1.5.4/28159/Tue Oct 20 06:24:12 2026; no database update for this run; the container stopped by the harness, then removed (image and volume kept)
+  clean           admitted true  quarantine None                   clamav clean · engine 1.5.4 · image sha256:a852e9d4ba78… · databases daily 28159 @2026-10-20T06:24:12Z, main 63 @2025-12-16T23:18:00Z, bytecode 339 @2025-09-11T12:29:00Z
+  eicar           admitted false quarantine malware_verdict        clamav detected · finding clamav:Eicar-Test-Signature · engine 1.5.4 · image sha256:a852e9d4ba78… · databases daily 28159 @2026-10-20T06:24:12Z, main 63 @2025-12-16T23:18:00Z, bytecode 339 @2025-09-11T12:29:00Z
+  engine error    admitted false quarantine inspection_failed      clamav failed · engine 1.5.4 · image sha256:a852e9d4ba78… · databases daily 28159 @2026-10-20T06:24:12Z, main 63 @2025-12-16T23:18:00Z, bytecode 339 @2025-09-11T12:29:00Z
+  engine stopped  admitted false quarantine inspection_unavailable clamav unavailable · stopped by: docker stop eye-clamav-eval
+  the EICAR case: the uploader's own rejection refused (separation_of_duties); a second manager rejected it; custody verified; nothing reached evidence;
+  the quarantined EICAR bytes removed after use (the harness's isolated vault is deleted at the end of the run).
+
+THREE CLAIMS: construction (this file) · demonstrated operation (the act and the walk, not run here) · real acceptance (B111 → H3/R2) — never claimed.
