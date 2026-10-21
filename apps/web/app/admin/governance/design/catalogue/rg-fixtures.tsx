@@ -102,6 +102,7 @@ export function RgCatalogue() {
             eligibility={ELIGIBLE} consequence={registryEffect('observation.source.evaluate')} actionLabel="Record the evaluation" pendingLabel="Recording" onRun={inert} />
         </section>
         <section aria-label="ReviewedRequest — a server-enforced version binding">
+          <p className="eye-help">Withdrawing the rights refuses decision-active use of the source's evidence; its history is kept, and only a governed restoration reverses it.</p>
           <ReviewedRequest action="observation.source.change_rights" object={OBJECT} payload={{ contractVersion: 2, operation: 'withdraw', reason: 'fixture withdrawal', evidence: 'fixture notice' }}
             binding={{ shown: 'contract-v2', current: 'contract-v2' }} eligibility={ELIGIBLE} consequence={rightsConsequence(PREVIEW, 'withdraw')}
             actionLabel="Withdraw the rights" pendingLabel="Withdrawing" variant="critical" onRun={inert} />
