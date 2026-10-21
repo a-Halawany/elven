@@ -3,8 +3,8 @@
   "Trivy": {
     "Version": "0.73.0"
   },
-  "ReportID": "01a1231f-618e-79db-9e8f-1494ff35d6a8",
-  "CreatedAt": "2026-10-10T03:03:41.582647+03:00",
+  "ReportID": "01a15f77-f647-7697-82f0-90c272383a8c",
+  "CreatedAt": "2026-10-21T20:17:39.783432+03:00",
   "ArtifactID": "sha256:3339277ae2d1a48d989b0f24eb567b49605600fb84f24dd2a6ba1c2a67ad943c",
   "ArtifactName": "redis@sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23",
   "ArtifactType": "container_image",
@@ -33,78 +33,78 @@
       "created": "2026-09-21T17:37:00.659434515Z",
       "history": [
         {
-          "created": "2026-09-17T20:37:33Z",
+          "created": "2026-09-17T20:37:33.169606102Z",
           "created_by": "ADD alpine-minirootfs-3.23.6-x86_64.tar.gz / # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-09-17T20:37:33Z",
+          "created": "2026-09-17T20:37:33.169606102Z",
           "created_by": "CMD [\"/bin/sh\"]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-09-21T17:27:31Z",
+          "created": "2026-09-21T17:27:31.012932381Z",
           "created_by": "RUN /bin/sh -c set -eux; \taddgroup -S -g 1000 redis; \tadduser -S -G redis -u 999 redis # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-09-21T17:27:31Z",
+          "created": "2026-09-21T17:27:31.654338649Z",
           "created_by": "RUN /bin/sh -c set -eux; \tapk add --no-cache \t\ttzdata \t\tsetpriv \t; # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-09-21T17:37:00Z",
+          "created": "2026-09-21T17:37:00.520807973Z",
           "created_by": "ENV REDIS_VERSION=8.10.2",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-09-21T17:37:00Z",
+          "created": "2026-09-21T17:37:00.520807973Z",
           "created_by": "ARG REDIS_DOWNLOAD_URL=https://github.com/redis/redis/releases/download/8.10.2/redis-full.tar.gz",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-09-21T17:37:00Z",
+          "created": "2026-09-21T17:37:00.520807973Z",
           "created_by": "ARG REDIS_DOWNLOAD_SHA=ae6973de9b6ad8e6cf21b1e764abccab59200689af6aabce10d4cf6bbb2e253f",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-09-21T17:37:00Z",
+          "created": "2026-09-21T17:37:00.520807973Z",
           "created_by": "RUN |2 REDIS_DOWNLOAD_URL=https://github.com/redis/redis/releases/download/8.10.2/redis-full.tar.gz REDIS_DOWNLOAD_SHA=ae6973de9b6ad8e6cf21b1e764abccab59200689af6aabce10d4cf6bbb2e253f /bin/sh -c set -eux; \t\tapk add --no-cache --virtual .build-deps \t\tcoreutils \t\tdpkg-dev dpkg \t\tgcc \t\tlinux-headers \t\tmake \t\tmusl-dev \t\topenssl-dev \t\tg++; \t\tarch=\"$(dpkg --print-architecture | awk -F- '{ print $NF }')\"; \tcase \"$arch\" in \t\t'amd64' | 'arm64') BUILD_WITH_MODULES=yes ;; \t\t*) echo \u003e\u00262 \"Modules are NOT supported! unsupported architecture: '$arch'\"; BUILD_WITH_MODULES=no ;; \tesac; \tif [ \"$BUILD_WITH_MODULES\" = \"yes\" ]; then \tapk add --no-cache --virtual .module-build-deps \t\tautoconf \t\tautomake \t\tbash \t\tbsd-compat-headers \t\tbuild-base \t\tcargo \t\tclang21 \t\tclang21-static \t\tclang21-libclang \t\tcmake \t\tcurl \t\tg++ \t\tgit \t\tlibffi-dev \t\tlibgcc \t\tlibtool \t\tllvm21-dev \t\tlld21 \t\tncurses-dev \t\topenssh \t\topenssl  \t\tpy-virtualenv \t\tpy3-cryptography \t\tpy3-pip \t\tpy3-virtualenv \t\tpython3 \t\tpython3-dev \t\trsync \t\ttar \t\tunzip \t\twhich \t\txsimd \t\txz; \tfi; \t\tpip install -q --upgrade setuptools \u0026\u0026  pip install -q --upgrade pip \u0026\u0026 PIP_BREAK_SYSTEM_PACKAGES=1 pip install -q addict toml jinja2 ramp-packer ;\twget -O redis.tar.gz \"$REDIS_DOWNLOAD_URL\"; \techo \"$REDIS_DOWNLOAD_SHA *redis.tar.gz\" | sha256sum -c -; \tmkdir -p /usr/src/redis; \ttar -xzf redis.tar.gz -C /usr/src/redis --strip-components=1; \trm redis.tar.gz; \t\tgrep -E '^ *createBoolConfig[(]\"protected-mode\",.*, *1 *,.*[)],$' /usr/src/redis/src/config.c; \tsed -ri 's!^( *createBoolConfig[(]\"protected-mode\",.*, *)1( *,.*[)],)$!\\10\\2!' /usr/src/redis/src/config.c; \tgrep -E '^ *createBoolConfig[(]\"protected-mode\",.*, *0 *,.*[)],$' /usr/src/redis/src/config.c; \t\tgnuArch=\"$(dpkg-architecture --query DEB_BUILD_GNU_TYPE)\"; \textraJemallocConfigureFlags=\"--build=$gnuArch\"; \tdpkgArch=\"$(dpkg --print-architecture)\"; \tcase \"${dpkgArch##*-}\" in \t\tamd64 | i386 | x32) extraJemallocConfigureFlags=\"$extraJemallocConfigureFlags --with-lg-page=12\" ;; \t\t*) extraJemallocConfigureFlags=\"$extraJemallocConfigureFlags --with-lg-page=16\" ;; \tesac; \textraJemallocConfigureFlags=\"$extraJemallocConfigureFlags --with-lg-hugepage=21\"; \tgrep -F 'cd jemalloc \u0026\u0026 ./configure ' /usr/src/redis/deps/Makefile; \tsed -ri 's!cd jemalloc \u0026\u0026 ./configure !\u0026'\"$extraJemallocConfigureFlags\"' !' /usr/src/redis/deps/Makefile; \tgrep -F \"cd jemalloc \u0026\u0026 ./configure $extraJemallocConfigureFlags \" /usr/src/redis/deps/Makefile; \t\texport RUST_DYN_CRT=1; \texport PATH=\"/usr/lib/llvm21/bin:$PATH\"; \texport BUILD_TLS=yes; \tif [ \"$BUILD_WITH_MODULES\" = \"yes\" ]; then \t\texport LTO=1; \t\tmake -C /usr/src/redis/modules install-rust INSTALL_RUST_TOOLCHAIN=yes; \t\tmake -C /usr/src/redis -j \"$(nproc)\" deploy; \t\tmake -C /usr/src/redis/modules uninstall-rust INSTALL_RUST_TOOLCHAIN=yes; \telse \t\tmake -C /usr/src/redis -j \"$(nproc)\" deploy redis; \tfi; \trm -r /usr/src/redis; \t\trunDeps=\"$( \t\tscanelf --needed --nobanner --format '%n#p' --recursive /usr/local \t\t\t| tr ',' '\\n' \t\t\t| sort -u \t\t\t| awk 'system(\"[ -e /usr/local/lib/\" $1 \" ]\") == 0 { next } { print \"so:\" $1 }' \t)\"; \tapk add --no-network --virtual .redis-rundeps $runDeps; \tif [ \"$BUILD_WITH_MODULES\" = \"yes\" ]; then \t\tapk del --no-network .module-build-deps; \tfi; \tapk del --no-network .build-deps; \trm -rf ~/.cache ~/.gitconfig; \t\tredis-cli --version; \tredis-server --version; # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-09-21T17:37:00Z",
+          "created": "2026-09-21T17:37:00.608619696Z",
           "created_by": "RUN |2 REDIS_DOWNLOAD_URL=https://github.com/redis/redis/releases/download/8.10.2/redis-full.tar.gz REDIS_DOWNLOAD_SHA=ae6973de9b6ad8e6cf21b1e764abccab59200689af6aabce10d4cf6bbb2e253f /bin/sh -c mkdir /data \u0026\u0026 chown redis:redis /data # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-09-21T17:37:00Z",
+          "created": "2026-09-21T17:37:00.632534863Z",
           "created_by": "WORKDIR /data",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-09-21T17:37:00Z",
+          "created": "2026-09-21T17:37:00.659434515Z",
           "created_by": "COPY docker-entrypoint.sh /usr/local/bin/ # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-09-21T17:37:00Z",
+          "created": "2026-09-21T17:37:00.659434515Z",
           "created_by": "ENTRYPOINT [\"docker-entrypoint.sh\"]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-09-21T17:37:00Z",
+          "created": "2026-09-21T17:37:00.659434515Z",
           "created_by": "EXPOSE map[6379/tcp:{}]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-09-21T17:37:00Z",
+          "created": "2026-09-21T17:37:00.659434515Z",
           "created_by": "CMD [\"redis-server\"]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
@@ -143,30 +143,37 @@
     "Layers": [
       {
         "Size": 8699904,
+        "Digest": "sha256:d0c1d894c237d8192cbcd37e435031ad4eddec173299568a5a05869c2e40dfa3",
         "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
       },
       {
         "Size": 10752,
+        "Digest": "sha256:d60026184d2e638c58afc4c945753a676d1691a1d7ef8adc7c0a8221b771d624",
         "DiffID": "sha256:b31e91548114daad36eb6b75f33a80ad4763a366b8aebf2ee0f07f9bb96fad6a"
       },
       {
         "Size": 1005568,
+        "Digest": "sha256:618072543738a1af8f8f650cc185ca8f8cae09950f22d7374610e5eb1383990b",
         "DiffID": "sha256:d81ff166b338fb9986fedcfc15abe662bb2c65aadaf9301750c69c8ffb389f6b"
       },
       {
         "Size": 109917184,
+        "Digest": "sha256:8c9c3a906635a6a90731156f83ab00bfbc5d625cb11a8609cb166e602de77a32",
         "DiffID": "sha256:3e6e8835c7a3f675a101d365cd4081067f637a6fc2de8feb6cb5d2b9fbe06aae"
       },
       {
         "Size": 1536,
+        "Digest": "sha256:2f10393390593ca40faa2085463ce1cd58ccda88f8f94a642c6bf9c0fe7694bc",
         "DiffID": "sha256:f525070cd9b67146353241832d4718f9b6551366b2a5e32f1c1dd3fe82142156"
       },
       {
         "Size": 1024,
+        "Digest": "sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1",
         "DiffID": "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
       },
       {
         "Size": 8192,
+        "Digest": "sha256:095940d4ebca9229cd4bbc254424b0f3e05f8ce63d7fedebeb9f8c193d16acdf",
         "DiffID": "sha256:f5902b1d47b5117067a430aff0dc6a582401768105e93301453ff701c8409353"
       }
     ]
@@ -194,6 +201,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
+            "Digest": "sha256:8c9c3a906635a6a90731156f83ab00bfbc5d625cb11a8609cb166e602de77a32",
             "DiffID": "sha256:3e6e8835c7a3f675a101d365cd4081067f637a6fc2de8feb6cb5d2b9fbe06aae"
           },
           "Digest": "sha1:6b35ac568a56dd743d1e933a23c7f1bc352bb04d",
@@ -219,6 +227,7 @@
             "busybox-binsh@1.37.0-r30"
           ],
           "Layer": {
+            "Digest": "sha256:d0c1d894c237d8192cbcd37e435031ad4eddec173299568a5a05869c2e40dfa3",
             "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:545aa6f291209af89932b761d9e422c2778596cc",
@@ -255,6 +264,7 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
+            "Digest": "sha256:d0c1d894c237d8192cbcd37e435031ad4eddec173299568a5a05869c2e40dfa3",
             "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:85816632dbce07ba7e9e7a629fa59eddbd1687fb",
@@ -293,6 +303,7 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
+            "Digest": "sha256:d0c1d894c237d8192cbcd37e435031ad4eddec173299568a5a05869c2e40dfa3",
             "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:5c45a821cd6b84d543bbd7ff12a7de1855c5cd13",
@@ -360,6 +371,7 @@
             "alpine-keys@2.6-r0"
           ],
           "Layer": {
+            "Digest": "sha256:d0c1d894c237d8192cbcd37e435031ad4eddec173299568a5a05869c2e40dfa3",
             "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:9a222ee46b43276b7e607f66dab5faf915d13984",
@@ -395,6 +407,7 @@
             "zlib@1.3.2-r0"
           ],
           "Layer": {
+            "Digest": "sha256:d0c1d894c237d8192cbcd37e435031ad4eddec173299568a5a05869c2e40dfa3",
             "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:fa7a8422abbbb5e179033cee5455124007817b22",
@@ -422,6 +435,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
+            "Digest": "sha256:d0c1d894c237d8192cbcd37e435031ad4eddec173299568a5a05869c2e40dfa3",
             "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:f1347801bb96b1aa40d17f82237c3f4ff02a4725",
@@ -455,6 +469,7 @@
             "busybox@1.37.0-r30"
           ],
           "Layer": {
+            "Digest": "sha256:d0c1d894c237d8192cbcd37e435031ad4eddec173299568a5a05869c2e40dfa3",
             "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:188d2d0110afa58e8a3e3e5fd424b2d996df7a09",
@@ -480,6 +495,7 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
+            "Digest": "sha256:d0c1d894c237d8192cbcd37e435031ad4eddec173299568a5a05869c2e40dfa3",
             "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:0b7f24b8a713bf4bb869de377505a5040239a7bc",
@@ -513,6 +529,7 @@
             "zlib@1.3.2-r0"
           ],
           "Layer": {
+            "Digest": "sha256:d0c1d894c237d8192cbcd37e435031ad4eddec173299568a5a05869c2e40dfa3",
             "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:2913286d1d02641d392289ba525850be6856df11",
@@ -541,6 +558,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
+            "Digest": "sha256:618072543738a1af8f8f650cc185ca8f8cae09950f22d7374610e5eb1383990b",
             "DiffID": "sha256:d81ff166b338fb9986fedcfc15abe662bb2c65aadaf9301750c69c8ffb389f6b"
           },
           "Digest": "sha1:95dfcda98a0acfd14fec1b5ff082b6b4b011c9d4",
@@ -571,6 +589,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
+            "Digest": "sha256:d0c1d894c237d8192cbcd37e435031ad4eddec173299568a5a05869c2e40dfa3",
             "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:c5d20a5036bd12c5130652879054be658429c1d5",
@@ -608,6 +627,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
+            "Digest": "sha256:8c9c3a906635a6a90731156f83ab00bfbc5d625cb11a8609cb166e602de77a32",
             "DiffID": "sha256:3e6e8835c7a3f675a101d365cd4081067f637a6fc2de8feb6cb5d2b9fbe06aae"
           },
           "Digest": "sha1:57fccbe9eebf23f2c4f38ee2a24f8b0bdd508ff7",
@@ -636,6 +656,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
+            "Digest": "sha256:d0c1d894c237d8192cbcd37e435031ad4eddec173299568a5a05869c2e40dfa3",
             "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:07184887491e0feffa57184419b1387450047bb9",
@@ -665,6 +686,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
+            "Digest": "sha256:8c9c3a906635a6a90731156f83ab00bfbc5d625cb11a8609cb166e602de77a32",
             "DiffID": "sha256:3e6e8835c7a3f675a101d365cd4081067f637a6fc2de8feb6cb5d2b9fbe06aae"
           },
           "Digest": "sha1:528d77417a16706468af852f2859ad00f176e266",
@@ -690,6 +712,7 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
+            "Digest": "sha256:d0c1d894c237d8192cbcd37e435031ad4eddec173299568a5a05869c2e40dfa3",
             "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:1b6c50426d3c0656e9c5a567a5a59601c7f4307a",
@@ -721,6 +744,7 @@
             "scanelf@1.3.8-r2"
           ],
           "Layer": {
+            "Digest": "sha256:d0c1d894c237d8192cbcd37e435031ad4eddec173299568a5a05869c2e40dfa3",
             "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:92fdbe96d25f13fe3a3d297ada56e4fb907aacec",
@@ -752,6 +776,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
+            "Digest": "sha256:d0c1d894c237d8192cbcd37e435031ad4eddec173299568a5a05869c2e40dfa3",
             "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:6ea36dd44ef9f6364f0cdfabe09ea15d2fdbe229",
@@ -780,6 +805,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
+            "Digest": "sha256:618072543738a1af8f8f650cc185ca8f8cae09950f22d7374610e5eb1383990b",
             "DiffID": "sha256:d81ff166b338fb9986fedcfc15abe662bb2c65aadaf9301750c69c8ffb389f6b"
           },
           "Digest": "sha1:852de8931b59784fe5a3f0caf01365b74cac4495",
@@ -809,6 +835,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
+            "Digest": "sha256:d0c1d894c237d8192cbcd37e435031ad4eddec173299568a5a05869c2e40dfa3",
             "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:5b6ec0939cfc9be47d9677a3152c547cc18b5edd",
@@ -833,6 +860,7 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
+            "Digest": "sha256:618072543738a1af8f8f650cc185ca8f8cae09950f22d7374610e5eb1383990b",
             "DiffID": "sha256:d81ff166b338fb9986fedcfc15abe662bb2c65aadaf9301750c69c8ffb389f6b"
           },
           "Digest": "sha1:8158b502b500e84d07b45447a7baa121067868ba",
@@ -1462,6 +1490,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
+            "Digest": "sha256:d0c1d894c237d8192cbcd37e435031ad4eddec173299568a5a05869c2e40dfa3",
             "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:68bb97ea5255e77aa974e65476d64832ad56288a",
