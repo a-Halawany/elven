@@ -91,10 +91,23 @@ const register = (kind: ConsumerKind, extra: Record<string, unknown> = {}) =>
     subscription: { subscriptionId: string; principalId: string; served_from?: string }; served: { workerRunning: boolean; reDriven: number } }>;
 const statusOf = () => graph.subscriptionStatus(h.req(owner, 'graph.read', 'SUB', null, 'graph'), T(), D()) as Promise<{ subscriptions: {
   subscriptions: Array<Record<string, unknown>>; telemetry: { deliveries: Array<Record<string, unknown>>; open_failure_states: Array<Record<string, unknown>> } } }>;
+/**
+ * An edge planted as the admission port writes it: the projection row AND its edge.asserted event in ONE transaction. Planted in two
+ * commits, a retrieval check of any other event in flight between them sees an asserted row its log does not know — an UNEXPECTED
+ * (poisoned) row under the symmetric check (B20, 0080) — fails, withdraws edges_current and leaves that delivery unresolved (the
+ * extra open failure state of hosted run 39721629723, and five of six deliveries applied under the concurrent retractions below).
+ */
+async function plantEdge(a: { edgeId: string; predicate: string; claimId: string; evidenceId: string; confidence: number; reviewState: string }): Promise<void> {
+  await h.su.transaction().execute(async (tx) => {
+    await sql`insert into graph.edges_current (edge_id, scope, tenant_id, domain_id, subject_entity_id, predicate, object_entity_id, valid_from, valid_to, state, claim_object_id, claim_version, evidence_object_id, evidence_digest, mode, confidence, asserted_by, correlation_id)
+      values (${a.edgeId}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${E2}::uuid, ${a.predicate}, ${E1}::uuid, '2024-01-01T00:00:00Z', null, 'asserted', ${a.claimId}::uuid, 1, ${a.evidenceId}::uuid, ${sha256(a.evidenceId)}, 'replay', ${a.confidence}, ${ownerId}::uuid, ${uuidv7()}::uuid)`.execute(tx);
+    await sql`insert into graph.edge_events (event_id, scope, tenant_id, domain_id, edge_id, event, actor_principal_id, details, correlation_id)
+      values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${a.edgeId}::uuid, 'edge.asserted', ${ownerId}::uuid, jsonb_build_object('predicate', ${a.predicate}::text, 'subject', ${E2}::uuid, 'object', ${E1}::uuid, 'valid_from', '2024-01-01T00:00:00Z'::timestamptz, 'valid_to', null, 'mode', 'replay', 'claim_object_id', ${a.claimId}::uuid, 'claim_version', 1, 'review_state', ${a.reviewState}::text), ${uuidv7()}::uuid)`.execute(tx);
+  });
+}
 async function retractFreshEdge(predicate: string, reason: string, evidenceId = evdB.id, claimId = uuidv7()): Promise<string> {
   const edgeId = uuidv7();
-  await sql`insert into graph.edges_current (edge_id, scope, tenant_id, domain_id, subject_entity_id, predicate, object_entity_id, valid_from, valid_to, state, claim_object_id, claim_version, evidence_object_id, evidence_digest, mode, confidence, asserted_by, correlation_id)
-    values (${edgeId}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${E2}::uuid, ${predicate}, ${E1}::uuid, '2024-01-01T00:00:00Z', null, 'asserted', ${claimId}::uuid, 1, ${evidenceId}::uuid, ${sha256(evidenceId)}, 'replay', 0.9, ${ownerId}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
+  await plantEdge({ edgeId, predicate, claimId, evidenceId, confidence: 0.9, reviewState: 'approved' });
   await graph.retractEdge(h.req(owner, 'graph.edge.retract', 'EDG', edgeId, 'graph'), T(), D(), edgeId, { payload: { reason } });
   return edgeId;
 }
@@ -332,10 +345,7 @@ describe('B7 · claim.corrected through the review route; the edge, resolution a
     const { claimId, caseId } = await seedQueuedClaim({ subject: 'NORDWERK Magnet GmbH', objectValue: 'Bab el-Mandeb Strait', evidence: evdB });
     const edgeId = uuidv7(); const resId = uuidv7(); const identId = uuidv7();
     // B20 (0080): the planted edge and resolution carry their log events (the symmetric check would call an event-less row poisoned).
-    await sql`insert into graph.edges_current (edge_id, scope, tenant_id, domain_id, subject_entity_id, predicate, object_entity_id, valid_from, valid_to, state, claim_object_id, claim_version, evidence_object_id, evidence_digest, mode, confidence, asserted_by, correlation_id)
-      values (${edgeId}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${E2}::uuid, 'ships_through', ${E1}::uuid, '2024-01-01T00:00:00Z', null, 'asserted', ${claimId}::uuid, 1, ${evdB.id}::uuid, ${sha256(evdB.id)}, 'replay', 0.55, ${ownerId}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
-    await sql`insert into graph.edge_events (event_id, scope, tenant_id, domain_id, edge_id, event, actor_principal_id, details, correlation_id)
-      values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${edgeId}::uuid, 'edge.asserted', ${ownerId}::uuid, jsonb_build_object('predicate', 'ships_through', 'subject', ${E2}::uuid, 'object', ${E1}::uuid, 'valid_from', '2024-01-01T00:00:00Z'::timestamptz, 'valid_to', null, 'mode', 'replay', 'claim_object_id', ${claimId}::uuid, 'claim_version', 1, 'review_state', 'queued'), ${uuidv7()}::uuid)`.execute(h.su);
+    await plantEdge({ edgeId, predicate: 'ships_through', claimId, evidenceId: evdB.id, confidence: 0.55, reviewState: 'queued' });
     await sql`insert into graph.resolutions_current (resolution_id, scope, tenant_id, domain_id, claim_object_id, claim_version, mention_text, entity_id, method, rule_id, rule_version, score, match_evidence, candidate_set, state, proposer_principal_id, decided_by, decided_at, decision_reason, accepted_at, evidence_object_id, evidence_digest, correlation_id)
       values (${resId}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${claimId}::uuid, 1, 'NORDWERK Magnet GmbH', ${E2}::uuid, 'human', 'human-decision', '1', 1, '{}'::jsonb, '[]'::jsonb, 'accepted', ${ownerId}::uuid, ${ownerId}::uuid, clock_timestamp(), 'fixture: a person accepted the mention', clock_timestamp(), ${evdB.id}::uuid, ${sha256(evdB.id)}, ${uuidv7()}::uuid)`.execute(h.su);
     await sql`insert into graph.resolution_events (event_id, scope, tenant_id, domain_id, resolution_id, event, actor_principal_id, details, correlation_id)
@@ -377,11 +387,8 @@ describe('B7 · claim.corrected through the review route; the edge, resolution a
     const up = await h.upload([{ filename: 'terms-e.csv', text: TERMS_CSV.replace('assumption', 'assumption (e)'), documentTime: '2024-01-13T00:00:00Z' }]);
     const evdE = up[0] as { id: string; version: number };
     const edgeId = uuidv7(); const claimE = uuidv7();
-    await sql`insert into graph.edges_current (edge_id, scope, tenant_id, domain_id, subject_entity_id, predicate, object_entity_id, valid_from, valid_to, state, claim_object_id, claim_version, evidence_object_id, evidence_digest, mode, confidence, asserted_by, correlation_id)
-      values (${edgeId}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${E2}::uuid, 'insures', ${E1}::uuid, '2024-01-01T00:00:00Z', null, 'asserted', ${claimE}::uuid, 1, ${evdE.id}::uuid, ${sha256(evdE.id)}, 'replay', 0.8, ${ownerId}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
-    // B20 (0080): the planted edge's event beside it (an event-less row is poisoned under the symmetric check).
-    await sql`insert into graph.edge_events (event_id, scope, tenant_id, domain_id, edge_id, event, actor_principal_id, details, correlation_id)
-      values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${edgeId}::uuid, 'edge.asserted', ${ownerId}::uuid, jsonb_build_object('predicate', 'insures', 'subject', ${E2}::uuid, 'object', ${E1}::uuid, 'valid_from', '2024-01-01T00:00:00Z'::timestamptz, 'valid_to', null, 'mode', 'replay', 'claim_object_id', ${claimE}::uuid, 'claim_version', 1, 'review_state', 'approved'), ${uuidv7()}::uuid)`.execute(h.su);
+    // B20 (0080): the planted edge's event beside it, in the same transaction (an event-less row is poisoned under the symmetric check).
+    await plantEdge({ edgeId, predicate: 'insures', claimId: claimE, evidenceId: evdE.id, confidence: 0.8, reviewState: 'approved' });
     // The provenance path is ESTABLISHED (0065): the claim the edge names has its lineage on the evidence the edge rests on.
     await sql`insert into intelligence.claim_lineage (claim_object_id, claim_version, scope, tenant_id, domain_id, claim_type, run_id, method_id, call_id, mode, evidence_object_id, evidence_digest, byte_start, byte_end, confidence, retrieval_decision_id, retrieval_audit_seq, admission_decision_id, correlation_id)
       values (${claimE}::uuid, 1, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, 'REL', ${uuidv7()}::uuid, ${uuidv7()}::uuid, null, 'replay', ${evdE.id}::uuid, ${sha256(evdE.id)}, 0, 4, 0.8, ${uuidv7()}::uuid, 1, ${uuidv7()}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
