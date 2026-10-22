@@ -1,11 +1,11 @@
 {
-  "recorded_from": "a real C15 run (production adapter) - replayed so the behavioural controls exercise real scanner output without a network. RE-RECORDED 2026-10-21 for SCX-0016/0017 (CVE-2026-111943 / GO-2026-6809; the owner's narrow approval of 2026-10-21 for this advisory alone, docs/SCANNER_DISPOSITIONS.md §3.13): the four trivy-image RAW SCANNER STREAMS were replaced from a local PASSING FINAL run of the gate on the clean head 46930e5 (a single-branch clone) with the pinned release scanners (trivy 0.73.0 and gitleaks 8.30.1, authenticated by the gate against scripts/gate/scanner-pins.json; vulnerability DB built 2026-10-21T13:15:34Z) against the UNCHANGED pins postgres@sha256:77f58511… (children d8703cd7… / 89f74717…, 26 gosu stdlib findings each, governed by SCX-0002..0005, 0012, 0014, 0016 / SCX-0010..0011, 0013, 0015, 0017) and redis@sha256:38117873… (0 findings). The configured references, the raw OCI index bytes (byte-identical) and the four resolutions are unchanged; every other stream is unchanged from the earlier captures. PREVIOUSLY: RE-RECORDED 2026-10-11 for SCX-0014/0015 (CVE-2026-78669; application 1 of the owner's standing authorization of 2026-10-10, docs/SCANNER_DISPOSITIONS.md §3.11–3.12): the four trivy-image RAW SCANNER STREAMS were replaced from a local PASSING FINAL run of the gate on the clean head e0238de (a single-branch clone) with the pinned release scanners (trivy 0.73.0 and gitleaks 8.30.1 staged by scripts/gate/install-scanners.sh and authenticated by the gate against scripts/gate/scanner-pins.json; vulnerability DB built 2026-10-09T19:06:47Z) against the UNCHANGED pins postgres@sha256:77f58511… (children d8703cd7… / 89f74717…, 25 gosu stdlib findings each, governed by SCX-0002..0005, 0012, 0014 / SCX-0010..0011, 0013, 0015) and redis@sha256:38117873… (0 findings). The configured references, the raw OCI index bytes and the four resolutions are unchanged; every other stream is unchanged from the earlier captures. PREVIOUSLY: RE-RECORDED 2026-10-09 for the owner's approval of SCX-0012/0013 (docs/SCANNER_DISPOSITIONS.md §3.10; docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8.6): the four trivy-image RAW SCANNER STREAMS were replaced from a local PASSING run of the gate (--final) on the clean head 1a0282d (a single-branch clone) with the pinned release scanners (trivy 0.73.0 and gitleaks 8.30.1 staged by scripts/gate/install-scanners.sh and authenticated by the gate against scripts/gate/scanner-pins.json; vulnerability DB built 2026-10-09T13:10Z) against the UNCHANGED pins postgres@sha256:77f58511… (children d8703cd7… / 89f74717…, now 24 gosu stdlib findings each: the 22 governed by SCX-0002..0005 / SCX-0010..0011 plus CVE-2026-78667 and CVE-2026-97031, governed by SCX-0012 / SCX-0013) and redis@sha256:38117873… (0 findings). The configured references, the raw OCI index bytes and the four image resolutions are unchanged (the same pins, byte-identical index bytes); every other stream is unchanged from the earlier captures, as on the previous re-records; the runner recomputes its own verdict from these streams. PREVIOUSLY: RE-RECORDED 2026-09-25 for the redis:8-alpine index move (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8.5): the configured references, their raw OCI index bytes, the four image resolutions and the four trivy-image RAW SCANNER STREAMS were replaced from a local PASSING run of the gate on the clean head 142d0b0 (a single-branch clone) with the pinned release scanners (trivy 0.73.0 and gitleaks 8.30.1, their executable digests authenticated by the gate against scripts/gate/scanner-pins.json) against postgres@sha256:77f58511… (unchanged; children d8703cd7… / 89f74717…, 22 gosu stdlib findings each, governed by SCX-0002..0005 and SCX-0010..0011) and redis@sha256:38117873… (redis:8-alpine = 8.10.2-alpine; the SAME children 2d3814be… / 41a10b18… as the previous pin ba6e394f…, 0 findings; the index moved only in its linux/riscv64 child). Every other stream is unchanged from the earlier captures, as on the previous re-records; the runner recomputes its own verdict from these streams. PREVIOUSLY: RE-RECORDED 2026-09-23 for the RETURN TO THE OFFICIAL IMAGES (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8; the owner's approval of the six SCX re-issues on 2026-09-23, docs/SCANNER_DISPOSITIONS.md §3.9): the configured references, their raw OCI index bytes (oci-index-0/1.json — the official indexes, 8 runnable platform children plus 8 attestation manifests each, which the resolver excludes), the four image resolutions and the four trivy-image RAW SCANNER STREAMS were replaced from a local run of the gate on the clean head 2b8358b5 with the pinned release scanners (trivy 0.73.0 and gitleaks 8.30.1 authenticated by scripts/gate/install-scanners.sh, DB built 2026-09-23T07:12Z) against postgres@sha256:77f58511… (postgres:18-alpine = 18.6-alpine3.24, Alpine 3.24.2; linux/amd64 child d8703cd7…, linux/arm64 child 89f74717…, 22 gosu stdlib findings each, governed by the re-issued SCX-0002..0005 and SCX-0010..0011, 0 OS-package findings) and redis@sha256:ba6e394f… (redis:8-alpine = 8.10.2-alpine, Alpine 3.23.6; children 2d3814be… and 41a10b18…, 0 findings). Every other stream (pnpm audit, gitleaks, trivy fs, acquisition, provenance, fingerprint, tool versions) is unchanged from the earlier captures, as on the two previous re-records; the runner recomputes its own verdict from these streams. PREVIOUSLY: RE-RECORDED 2026-09-10 for the governed re-pin to the derived maintenance images (docs/images/DERIVED_IMAGES_APPROVAL.md) against ghcr.io/a-halawany/elven/postgres@sha256:69a974ae… (children bc90ce6b… / d3dd485b…, 22 gosu findings each) and ghcr.io/a-halawany/elven/redis@sha256:1ad0ff24… (children 0c0a48dd… / c11d75ca…, 0 findings), and again the same day for the per-platform scan: the gate scans BOTH children of each configured index (SCAN_PLATFORMS = linux/amd64, linux/arm64, platform-major), so the trace carries four image resolutions and four trivy-image raw streams, each resolution recording the platform it resolved for, because both children are addressed by the same configured reference.",
-  "source_sha": "46930e521688467d58b56d6cf4b1b478168b9800",
+  "recorded_from": "a real C15 run (production adapter) - replayed so the behavioural controls exercise real scanner output without a network. RE-RECORDED 2026-10-22 for the redis:8-alpine re-pin (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8.9): the redis configured reference, its raw OCI index bytes (oci-index-1.json), its two resolutions and the four trivy-image RAW SCANNER STREAMS were replaced from a local PASSING FINAL run of the gate on the clean head eb3788f (a single-branch clone) with the pinned release scanners (trivy 0.73.0 and gitleaks 8.30.1, authenticated by the gate; vulnerability DB built 2026-10-21T13:15:34Z) against postgres@sha256:77f58511… (UNCHANGED; byte-identical index; children d8703cd7… / 89f74717…, 26 gosu stdlib findings each, governed by the twelve records) and redis@sha256:615b4ced… (children 16b124a2… / 0819246a…, rebuilt on a fresh alpine:3.23 base, 0 findings). Every other stream is unchanged from the earlier captures. PREVIOUSLY: RE-RECORDED 2026-10-21 for SCX-0016/0017 (CVE-2026-111943 / GO-2026-6809; the owner's narrow approval of 2026-10-21 for this advisory alone, docs/SCANNER_DISPOSITIONS.md §3.13): the four trivy-image RAW SCANNER STREAMS were replaced from a local PASSING FINAL run of the gate on the clean head 46930e5 (a single-branch clone) with the pinned release scanners (trivy 0.73.0 and gitleaks 8.30.1, authenticated by the gate against scripts/gate/scanner-pins.json; vulnerability DB built 2026-10-21T13:15:34Z) against the UNCHANGED pins postgres@sha256:77f58511… (children d8703cd7… / 89f74717…, 26 gosu stdlib findings each, governed by SCX-0002..0005, 0012, 0014, 0016 / SCX-0010..0011, 0013, 0015, 0017) and redis@sha256:38117873… (0 findings). The configured references, the raw OCI index bytes (byte-identical) and the four resolutions are unchanged; every other stream is unchanged from the earlier captures. PREVIOUSLY: RE-RECORDED 2026-10-11 for SCX-0014/0015 (CVE-2026-78669; application 1 of the owner's standing authorization of 2026-10-10, docs/SCANNER_DISPOSITIONS.md §3.11–3.12): the four trivy-image RAW SCANNER STREAMS were replaced from a local PASSING FINAL run of the gate on the clean head e0238de (a single-branch clone) with the pinned release scanners (trivy 0.73.0 and gitleaks 8.30.1 staged by scripts/gate/install-scanners.sh and authenticated by the gate against scripts/gate/scanner-pins.json; vulnerability DB built 2026-10-09T19:06:47Z) against the UNCHANGED pins postgres@sha256:77f58511… (children d8703cd7… / 89f74717…, 25 gosu stdlib findings each, governed by SCX-0002..0005, 0012, 0014 / SCX-0010..0011, 0013, 0015) and redis@sha256:38117873… (0 findings). The configured references, the raw OCI index bytes and the four resolutions are unchanged; every other stream is unchanged from the earlier captures. PREVIOUSLY: RE-RECORDED 2026-10-09 for the owner's approval of SCX-0012/0013 (docs/SCANNER_DISPOSITIONS.md §3.10; docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8.6): the four trivy-image RAW SCANNER STREAMS were replaced from a local PASSING run of the gate (--final) on the clean head 1a0282d (a single-branch clone) with the pinned release scanners (trivy 0.73.0 and gitleaks 8.30.1 staged by scripts/gate/install-scanners.sh and authenticated by the gate against scripts/gate/scanner-pins.json; vulnerability DB built 2026-10-09T13:10Z) against the UNCHANGED pins postgres@sha256:77f58511… (children d8703cd7… / 89f74717…, now 24 gosu stdlib findings each: the 22 governed by SCX-0002..0005 / SCX-0010..0011 plus CVE-2026-78667 and CVE-2026-97031, governed by SCX-0012 / SCX-0013) and redis@sha256:38117873… (0 findings). The configured references, the raw OCI index bytes and the four image resolutions are unchanged (the same pins, byte-identical index bytes); every other stream is unchanged from the earlier captures, as on the previous re-records; the runner recomputes its own verdict from these streams. PREVIOUSLY: RE-RECORDED 2026-09-25 for the redis:8-alpine index move (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8.5): the configured references, their raw OCI index bytes, the four image resolutions and the four trivy-image RAW SCANNER STREAMS were replaced from a local PASSING run of the gate on the clean head 142d0b0 (a single-branch clone) with the pinned release scanners (trivy 0.73.0 and gitleaks 8.30.1, their executable digests authenticated by the gate against scripts/gate/scanner-pins.json) against postgres@sha256:77f58511… (unchanged; children d8703cd7… / 89f74717…, 22 gosu stdlib findings each, governed by SCX-0002..0005 and SCX-0010..0011) and redis@sha256:38117873… (redis:8-alpine = 8.10.2-alpine; the SAME children 2d3814be… / 41a10b18… as the previous pin ba6e394f…, 0 findings; the index moved only in its linux/riscv64 child). Every other stream is unchanged from the earlier captures, as on the previous re-records; the runner recomputes its own verdict from these streams. PREVIOUSLY: RE-RECORDED 2026-09-23 for the RETURN TO THE OFFICIAL IMAGES (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8; the owner's approval of the six SCX re-issues on 2026-09-23, docs/SCANNER_DISPOSITIONS.md §3.9): the configured references, their raw OCI index bytes (oci-index-0/1.json — the official indexes, 8 runnable platform children plus 8 attestation manifests each, which the resolver excludes), the four image resolutions and the four trivy-image RAW SCANNER STREAMS were replaced from a local run of the gate on the clean head 2b8358b5 with the pinned release scanners (trivy 0.73.0 and gitleaks 8.30.1 authenticated by scripts/gate/install-scanners.sh, DB built 2026-09-23T07:12Z) against postgres@sha256:77f58511… (postgres:18-alpine = 18.6-alpine3.24, Alpine 3.24.2; linux/amd64 child d8703cd7…, linux/arm64 child 89f74717…, 22 gosu stdlib findings each, governed by the re-issued SCX-0002..0005 and SCX-0010..0011, 0 OS-package findings) and redis@sha256:ba6e394f… (redis:8-alpine = 8.10.2-alpine, Alpine 3.23.6; children 2d3814be… and 41a10b18…, 0 findings). Every other stream (pnpm audit, gitleaks, trivy fs, acquisition, provenance, fingerprint, tool versions) is unchanged from the earlier captures, as on the two previous re-records; the runner recomputes its own verdict from these streams. PREVIOUSLY: RE-RECORDED 2026-09-10 for the governed re-pin to the derived maintenance images (docs/images/DERIVED_IMAGES_APPROVAL.md) against ghcr.io/a-halawany/elven/postgres@sha256:69a974ae… (children bc90ce6b… / d3dd485b…, 22 gosu findings each) and ghcr.io/a-halawany/elven/redis@sha256:1ad0ff24… (children 0c0a48dd… / c11d75ca…, 0 findings), and again the same day for the per-platform scan: the gate scans BOTH children of each configured index (SCAN_PLATFORMS = linux/amd64, linux/arm64, platform-major), so the trace carries four image resolutions and four trivy-image raw streams, each resolution recording the platform it resolved for, because both children are addressed by the same configured reference.",
+  "source_sha": "eb3788ff5ea5849e03bcb8decee0036f81bc473a",
   "host_platform_key": "darwin-arm64",
   "scan_platform": "linux/amd64",
   "digest_pinned_images": [
     "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
-    "redis@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0"
+    "redis@sha256:615b4cedaff0c1437a1548acae4222572df8c021eeb7382d64cb8b5e3a13ac7a"
   ],
   "acquisition": {
     "cacheDir": "/private/tmp/claude-501/-Users-halawany-work-personal-mohammed-new-project/41f9bd54-615a-4c55-b883-1f9e0c92601d/scratchpad/nb/cache",
@@ -247,19 +247,19 @@
       }
     },
     {
-      "ref": "redis@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0",
+      "ref": "redis@sha256:615b4cedaff0c1437a1548acae4222572df8c021eeb7382d64cb8b5e3a13ac7a",
       "platform": "linux/amd64",
       "resolution": {
-        "ref": "redis@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0",
+        "ref": "redis@sha256:615b4cedaff0c1437a1548acae4222572df8c021eeb7382d64cb8b5e3a13ac7a",
         "resolved": true,
         "kind": "index",
         "media_type": "application/vnd.oci.image.index.v1+json",
-        "index_raw_sha256": "3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0",
+        "index_raw_sha256": "615b4cedaff0c1437a1548acae4222572df8c021eeb7382d64cb8b5e3a13ac7a",
         "child_count": 16,
         "runnable_platform_count": 8,
         "children": [
           {
-            "digest": "sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23",
+            "digest": "sha256:16b124a2d3eacd620d917ead6fd26cbf1f1d7117fa94122398971931cfe2d403",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "linux",
             "architecture": "amd64",
@@ -268,7 +268,7 @@
             "attestation": false
           },
           {
-            "digest": "sha256:557c8995ce938654d0f3bea8c467f8b04043bb1e6c59949a14624b8208f43e0e",
+            "digest": "sha256:f79a7876c6644b273e4eec899344e51c66959237a2f71188db8cb98d7311521c",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "unknown",
             "architecture": "unknown",
@@ -277,7 +277,7 @@
             "attestation": true
           },
           {
-            "digest": "sha256:bf1d5dea00d4928d2759421c59df0885f2b7f6ef23794242b92e0d582846437a",
+            "digest": "sha256:877e73ece6138771a041efc6af9f0004123e0fe581d7deddc1b7c1b230a9632e",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "linux",
             "architecture": "arm",
@@ -286,7 +286,7 @@
             "attestation": false
           },
           {
-            "digest": "sha256:daafac7946a22964ae30b42f5699679144f49c156a76341563c998bf0c8b2ef9",
+            "digest": "sha256:2f1a67285209ad29073b25e0d5bc57bd0b3aeda54e81a0b53bd528a5d19920ac",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "unknown",
             "architecture": "unknown",
@@ -295,7 +295,7 @@
             "attestation": true
           },
           {
-            "digest": "sha256:a5065b18fe46de11bd420356c9f561cc2d5100d28deac62c1a2ae41485fa84f9",
+            "digest": "sha256:92d1b3d859ce2e7244e7f2de6fd227faa1a1626183d69a178e2f1fba5023966f",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "linux",
             "architecture": "arm",
@@ -304,7 +304,7 @@
             "attestation": false
           },
           {
-            "digest": "sha256:bd46e86130ee51573abf3e7acfb95c0137ea823ecda5cbdc2e4ae75f31efd572",
+            "digest": "sha256:271f98eebdd5a137fbe9c045fb5f115c2dd3b04a45a784a1fccb560914a102e3",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "unknown",
             "architecture": "unknown",
@@ -313,16 +313,16 @@
             "attestation": true
           },
           {
-            "digest": "sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44",
+            "digest": "sha256:0819246a2bb1979f7745a8bae2559a2ffa49071ef7a5e7213b3e347e162aeb26",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "linux",
             "architecture": "arm64",
             "variant": "v8",
-            "size": 2290,
+            "size": 2291,
             "attestation": false
           },
           {
-            "digest": "sha256:db982895182ebd75fa5b1fbcda4da9db5c8a587c51a3148216ee8a031919ce97",
+            "digest": "sha256:a172bd2206527eabb12e88556d3741a447db003d4a7c3c8081549e6fb2089b7c",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "unknown",
             "architecture": "unknown",
@@ -331,7 +331,7 @@
             "attestation": true
           },
           {
-            "digest": "sha256:d07015abebff140aecb6bfd6056db97d305293edfc30c079dfd45e8f67c5265d",
+            "digest": "sha256:26e2996b8f8bfaaccf2a8ac63995528d64faea5132f7057c0073614c8365360e",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "linux",
             "architecture": "386",
@@ -340,7 +340,7 @@
             "attestation": false
           },
           {
-            "digest": "sha256:473eb042f515c9508a6857954634236a4a6e4fc6112abaf1c6b8ac337ed7c410",
+            "digest": "sha256:76193f40a856d0b697f81228b9e40aaae13db9ec62791cff9d784a54b971f6eb",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "unknown",
             "architecture": "unknown",
@@ -385,7 +385,7 @@
             "attestation": true
           },
           {
-            "digest": "sha256:80c94b28fb28140b2ca838e09073e135eb8995af8d12e8a5d006d24ba03d6f0e",
+            "digest": "sha256:5be8b7e307feb9809e4f25cc8facf87e0bb50ff6f94a2773226ec940de54530a",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "linux",
             "architecture": "s390x",
@@ -394,7 +394,7 @@
             "attestation": false
           },
           {
-            "digest": "sha256:dae9c633bbf482eba75dd9aaa9911e46299f0f7b8b9197900cbaf3bccf112443",
+            "digest": "sha256:9faa7cfdb18c3e2a40e2160d67ca8475048085270b0806e0ad0e935c9eeb172a",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "unknown",
             "architecture": "unknown",
@@ -404,7 +404,7 @@
           }
         ],
         "target_platform": "linux/amd64",
-        "target_digest": "sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23",
+        "target_digest": "sha256:16b124a2d3eacd620d917ead6fd26cbf1f1d7117fa94122398971931cfe2d403",
         "target_is_index_child": true
       }
     },
@@ -571,19 +571,19 @@
       }
     },
     {
-      "ref": "redis@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0",
+      "ref": "redis@sha256:615b4cedaff0c1437a1548acae4222572df8c021eeb7382d64cb8b5e3a13ac7a",
       "platform": "linux/arm64",
       "resolution": {
-        "ref": "redis@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0",
+        "ref": "redis@sha256:615b4cedaff0c1437a1548acae4222572df8c021eeb7382d64cb8b5e3a13ac7a",
         "resolved": true,
         "kind": "index",
         "media_type": "application/vnd.oci.image.index.v1+json",
-        "index_raw_sha256": "3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0",
+        "index_raw_sha256": "615b4cedaff0c1437a1548acae4222572df8c021eeb7382d64cb8b5e3a13ac7a",
         "child_count": 16,
         "runnable_platform_count": 8,
         "children": [
           {
-            "digest": "sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23",
+            "digest": "sha256:16b124a2d3eacd620d917ead6fd26cbf1f1d7117fa94122398971931cfe2d403",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "linux",
             "architecture": "amd64",
@@ -592,7 +592,7 @@
             "attestation": false
           },
           {
-            "digest": "sha256:557c8995ce938654d0f3bea8c467f8b04043bb1e6c59949a14624b8208f43e0e",
+            "digest": "sha256:f79a7876c6644b273e4eec899344e51c66959237a2f71188db8cb98d7311521c",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "unknown",
             "architecture": "unknown",
@@ -601,7 +601,7 @@
             "attestation": true
           },
           {
-            "digest": "sha256:bf1d5dea00d4928d2759421c59df0885f2b7f6ef23794242b92e0d582846437a",
+            "digest": "sha256:877e73ece6138771a041efc6af9f0004123e0fe581d7deddc1b7c1b230a9632e",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "linux",
             "architecture": "arm",
@@ -610,7 +610,7 @@
             "attestation": false
           },
           {
-            "digest": "sha256:daafac7946a22964ae30b42f5699679144f49c156a76341563c998bf0c8b2ef9",
+            "digest": "sha256:2f1a67285209ad29073b25e0d5bc57bd0b3aeda54e81a0b53bd528a5d19920ac",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "unknown",
             "architecture": "unknown",
@@ -619,7 +619,7 @@
             "attestation": true
           },
           {
-            "digest": "sha256:a5065b18fe46de11bd420356c9f561cc2d5100d28deac62c1a2ae41485fa84f9",
+            "digest": "sha256:92d1b3d859ce2e7244e7f2de6fd227faa1a1626183d69a178e2f1fba5023966f",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "linux",
             "architecture": "arm",
@@ -628,7 +628,7 @@
             "attestation": false
           },
           {
-            "digest": "sha256:bd46e86130ee51573abf3e7acfb95c0137ea823ecda5cbdc2e4ae75f31efd572",
+            "digest": "sha256:271f98eebdd5a137fbe9c045fb5f115c2dd3b04a45a784a1fccb560914a102e3",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "unknown",
             "architecture": "unknown",
@@ -637,16 +637,16 @@
             "attestation": true
           },
           {
-            "digest": "sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44",
+            "digest": "sha256:0819246a2bb1979f7745a8bae2559a2ffa49071ef7a5e7213b3e347e162aeb26",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "linux",
             "architecture": "arm64",
             "variant": "v8",
-            "size": 2290,
+            "size": 2291,
             "attestation": false
           },
           {
-            "digest": "sha256:db982895182ebd75fa5b1fbcda4da9db5c8a587c51a3148216ee8a031919ce97",
+            "digest": "sha256:a172bd2206527eabb12e88556d3741a447db003d4a7c3c8081549e6fb2089b7c",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "unknown",
             "architecture": "unknown",
@@ -655,7 +655,7 @@
             "attestation": true
           },
           {
-            "digest": "sha256:d07015abebff140aecb6bfd6056db97d305293edfc30c079dfd45e8f67c5265d",
+            "digest": "sha256:26e2996b8f8bfaaccf2a8ac63995528d64faea5132f7057c0073614c8365360e",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "linux",
             "architecture": "386",
@@ -664,7 +664,7 @@
             "attestation": false
           },
           {
-            "digest": "sha256:473eb042f515c9508a6857954634236a4a6e4fc6112abaf1c6b8ac337ed7c410",
+            "digest": "sha256:76193f40a856d0b697f81228b9e40aaae13db9ec62791cff9d784a54b971f6eb",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "unknown",
             "architecture": "unknown",
@@ -709,7 +709,7 @@
             "attestation": true
           },
           {
-            "digest": "sha256:80c94b28fb28140b2ca838e09073e135eb8995af8d12e8a5d006d24ba03d6f0e",
+            "digest": "sha256:5be8b7e307feb9809e4f25cc8facf87e0bb50ff6f94a2773226ec940de54530a",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "linux",
             "architecture": "s390x",
@@ -718,7 +718,7 @@
             "attestation": false
           },
           {
-            "digest": "sha256:dae9c633bbf482eba75dd9aaa9911e46299f0f7b8b9197900cbaf3bccf112443",
+            "digest": "sha256:9faa7cfdb18c3e2a40e2160d67ca8475048085270b0806e0ad0e935c9eeb172a",
             "media_type": "application/vnd.oci.image.manifest.v1+json",
             "os": "unknown",
             "architecture": "unknown",
@@ -728,7 +728,7 @@
           }
         ],
         "target_platform": "linux/arm64",
-        "target_digest": "sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44",
+        "target_digest": "sha256:0819246a2bb1979f7745a8bae2559a2ffa49071ef7a5e7213b3e347e162aeb26",
         "target_is_index_child": true
       }
     }
