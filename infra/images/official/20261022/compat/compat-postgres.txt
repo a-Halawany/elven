@@ -1,0 +1,31 @@
+# Compatibility pass (postgres), 2026-10-22T12:00:25Z: throwaway containers c15-pg-20261022 on 127.0.0.1:5439 and c15-redis-20261022b on 127.0.0.1:6390, the linux/arm64
+# children of the re-pinned postgres:18-alpine (83148c0b…) and redis:8-alpine (615b4ced…) — this host is darwin/arm64; CI runs the amd64
+# children — under EXACTLY the compose file's process protections; credentials from the local environment or generated, never printed.
+# Then the migrations on the fresh cluster and the acceptance suite (migrate + one-shot bootstrap + the built API) against both.
+== postgres: postgres@sha256:b1c1673a890fba8fae71d37210b4fd9a0b5cd0df8bb994a6bcc01d9cf8e1670c (linux/arm64) under user 70:70, cap_drop ALL, no-new-privileges
+postgres health (the compose healthcheck command): /var/run/postgresql:5432 - accepting connections
+--- process identity inside the postgres container (uid/gid, capability masks, NoNewPrivs) ---
+uid=70(postgres) gid=70(postgres) groups=70(postgres)
+CapPrm:	0000000000000000
+CapEff:	0000000000000000
+CapBnd:	0000000000000000
+NoNewPrivs:	1
+--- server version, extensions the migrations use ---
+PostgreSQL 18.6 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+btree_gist|1.8
+pg_trgm|1.6
+pgcrypto|1.4
+--- the API built (pnpm --filter @eye/api... build) ---
+build exit 0
+--- migrations 0001..0123 on the fresh cluster ---
+applying 0123_b40_source_platform.sql ... ok
+migrations up to date
+role passwords synchronized from environment
+applied: 123 migrations
+--- the acceptance suite against postgres :5439 and redis :6390 ---
+ Test Files  1 passed (1)
+      Tests  58 passed (58)
+   Duration  12.32s (transform 64ms, setup 27ms, import 153ms, tests 12.06s, environment 0ms)
+--- cleanup ---
+removed c15-pg-20261022 c15-redis-20261022b
+finished 2026-10-22T12:00:52Z

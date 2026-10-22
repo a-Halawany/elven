@@ -46,9 +46,11 @@ const CHILDREN: Record<string, { amd64: string; arm64: string; size: number }> =
   // index (the arm64 manifests are 2680 and 2290 bytes). The recorded C15 trace names these since
   // its re-record of 2026-09-23; the derived entries below stay as the record of the 2026-09-10
   // artefacts the previous trace was recorded from.
+  // postgres:18-alpine re-pinned 2026-10-22 (index 83148c0b…, §8.10): both runnable children rebuilt on Alpine 3.24.3
+  // (infra/images/official/20261022/source/SOURCE-postgres.txt; arm64 manifest 2680 bytes).
   postgres: {
-    amd64: 'sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66',
-    arm64: 'sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f',
+    amd64: 'sha256:3b0ef735388b2cb097fc29b8bb421d86d57d0ddbe7aa1fbd6493e06d65028503',
+    arm64: 'sha256:b1c1673a890fba8fae71d37210b4fd9a0b5cd0df8bb994a6bcc01d9cf8e1670c',
     size: 2678,
   },
   // redis:8-alpine re-pinned 2026-10-22 (index 615b4ced…, §8.9): both runnable children rebuilt on a
@@ -248,13 +250,14 @@ export function buildPassingR34Evidence(
    * approved 2026-09-23, docs/SCANNER_DISPOSITIONS.md §3.9) moved it to 2026-09-23; the owner's
    * approval of SCX-0012/0013 (approved 2026-10-09, §3.10) moved it to 2026-10-09; SCX-0014/0015
    * (approved 2026-10-10, §3.12) moved it to 2026-10-10; SCX-0016/0017 (the owner's narrow approval
-   * of 2026-10-21, §3.13) move it to 2026-10-21.
+   * of 2026-10-21, §3.13) moved it to 2026-10-21; the re-issue of all twelve for the re-pinned postgres
+   * index (approved 2026-10-22, §3.14) moves it to 2026-10-22.
    *
    * The literal is deliberate. It has to be changed on purpose whenever a disposition is added,
    * which is exactly the coupling that makes a stale fixture fail loudly instead of quietly
    * verifying an evidence package against records it never saw.
    */
-  const runDate = '2026-10-21';
+  const runDate = '2026-10-22';
   const { contract, derived } = derivationFor(repo, runDate);
   const candidateManifest = candidateSourceManifest(repo);
   const expectedSha = derived.meta.sourceSha as string;

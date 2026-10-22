@@ -1,0 +1,49 @@
+# gosu in the new postgres:18-alpine children vs the previously approved binaries, 2026-10-22T11:54:07Z
+# extracted with docker create --platform + docker cp from each child digest; compared byte for byte (cmp) with the binaries extracted on 2026-10-21 from the pinned children (SCANNER_DISPOSITIONS §3.11/§3.13)
+
+linux/amd64 child sha256:3b0ef735388b2cb097fc29b8bb421d86d57d0ddbe7aa1fbd6493e06d65028503
+  extraction container image id sha256:57b23a0326ee442e83b3d3fa027c5a148be0a392d7c91d1ca4e1e70131ee859a
+  new gosu sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, 1769900 bytes, ELF 64-bit LSB executable, x86-64
+  approved gosu sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0 (recorded); previous extraction 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0
+  cmp against the previous extraction: BYTE-IDENTICAL; digest equals the approved: yes
+linux/arm64 child sha256:b1c1673a890fba8fae71d37210b4fd9a0b5cd0df8bb994a6bcc01d9cf8e1670c
+  extraction container image id sha256:d198b39c31a6df6012ac71d61fe3596277c3c06e0884fc24965669cb8d799f10
+  new gosu sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44, 1830424 bytes, ELF 64-bit LSB executable, ARM aarch64
+  approved gosu sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44 (recorded); previous extraction 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44
+  cmp against the previous extraction: BYTE-IDENTICAL; digest equals the approved: yes
+
+--- go version -m (golang:1.25, go1.25.14) ---
+/w/gosu-amd64: go1.24.6
+	path	github.com/tianon/gosu
+	mod	github.com/tianon/gosu	v1.19.0	
+	dep	github.com/moby/sys/user	v0.1.0	h1:WmZ93f5Ux6het5iituh9x2zAG7NFY9Aqi49jjE1PaQg=
+	dep	golang.org/x/sys	v0.1.0	h1:kunALQeHf1/185U1i0GOB/fy1IPRDDpuoOOqRReG57U=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	-trimpath=true
+	build	DefaultGODEBUG=asynctimerchan=1,gotestjsonbuildtext=1,gotypesalias=0,httplaxcontentlength=1,httpmuxgo121=1,httpservecontentkeepheaders=1,multipathtcp=0,panicnil=1,randseednop=0,rsa1024min=0,tls10server=1,tls3des=1,tlsmlkem=0,tlsrsakex=1,tlsunsafeekm=1,winreadlinkvolume=0,winsymlink=0,x509keypairleaf=0,x509negativeserial=1,x509rsacrt=0,x509usepolicies=0
+	build	CGO_ENABLED=0
+	build	GOARCH=amd64
+	build	GOOS=linux
+	build	GOAMD64=v1
+	build	vcs=git
+	build	vcs.revision=1.19
+	build	vcs.time=1970-01-01T00:00:00Z
+	build	vcs.modified=false
+/w/gosu-arm64: go1.24.6
+	path	github.com/tianon/gosu
+	mod	github.com/tianon/gosu	v1.19.0	
+	dep	github.com/moby/sys/user	v0.1.0	h1:WmZ93f5Ux6het5iituh9x2zAG7NFY9Aqi49jjE1PaQg=
+	dep	golang.org/x/sys	v0.1.0	h1:kunALQeHf1/185U1i0GOB/fy1IPRDDpuoOOqRReG57U=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	-trimpath=true
+	build	DefaultGODEBUG=asynctimerchan=1,gotestjsonbuildtext=1,gotypesalias=0,httplaxcontentlength=1,httpmuxgo121=1,httpservecontentkeepheaders=1,multipathtcp=0,panicnil=1,randseednop=0,rsa1024min=0,tls10server=1,tls3des=1,tlsmlkem=0,tlsrsakex=1,tlsunsafeekm=1,winreadlinkvolume=0,winsymlink=0,x509keypairleaf=0,x509negativeserial=1,x509rsacrt=0,x509usepolicies=0
+	build	CGO_ENABLED=0
+	build	GOARCH=arm64
+	build	GOOS=linux
+	build	GOARM64=v8.0
+	build	vcs=git
+	build	vcs.revision=1.19
+	build	vcs.time=1970-01-01T00:00:00Z
+	build	vcs.modified=false

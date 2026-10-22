@@ -1,0 +1,23 @@
+# Per-record applicability on the new postgres:18-alpine children (83148c0b…: 3b0ef735… / b1c1673a…) against the pinned children (77f58511…: d8703cd7… / 89f74717…),
+# both scanned on 2026-10-22 with the pinned trivy 0.73.0, the same vulnerability DB (built 2026-10-21T13:15:34Z), --scanners vuln,secret --ignorefile /dev/null, every severity;
+# every consequence-relevant field compared: advisory, severity, package, PURL, installed version, result target.
+
+linux/amd64: pinned child 65 rows at every severity, new child 61; identical as sets: False; gone [('CVE-2026-107891', 'UNKNOWN', 'musl', 'pkg:apk/alpine/musl@1.2.6-r2?arch=x86_64&distro=3.24.2', '1.2.6-r2', 'postgres@sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66 (alpine 3.24.2)'), ('CVE-2026-107891', 'UNKNOWN', 'musl-utils', 'pkg:apk/alpine/musl-utils@1.2.6-r2?arch=x86_64&distro=3.24.2', '1.2.6-r2', 'postgres@sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66 (alpine 3.24.2)'), ('CVE-2026-58055', 'MEDIUM', 'nghttp2-libs', 'pkg:apk/alpine/nghttp2-libs@1.69.0-r0?arch=x86_64&distro=3.24.2', '1.69.0-r0', 'postgres@sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66 (alpine 3.24.2)'), ('CVE-2026-85091', 'MEDIUM', 'zlib', 'pkg:apk/alpine/zlib@1.3.2-r0?arch=x86_64&distro=3.24.2', '1.3.2-r0', 'postgres@sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66 (alpine 3.24.2)')]; new []
+  HIGH/CRITICAL: pinned 26, new 26; identical: True; rows outside usr/local/bin/gosu: pinned 4, new 0
+linux/arm64: pinned child 65 rows at every severity, new child 61; identical as sets: False; gone [('CVE-2026-107891', 'UNKNOWN', 'musl', 'pkg:apk/alpine/musl@1.2.6-r2?arch=aarch64&distro=3.24.2', '1.2.6-r2', 'postgres@sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f (alpine 3.24.2)'), ('CVE-2026-107891', 'UNKNOWN', 'musl-utils', 'pkg:apk/alpine/musl-utils@1.2.6-r2?arch=aarch64&distro=3.24.2', '1.2.6-r2', 'postgres@sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f (alpine 3.24.2)'), ('CVE-2026-58055', 'MEDIUM', 'nghttp2-libs', 'pkg:apk/alpine/nghttp2-libs@1.69.0-r0?arch=aarch64&distro=3.24.2', '1.69.0-r0', 'postgres@sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f (alpine 3.24.2)'), ('CVE-2026-85091', 'MEDIUM', 'zlib', 'pkg:apk/alpine/zlib@1.3.2-r0?arch=aarch64&distro=3.24.2', '1.3.2-r0', 'postgres@sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f (alpine 3.24.2)')]; new []
+  HIGH/CRITICAL: pinned 26, new 26; identical: True; rows outside usr/local/bin/gosu: pinned 4, new 0
+
+SCX-0002 linux/amd64 RISK_ACCEPTED HIGH: advisories present with the exact tuple 14/14
+SCX-0003 linux/amd64 RISK_ACCEPTED CRITICAL: advisories present with the exact tuple 1/1
+SCX-0004 linux/amd64 NOT_AFFECTED HIGH: advisories present with the exact tuple 1/1
+SCX-0005 linux/amd64 NOT_AFFECTED HIGH: advisories present with the exact tuple 6/6
+SCX-0010 linux/arm64 RISK_ACCEPTED HIGH: advisories present with the exact tuple 21/21
+SCX-0011 linux/arm64 RISK_ACCEPTED CRITICAL: advisories present with the exact tuple 1/1
+SCX-0012 linux/amd64 NOT_AFFECTED HIGH: advisories present with the exact tuple 2/2
+SCX-0013 linux/arm64 NOT_AFFECTED HIGH: advisories present with the exact tuple 2/2
+SCX-0014 linux/amd64 NOT_AFFECTED HIGH: advisories present with the exact tuple 1/1
+SCX-0015 linux/arm64 NOT_AFFECTED HIGH: advisories present with the exact tuple 1/1
+SCX-0016 linux/amd64 NOT_AFFECTED HIGH: advisories present with the exact tuple 1/1
+SCX-0017 linux/arm64 NOT_AFFECTED HIGH: advisories present with the exact tuple 1/1
+linux/amd64: HIGH/CRITICAL rows no record governs: 0
+linux/arm64: HIGH/CRITICAL rows no record governs: 0

@@ -398,9 +398,10 @@ describe('C15 — after the return, the recheck decides against the CONFIGURED p
       expect(pins[service].reference).toBe(`${pins[service].repository}@${pins[service].digest}`);
       expect(pins[service].children['linux/amd64']).toMatch(/^sha256:[0-9a-f]{64}$/);
       expect(pins[service].children['linux/arm64']).toMatch(/^sha256:[0-9a-f]{64}$/);
-      // postgres pinned at the return (2026-09-22); redis re-pinned by the update process when its index moved (2026-09-25, §8.5)
-      // and again when both its runnable children were rebuilt (2026-10-22, §8.9).
-      expect(pins[service].pinned_at).toBe(({ postgres: '2026-09-22', redis: '2026-10-22' } as Record<string, string>)[service]);
+      // postgres pinned at the return (2026-09-22) and re-pinned when both its runnable children were rebuilt (2026-10-22, §8.10);
+      // redis re-pinned by the update process when its index moved (2026-09-25, §8.5) and again when both its runnable children
+      // were rebuilt (2026-10-22, §8.9).
+      expect(pins[service].pinned_at).toBe(({ postgres: '2026-10-22', redis: '2026-10-22' } as Record<string, string>)[service]);
     }
     const good = readManifest();
     const cut = (mutate: (d: any) => void) => { const d = JSON.parse(JSON.stringify(good)); mutate(d); return d; };
@@ -489,10 +490,10 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
     const m = await import(/* @vite-ignore */ join(LIB, 'scanner-exclusions.mjs'));
     const doc = readExclusions();
     const run = (d: unknown) => m.validateRecords(d, {
-      // 2026-10-21: the day the owner approved SCX-0016/0017 (docs/SCANNER_DISPOSITIONS.md §3.13),
-      // the newest approval (SCX-0014/0015 2026-10-10, §3.12; SCX-0012/0013 2026-10-09, §3.10); a
+      // 2026-10-22: the day the owner approved the re-issue of all twelve for the re-pinned postgres index
+      // (docs/SCANNER_DISPOSITIONS.md §3.14), the newest approval; a
       // record approved after the run date is correctly refused, so the run date is the newest approval.
-      runDate: '2026-10-21', root: REPO, isTracked: () => true,
+      runDate: '2026-10-22', root: REPO, isTracked: () => true,
       readEvidence: (rel: string) => { try { return readFileSync(join(REPO, rel)); } catch { return null; } },
     }).problems;
     expect(run(doc)).toEqual([]);
@@ -532,10 +533,9 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
       // approval was given, not the day the re-issues were drafted (2026-09-22) and not the dates
       // of the previous approvals (2026-09-10 amd64, 2026-09-11 arm64).
       // SCX-0012/0013 are new records, approved by the owner on 2026-10-09 (§3.10); SCX-0014/0015 on
-      // 2026-10-10 (§3.12); SCX-0016/0017 on 2026-10-21 (§3.13).
-      const approved = r.id === 'SCX-0012' || r.id === 'SCX-0013' ? '2026-10-09'
-        : r.id === 'SCX-0016' || r.id === 'SCX-0017' ? '2026-10-21'
-        : r.id === 'SCX-0014' || r.id === 'SCX-0015' ? '2026-10-10' : '2026-09-23';
+      // 2026-10-10 (§3.12); SCX-0016/0017 on 2026-10-21 (§3.13). All twelve were RE-ISSUED for the
+      // re-pinned index 83148c0b… under the owner's approval of 2026-10-22 (§3.14): that is the date each carries now.
+      const approved = '2026-10-22';
       expect(r.approved_on, `${r.id} approved_on`).toBe(approved);
       expect(r.reviewed_on, `${r.id} reviewed_on`).toBe(approved);
       expect(r.status, `${r.id} must carry no draft marker`).toBeUndefined();
@@ -565,6 +565,21 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
       expect(s.full_text_last_present_at).toMatch(/^[0-9a-f]{40}$/);
     }
     expect(doc.pending_reissues).toBeUndefined();
+    // The 2026-10-22 re-issue (§3.14): every record's previous version listed by identity, naming the previous official index,
+    // with its classification and approval date kept as it was; none retired.
+    const s22 = doc.superseded_records_2026_10_22;
+    expect(s22.superseded_on).toBe('2026-10-22');
+    expect(s22.for_image).toBe(readManifest().pinned_images.postgres.digest);
+    expect(s22.previous_image).toBe('postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873');
+    expect(s22.retired).toEqual([]);
+    expect(s22.ids).toEqual(doc.records.map((r: { id: string }) => r.id));
+    for (const sr of s22.records) {
+      const now = doc.records.find((r: { id: string }) => r.id === sr.id);
+      expect(sr.image).toBe(s22.previous_image);
+      expect(sr.classification, `${sr.id} keeps its classification`).toBe(now.classification);
+      expect(sr.scan_platform).toBe(now.scan_platform);
+      expect(sr.full_text_last_present_at).toMatch(/^[0-9a-f]{40}$/);
+    }
   });
 
   it('no record carries a decorative deadline that nothing enforces', () => {
