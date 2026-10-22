@@ -3,8 +3,8 @@
   "Trivy": {
     "Version": "0.73.0"
   },
-  "ReportID": "01a163fe-395c-7ca2-a49a-06487505ca60",
-  "CreatedAt": "2026-10-22T17:22:47.644829+03:00",
+  "ReportID": "01a164bc-6de5-7efb-9bc4-8a798a5b3b22",
+  "CreatedAt": "2026-10-22T20:50:32.933984+03:00",
   "ArtifactID": "sha256:efc3264e1af02440ad807c914a04063c6bc0094f2f12f369403f0bab8778eee0",
   "ArtifactName": "postgres@sha256:3b0ef735388b2cb097fc29b8bb421d86d57d0ddbe7aa1fbd6493e06d65028503",
   "ArtifactType": "container_image",
