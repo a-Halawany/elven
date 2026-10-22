@@ -72,7 +72,7 @@ services:
       retries: 10
 
   redis:
-    image: redis@sha256:615b4cedaff0c1437a1548acae4222572df8c021eeb7382d64cb8b5e3a13ac7a # redis:8-alpine (official index, 8.10.2-alpine; re-pinned 2026-10-22 by the C15 recheck's update process — the tag moved to a rebuild on a fresh alpine:3.23 base, NEW linux/amd64 and linux/arm64 children (openssl 3.5.9); provenance, inventories, scans and compatibility in infra/images/official/20261022/: docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8.9)
+    image: redis@sha256:0bf6577d7774e592b29d093e3ac9390eb91e13d72c21e506afce736de5e0eeb0 # redis:8-alpine (official index, 8.10.2-alpine; re-pinned 2026-10-22 twice by the C15 recheck's update process — first to 615b4ced… (both runnable children rebuilt on a fresh alpine:3.23 base, §8.9), then to this index, which changed only its linux/ppc64le child (the same linux/amd64 and linux/arm64 children; docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8.12))
     container_name: eye-redis
     # Process protections (2026-09-10; same references as above). The pinned base's
     # entrypoint runs setpriv, which leaves redis-server at uid 999 with CapBnd 0 and
