@@ -51,9 +51,11 @@ const CHILDREN: Record<string, { amd64: string; arm64: string; size: number }> =
     arm64: 'sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f',
     size: 2678,
   },
+  // redis:8-alpine re-pinned 2026-10-22 (index 615b4ced…, §8.9): both runnable children rebuilt on a
+  // fresh alpine:3.23 base (infra/images/official/20261022/source/SOURCE.txt; arm64 manifest 2291 bytes).
   redis: {
-    amd64: 'sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23',
-    arm64: 'sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44',
+    amd64: 'sha256:16b124a2d3eacd620d917ead6fd26cbf1f1d7117fa94122398971931cfe2d403',
+    arm64: 'sha256:0819246a2bb1979f7745a8bae2559a2ffa49071ef7a5e7213b3e347e162aeb26',
     size: 2289,
   },
   'ghcr.io/a-halawany/elven/postgres': {

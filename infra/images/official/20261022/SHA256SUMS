@@ -1,0 +1,15 @@
+0524163443e8145f5e22b9bd20feaa6c4301db3b76889de2a383997de77504ef  ./RECHECK-run-39699847376.txt
+396ed052f8490b1cabba6dc8c926775e780003eba30322e20f46bb1b7d81d79f  ./compat/compat.txt
+4312043e96b7bf3f3efcc38c711ee7031b41bad5ac424e7bfb8a85a3faddad0f  ./index/redis.index.diff.txt
+615b4cedaff0c1437a1548acae4222572df8c021eeb7382d64cb8b5e3a13ac7a  ./index/redis.index.raw.json
+05ab6a7f54c194129cf10e9ebbedfb37a3427f492947311f37f6e9adec330405  ./index/redis.index.txt
+93cb2333f27a401306a7e219ea97c3ddbdf13863a6b3999103ed502be91de00a  ./inventory/official-redis-amd64.txt
+522a957790eb4f93894f83fa37ce89e80509c05f7dfbd9c5f759295ca018751f  ./inventory/official-redis-arm64.txt
+c3e03a47af54eef697958587f12e2f86299055691e55df318f14f135933cfea0  ./scans/official-redis-amd64.high-critical.tsv
+730b103d8828542c62a6bbe32c95a371690de16738991608ba0009a0323ca8de  ./scans/official-redis-amd64.meta.txt
+25b98a6a3f0c28c0ec94141e6a7f5c4785cf92622ab7fd8f0d786e484972ee6d  ./scans/official-redis-amd64.trivy.txt
+c3e03a47af54eef697958587f12e2f86299055691e55df318f14f135933cfea0  ./scans/official-redis-arm64.high-critical.tsv
+a9f1701b07af96af5a27553e525d7513b4ad2bb037ec13b7e65f897d99f5ec33  ./scans/official-redis-arm64.meta.txt
+4de2d979ab974d8d68b0cece8e3ae632c3627f6f31d7d0fb9671e0f74201a4b3  ./scans/official-redis-arm64.trivy.txt
+a06ff9d1486fc00cecbc133c6e4dbbfe11837379845f85569fa75f14c8a48ba4  ./scans/scan-summary.txt
+1e1b50030e9c34d4b4a7727bed54d5c1e0e82dc142651d456660de1853c79f72  ./source/SOURCE.txt

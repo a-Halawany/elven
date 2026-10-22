@@ -1,0 +1,69 @@
+ref: redis@sha256:16b124a2d3eacd620d917ead6fd26cbf1f1d7117fa94122398971931cfe2d403
+platform: linux/amd64
+--- os-release ---
+Unable to find image 'redis@sha256:16b124a2d3eacd620d917ead6fd26cbf1f1d7117fa94122398971931cfe2d403' locally
+docker.io/library/redis@sha256:16b124a2d3eacd620d917ead6fd26cbf1f1d7117fa94122398971931cfe2d403: Pulling from library/redis
+5e9b4a97f639: Pulling fs layer
+bab57655dd43: Pulling fs layer
+cdc83258eb3a: Pulling fs layer
+a2e7cb82bdcd: Pulling fs layer
+a44306a02204: Pulling fs layer
+4f4fb700ef54: Pulling fs layer
+e93b11c828a5: Pulling fs layer
+a44306a02204: Waiting
+4f4fb700ef54: Waiting
+e93b11c828a5: Waiting
+a2e7cb82bdcd: Waiting
+bab57655dd43: Verifying Checksum
+bab57655dd43: Download complete
+cdc83258eb3a: Download complete
+5e9b4a97f639: Verifying Checksum
+5e9b4a97f639: Download complete
+a44306a02204: Verifying Checksum
+a44306a02204: Download complete
+5e9b4a97f639: Pull complete
+bab57655dd43: Pull complete
+cdc83258eb3a: Pull complete
+e93b11c828a5: Verifying Checksum
+e93b11c828a5: Download complete
+4f4fb700ef54: Verifying Checksum
+4f4fb700ef54: Download complete
+a2e7cb82bdcd: Verifying Checksum
+a2e7cb82bdcd: Download complete
+a2e7cb82bdcd: Pull complete
+a44306a02204: Pull complete
+4f4fb700ef54: Pull complete
+e93b11c828a5: Pull complete
+Digest: sha256:16b124a2d3eacd620d917ead6fd26cbf1f1d7117fa94122398971931cfe2d403
+Status: Downloaded newer image for redis@sha256:16b124a2d3eacd620d917ead6fd26cbf1f1d7117fa94122398971931cfe2d403
+NAME="Alpine Linux"
+ID=alpine
+VERSION_ID=3.23.7
+PRETTY_NAME="Alpine Linux v3.23"
+HOME_URL="https://alpinelinux.org/"
+BUG_REPORT_URL="https://gitlab.alpinelinux.org/alpine/aports/-/issues"
+--- apk info -v (sorted) ---
+.redis-rundeps-20261021.212218
+alpine-baselayout-3.7.2-r0
+alpine-baselayout-data-3.7.2-r0
+alpine-keys-2.6-r0
+alpine-release-3.23.7-r0
+apk-tools-3.0.8-r0
+busybox-1.37.0-r30
+busybox-binsh-1.37.0-r30
+ca-certificates-bundle-20261020-r0
+libapk-3.0.8-r0
+libcap-ng-0.8.5-r0
+libcrypto3-3.5.9-r0
+libgcc-15.2.0-r2
+libssl3-3.5.9-r0
+libstdc++-15.2.0-r2
+musl-1.2.5-r24
+musl-utils-1.2.5-r24
+scanelf-1.3.8-r2
+setpriv-2.41.6-r1
+ssl_client-1.37.0-r30
+tzdata-2026e-r0
+zlib-1.3.2-r1
+--- redis-server --version ---
+Redis server v=8.10.2 sha=00000000:1 malloc=jemalloc-5.3.0 bits=64 build=8d909ac7aa12fd40

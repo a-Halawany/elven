@@ -7234,6 +7234,11 @@ The one-account order after the B80–B82 integration pass (2026-10-20/21): **B4
 - **Main's ci 39678902140 on `2f9053b`**: build-test and browser-regression green, C19 lifecycle 39678902170 green; **supply-chain red** at the final-manifest assertion — `pnpm audit` now reports **2 moderate** advisories in `@vitest/mocker` 4.1.11, **GHSA-qxg6-89mg-rqv8** (>=2.1.0-beta.7 <4.1.12) and **GHSA-xp26-3454-mjgp** (>=4.1.11 <4.1.12), development only (vitest in all four workspaces), published after #95's green run; a PASS run's human receipt must be exactly clean, so C17 finalize skipped.
 - **Corrected** in the established form (the 4.1.10 → 4.1.11 bump, FULL_PRODUCT_DELIVERY_REGISTER): `vitest` 4.1.11 → **4.1.12** (published 2026-10-15; its `@vitest/*` packages move with it) in all four workspaces; the lockfile changes only the vitest family. Local: `pnpm audit` — no known vulnerabilities; licence gate PASS; C16 closure gate PASS; contracts 203, tokens 32, web 1199; API unit 4064/4066 (the two known local C15 runner timeouts, `spawnSync ETIMEDOUT`, unresolved as before).
 
+### B40.13 — #96 merged; main's recheck red on a redis:8-alpine rebuild, re-pinned through the update process
+- **#96 merged** as `46a8569` (PR ci 39690773477 and C19 39690773621 green at attempt 1; `pnpm audit` clean again right before the merge).
+- **Main's ci 39699847376 on `46a8569`**: build-test and browser-regression green, C19 lifecycle 39699847365 green; **supply-chain red at the patched-image recheck** — `redis:8-alpine` moved to `615b4ced…` with BOTH runnable children rebuilt on a fresh alpine:3.23 base (redis 8.10.2 unchanged; openssl 3.5.9), a compatible fixed official image newer than the pin, which the recheck fails on by design.
+- **Re-pinned** through §8.4's update process (SUPPLY_CHAIN_MAINTENANCE §8.9): provenance, inventories, pinned-trivy scans (0 findings at every severity on both children), the compatibility pass under the compose protections with the acceptance suite 58/58, the pins moved (both compose files, `conformance.manifest.json`, the R3.4 helper), no SCX record touched; evidence `infra/images/official/20261022/`. The live `eye-redis` is not recreated by this change.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in

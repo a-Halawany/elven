@@ -1,0 +1,38 @@
+# Compatibility pass, 2026-10-22T01:44:34Z: a throwaway container c15-redis-20261022 on 127.0.0.1:6390, the linux/arm64 child (this host is darwin/arm64;
+# CI runs the amd64 child), under EXACTLY the compose file's process protections (user 999:1000, cap_drop ALL, no-new-privileges,
+# --requirepass); the password generated for the run only, never printed. Then the acceptance suite (migrate + one-shot bootstrap +
+# the built API) against a fresh database on eye-postgres and this redis.
+== redis: redis@sha256:0819246a2bb1979f7745a8bae2559a2ffa49071ef7a5e7213b3e347e162aeb26 (linux/arm64) under user 999:1000, cap_drop ALL, no-new-privileges, --requirepass
+--- process identity inside the container (uid/gid, capability masks, NoNewPrivs) ---
+uid=999(redis) gid=1000(redis) groups=1000(redis)
+CapPrm:	0000000000000000
+CapEff:	0000000000000000
+CapBnd:	0000000000000000
+NoNewPrivs:	1
+--- the compose healthcheck command ---
+healthcheck: PONG
+--- server version, PING / SET / GET / SAVE ---
+redis_version:8.10.2
+redis_mode:standalone
+os:Linux 6.10.14-linuxkit aarch64
+arch_bits:64
+PONG
+OK
+1
+OK
+--- unauthenticated access refused ---
+NOAUTH Authentication required.
+--- the API built (pnpm --filter @eye/api... build) ---
+build exit 0
+--- migrations on a fresh database eye_verify_a1_redisrepin ---
+migrations up to date
+role passwords synchronized from environment
+--- the acceptance suite against eye-postgres/eye_verify_a1_redisrepin and redis :6390 ---
+ Test Files  1 passed (1)
+      Tests  58 passed (58)
+   Duration  10.22s (transform 49ms, setup 17ms, import 138ms, tests 9.99s, environment 0ms)
+--- the queue keys written to THIS redis during the suite ---
+10
+--- cleanup ---
+removed c15-redis-20261022
+finished 2026-10-22T01:45:00Z

@@ -1,0 +1,22 @@
+# Provenance of the new official redis:8-alpine index, as verifiable on 2026-10-22T01:42:53Z (read-only fetches; nothing signed by this repository)
+
+redis:8-alpine -> index sha256:615b4cedaff0c1437a1548acae4222572df8c021eeb7382d64cb8b5e3a13ac7a
+  raw index bytes: 10213, sha256 of the bytes == the index digest (index/redis.index.raw.json)
+  linux/amd64 child sha256:16b124a2d3eacd620d917ead6fd26cbf1f1d7117fa94122398971931cfe2d403 (manifest 2289 bytes; sha256 of the bytes 16b124a2d3eacd620d917ead6fd26cbf1f1d7117fa94122398971931cfe2d403)
+    com.docker.official-images.bashbrew.arch=amd64
+    org.opencontainers.image.base.digest=sha256:3d67941fed5ae436b2bb9791cb3f50a252441c7706bbc5b4e738936df8ff8306
+    org.opencontainers.image.base.name=alpine:3.23
+    org.opencontainers.image.created=2026-10-21T21:12:26Z
+    org.opencontainers.image.revision=8104e63b5910fda751bf7c038fa297b6fb19ff43
+    org.opencontainers.image.source=https://github.com/redis/docker-library-redis.git#8104e63b5910fda751bf7c038fa297b6fb19ff43:alpine
+    org.opencontainers.image.url=https://hub.docker.com/_/redis
+    org.opencontainers.image.version=8.10.2-alpine
+  linux/arm64 child sha256:0819246a2bb1979f7745a8bae2559a2ffa49071ef7a5e7213b3e347e162aeb26 (manifest 2291 bytes; sha256 of the bytes 0819246a2bb1979f7745a8bae2559a2ffa49071ef7a5e7213b3e347e162aeb26)
+    com.docker.official-images.bashbrew.arch=arm64v8
+    org.opencontainers.image.base.digest=sha256:8793abc479381bafd16c9d538b01c5a8dd7eef6aa10a737f2ad828ac73cb80e9
+    org.opencontainers.image.base.name=alpine:3.23
+    org.opencontainers.image.created=2026-10-21T21:11:32Z
+    org.opencontainers.image.revision=8104e63b5910fda751bf7c038fa297b6fb19ff43
+    org.opencontainers.image.source=https://github.com/redis/docker-library-redis.git#8104e63b5910fda751bf7c038fa297b6fb19ff43:alpine
+    org.opencontainers.image.url=https://hub.docker.com/_/redis
+    org.opencontainers.image.version=8.10.2-alpine
