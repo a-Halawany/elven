@@ -110,6 +110,7 @@ change. C15 stays blocking; no waiver is added.
 | **2026-10-21** | the `supply-chain` job on PR #95 (ci run **39575962445** at `02d4a13e`) + a local FINAL gate run on `46930e5` with the pinned scanners (DB built 2026-10-21T13:15Z) | unchanged | unchanged: `postgres:18-alpine` → `77f58511…` | **a fourth Go stdlib row in `gosu`** on both platforms, of a NEW release: CVE-2026-111943 (GO-2026-6809, published 2026-10-21; `crypto/x509`) | gate FAIL (52 findings, 10 records, 2 unmatched); outside the standing authorization (a different release), so to the owner; the owner approved SCX-0016/0017 narrowly for this advisory alone (dispositions §3.13), applied after an independent per-architecture qualification: **12 records, 0 rejected; 52 findings, 0 unmatched, 0 unused** |
 | **2026-10-22** | main's `supply-chain` job on the #96 merge `46a8569` (ci run **39699847376**), the patched-image recheck | **redis:8-alpine moved** `38117873…` → `615b4ced…`: BOTH runnable children rebuilt (`16b124a2…` / `0819246a…`) on a fresh alpine:3.23 base, redis 8.10.2 unchanged | unchanged: `postgres:18-alpine` → `77f58511…` | none — 0 findings at every severity on both new children | recheck FAIL by design ("a COMPATIBLE FIXED OFFICIAL image now exists … NEWER than the configured pin"); re-pinned through the update process (§8.9): **12 records, 52 findings (postgres), 0 unmatched, 0 unused** |
 | **2026-10-22** | PR #97's `supply-chain` job (ci run **39714085695**), the patched-image recheck | unchanged (`615b4ced…`, re-pinned the same day) | **postgres:18-alpine moved** `77f58511…` → `83148c0b…`: BOTH runnable children rebuilt (`3b0ef735…` / `b1c1673a…`) on Alpine 3.24.3, postgres 18.6 and `gosu` byte-identical | none new — the same 26 HIGH/CRITICAL `gosu` rows per child; four below-filter OS rows gone | recheck FAIL by design; the owner approved the re-pin with CONDITIONAL re-issue (dispositions §3.14); every record's evidence applied: **all twelve re-issued, none retired; 52 findings, 0 unmatched, 0 unused** |
+| **2026-10-22** | main's `supply-chain` job on the #97 merge `1a4633b` (ci run **39790599202**), the patched-image recheck | unchanged (`615b4ced…`) | **postgres:18-alpine moved again** `83148c0b…` → `898c60cb…`: only the `linux/ppc64le` child and its attestation changed; the amd64/arm64 children, `gosu` and findings identical | none | recheck FAIL by design; the owner approved the re-pin and the re-scope of the twelve records (dispositions §3.15): **12 records re-scoped, none retired; 52 findings, 0 unmatched, 0 unused** |
 
 ## 8. The return to the official images (2026-09-22)
 
@@ -451,3 +452,17 @@ still applies — quoted in `docs/SCANNER_DISPOSITIONS.md` §3.14 with every che
    helper; the controls' approval and run dates moved to 2026-10-22; the C15 trace fixture re-recorded from a real FINAL run.
 7. The live `eye-postgres` (the demonstration's database) is NOT recreated by this change: replacing it is a separate recorded
    operation, after a fresh backup.
+
+### 8.11 The same evening: postgres:18-alpine's ppc64le child rebuilt; the twelve records re-scoped (2026-10-22)
+
+**What fired.** Main's `supply-chain` job on the #97 merge (ci run 39790599202): the recheck found `postgres:18-alpine` at
+`898c60cb…`, newer than the `83148c0b…` pinned hours earlier (§8.10).
+
+**What changed** (`infra/images/official/20261022/repin-898c60cb/`): 2 of the index's 16 manifests — the `linux/ppc64le` child
+and its attestation. The `linux/amd64` (`3b0ef735…`) and `linux/arm64` (`b1c1673a…`) children are the same manifests, so §8.10's
+provenance, inventories and compatibility pass apply to them unchanged; `gosu` byte-identical; fresh scans identical at every
+severity.
+
+**The owner's decision (2026-10-22)** approved the re-pin and the re-scope of SCX-0002…0017 under §3.14's conditions; every
+condition held (`docs/SCANNER_DISPOSITIONS.md` §3.15). Pins moved in both compose files and `conformance.manifest.json`
+(`pinned_at` stays 2026-10-22); the C15 trace fixture re-recorded from a real FINAL run. The live containers are not recreated.

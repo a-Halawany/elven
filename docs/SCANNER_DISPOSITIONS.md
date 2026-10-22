@@ -1242,6 +1242,34 @@ its old ones. Their 2026-09-23 / 2026-10-09 / 2026-10-10 / 2026-10-21 versions a
 artefacts"): it named the children `d8703cd7…`/`89f74717…`. A later Go advisory in the new children goes to the owner. §3.13's
 narrow approval is carried forward by this re-issue (SCX-0016/0017), not widened.
 
+### 3.15 The re-pin to postgres@sha256:898c60cb… (2026-10-22, the same evening) — the twelve records re-scoped, none retired
+
+**The owner's decision (2026-10-22).** "Approve re-pinning postgres to 898c60cb… and re-scoping SCX-0002–0017 to it:
+amd64/arm64 children, gosu and findings are identical to the approved 83148c0b…, only ppc64le changed. Same conditions as
+before" — the conditions of §3.14, applied again.
+
+**What fired.** Main's `supply-chain` job on the #97 merge `1a4633b` (ci run 39790599202) ran the recheck: `postgres:18-alpine`
+had moved from the just-pinned `83148c0b…` to `898c60cb…`, every watched fix present, so it failed by design.
+
+**What changed (`infra/images/official/20261022/repin-898c60cb/`).** The raw index (10,293 bytes) hashes to `898c60cb…`;
+compared manifest by manifest with `83148c0b…`, **2 of 16 changed: the `linux/ppc64le` child and its attestation**. The
+runnable children this product pins, runs and scans are the SAME manifests (`3b0ef735…` amd64, `b1c1673a…` arm64; their raw
+bytes hash to the digests), so §3.14's provenance, inventories and compatibility pass apply to them unchanged.
+
+**The conditions, checked again on each platform.** `gosu` extracted from each child is byte-identical to the approved binary
+(`52c8749d…` / `3a8ef022…`; `CHILDREN-AND-GOSU.txt`). Fresh pinned-trivy scans at every severity (DB built 2026-10-22T07:10:52Z):
+61 rows per child, identical as sets to §3.14's scans of the same children, 26 HIGH/CRITICAL all in `gosu`, 0 OS-package
+rows, 0 secrets; every record's advisory set present with the exact tuple (SCX-0002 14/14, 0003 1/1, 0004 1/1, 0005 6/6,
+0012 2/2, 0014 1/1, 0016 1/1; SCX-0010 21/21, 0011 1/1, 0013 2/2, 0015 1/1, 0017 1/1); nothing ungoverned
+(`record-applicability.txt`). Binaries, findings and exposure (§4) unchanged: no justification is invalidated; nothing is
+retired.
+
+**Re-scoped (in force from 2026-10-22).** Each record now names `898c60cb…`; everything else of §3.14's re-issue is unchanged
+(classification, advisory set, severity, package/version, target, prohibited use, owner, approver, expiry 2026-11-05,
+`approved_on`/`reviewed_on` 2026-10-22 — the day of this approval too), its `reason` prefixed with this re-scope and the new
+evidence files added. The versions naming `83148c0b…` are listed by identity under `superseded_records_2026_10_22_rescope`;
+§3.14's block is unchanged.
+
 ## 4. Prohibited exposure
 
 These dispositions are valid **only** for the Phase 0 LOCAL-ONLY development profile
