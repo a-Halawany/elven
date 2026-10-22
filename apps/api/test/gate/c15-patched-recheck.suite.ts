@@ -569,7 +569,7 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
     // with its classification and approval date kept as it was; none retired.
     const s22 = doc.superseded_records_2026_10_22;
     expect(s22.superseded_on).toBe('2026-10-22');
-    expect(s22.for_image).toBe(readManifest().pinned_images.postgres.digest);
+    expect(s22.for_image).toBe('postgres@sha256:83148c0bc09eac4d598b70a61e1404d0212b76c95c504bfd6c81a4c59ec91792');
     expect(s22.previous_image).toBe('postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873');
     expect(s22.retired).toEqual([]);
     expect(s22.ids).toEqual(doc.records.map((r: { id: string }) => r.id));
@@ -578,6 +578,20 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
       expect(sr.image).toBe(s22.previous_image);
       expect(sr.classification, `${sr.id} keeps its classification`).toBe(now.classification);
       expect(sr.scan_platform).toBe(now.scan_platform);
+      expect(sr.full_text_last_present_at).toMatch(/^[0-9a-f]{40}$/);
+    }
+    // The same evening's re-scope (§3.15): the index moved only in its linux/ppc64le child; every record now names it, the versions
+    // naming 83148c0b… listed by identity; none retired, every classification kept.
+    const rs = doc.superseded_records_2026_10_22_rescope;
+    expect(rs.for_image).toBe(readManifest().pinned_images.postgres.digest);
+    expect(rs.previous_image).toBe(s22.for_image);
+    expect(rs.platform_children).toEqual(readManifest().pinned_images.postgres.platform_children);
+    expect(rs.retired).toEqual([]);
+    expect(rs.ids).toEqual(doc.records.map((r: { id: string }) => r.id));
+    for (const sr of rs.records) {
+      const now = doc.records.find((r: { id: string }) => r.id === sr.id);
+      expect(sr.image).toBe(rs.previous_image);
+      expect(sr.classification, `${sr.id} keeps its classification`).toBe(now.classification);
       expect(sr.full_text_last_present_at).toMatch(/^[0-9a-f]{40}$/);
     }
   });

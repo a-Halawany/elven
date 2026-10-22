@@ -1,0 +1,20 @@
+# Per-record applicability on postgres@sha256:898c60cb… (children 3b0ef735… / b1c1673a…, the SAME children as 83148c0b…), the pinned trivy 0.73.0,
+# DB built 2026-10-22T07:10:52Z, every severity, --scanners vuln,secret --ignorefile /dev/null; compared with the scans of 83148c0b… recorded earlier the same day.
+
+linux/amd64: alpine 3.24.3; 61 rows at every severity (61 on 83148c0b…), identical as sets: True; HIGH/CRITICAL 26, identical: True; rows outside usr/local/bin/gosu: 0; secrets 0
+linux/arm64: alpine 3.24.3; 61 rows at every severity (61 on 83148c0b…), identical as sets: True; HIGH/CRITICAL 26, identical: True; rows outside usr/local/bin/gosu: 0; secrets 0
+
+SCX-0002 linux/amd64 RISK_ACCEPTED HIGH: present with the exact tuple 14/14
+SCX-0003 linux/amd64 RISK_ACCEPTED CRITICAL: present with the exact tuple 1/1
+SCX-0004 linux/amd64 NOT_AFFECTED HIGH: present with the exact tuple 1/1
+SCX-0005 linux/amd64 NOT_AFFECTED HIGH: present with the exact tuple 6/6
+SCX-0010 linux/arm64 RISK_ACCEPTED HIGH: present with the exact tuple 21/21
+SCX-0011 linux/arm64 RISK_ACCEPTED CRITICAL: present with the exact tuple 1/1
+SCX-0012 linux/amd64 NOT_AFFECTED HIGH: present with the exact tuple 2/2
+SCX-0013 linux/arm64 NOT_AFFECTED HIGH: present with the exact tuple 2/2
+SCX-0014 linux/amd64 NOT_AFFECTED HIGH: present with the exact tuple 1/1
+SCX-0015 linux/arm64 NOT_AFFECTED HIGH: present with the exact tuple 1/1
+SCX-0016 linux/amd64 NOT_AFFECTED HIGH: present with the exact tuple 1/1
+SCX-0017 linux/arm64 NOT_AFFECTED HIGH: present with the exact tuple 1/1
+linux/amd64: HIGH/CRITICAL rows no record governs: 0
+linux/arm64: HIGH/CRITICAL rows no record governs: 0

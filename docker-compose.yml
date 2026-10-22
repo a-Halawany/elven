@@ -23,7 +23,7 @@
 #    the profile fast when unset
 services:
   postgres:
-    image: postgres@sha256:83148c0bc09eac4d598b70a61e1404d0212b76c95c504bfd6c81a4c59ec91792 # postgres:18-alpine (official index, 18.6-alpine3.24; re-pinned 2026-10-22 by the C15 recheck's update process — the same recipe rebuilt on Alpine 3.24.3, NEW linux/amd64 and linux/arm64 children, gosu byte-identical; the twelve SCX records re-issued: docs/SCANNER_DISPOSITIONS.md §3.14, docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8.10; before it postgres@sha256:77f58511… from 2026-09-22)
+    image: postgres@sha256:898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5 # postgres:18-alpine (official index, 18.6-alpine3.24; re-pinned 2026-10-22 twice by the C15 recheck's update process — first to 83148c0b… (both runnable children rebuilt on Alpine 3.24.3, gosu byte-identical; the twelve SCX records re-issued, docs/SCANNER_DISPOSITIONS.md §3.14), then to this index, which changed only its linux/ppc64le child (the records re-scoped, §3.15; docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8.10–8.11))
     container_name: eye-postgres
     # Process protections (2026-09-10; infra/images/candidates/README.md "v3", process
     # protections; measured in infra/images/candidates/evidence/v3/process-protections.txt).

@@ -12,6 +12,13 @@ d7e79eea264902e42fa3f06b9ea005b9e719fb86758242d7bf2451cc78d7d4b8  ./inventory/of
 3995ba55fe431a4d17a79c3cd9d8cf7574f4905409c88590afcbafc72e45c954  ./inventory/official-postgres-arm64.txt
 93cb2333f27a401306a7e219ea97c3ddbdf13863a6b3999103ed502be91de00a  ./inventory/official-redis-amd64.txt
 522a957790eb4f93894f83fa37ce89e80509c05f7dfbd9c5f759295ca018751f  ./inventory/official-redis-arm64.txt
+54dfb7e4d682678a48d43f7e5c61efa291b12c1012118c1390c327f0b2c5e97d  ./repin-898c60cb/CHILDREN-AND-GOSU.txt
+58b017c0427257a6e0bc277119072a4cdf65bfcebebe759c0012692e8adbccc9  ./repin-898c60cb/official-postgres-amd64.trivy.txt
+4fcb311586b5ad59ecc31170cb55f443e9a295ecc553f841c0e2b490ae73d8b2  ./repin-898c60cb/official-postgres-arm64.trivy.txt
+75aad36b6a51d205ddcf41e3675f9d67ca26a7f9ba21bf50b2feb2a11a61ba35  ./repin-898c60cb/postgres.index.diff.txt
+898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5  ./repin-898c60cb/postgres.index.raw.json
+049693a8db98275a410a4a29e2037fea74c2c39fb1901b0009f56f18a10556ad  ./repin-898c60cb/postgres.index.txt
+d4176ba4101cfcaffb65972d913c0d79067296f5aa664ce541d8e528961284c8  ./repin-898c60cb/record-applicability.txt
 95735ae73317099e726dc684a3ad670d0f63186524164fda18bfdce421f418e8  ./scans/official-postgres-amd64.high-critical.tsv
 71c3052a384bf0ca31f82e5733151ddb136629fa8bee8ba4ac32214a02bbaca6  ./scans/official-postgres-amd64.meta.txt
 58b017c0427257a6e0bc277119072a4cdf65bfcebebe759c0012692e8adbccc9  ./scans/official-postgres-amd64.trivy.txt

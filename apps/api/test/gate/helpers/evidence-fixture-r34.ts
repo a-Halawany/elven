@@ -46,7 +46,7 @@ const CHILDREN: Record<string, { amd64: string; arm64: string; size: number }> =
   // index (the arm64 manifests are 2680 and 2290 bytes). The recorded C15 trace names these since
   // its re-record of 2026-09-23; the derived entries below stay as the record of the 2026-09-10
   // artefacts the previous trace was recorded from.
-  // postgres:18-alpine re-pinned 2026-10-22 (index 83148c0b…, §8.10): both runnable children rebuilt on Alpine 3.24.3
+  // postgres:18-alpine re-pinned 2026-10-22 (index 83148c0b…, §8.10, then 898c60cb…, §8.11 — the same two children): both rebuilt on Alpine 3.24.3
   // (infra/images/official/20261022/source/SOURCE-postgres.txt; arm64 manifest 2680 bytes).
   postgres: {
     amd64: 'sha256:3b0ef735388b2cb097fc29b8bb421d86d57d0ddbe7aa1fbd6493e06d65028503',
