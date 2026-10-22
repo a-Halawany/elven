@@ -1187,6 +1187,61 @@ SCX-0005 6, SCX-0012 2, SCX-0014 1 on `d8703cd7…`; SCX-0010 21, SCX-0011 1, SC
 **Restrictions.** §4 applies in full: local-only development, PostgreSQL on loopback, gosu used only to drop privileges and exec at startup. No production or widened exposure is approved. A changed image, child or binary requires a new governed review. Existing records retain their scope, classification, approval/review dates and expiry; only their binding to this updated document is refreshed. SCX-0016/0017 are new target-specific records, not additions to SCX-0002/0003 or to §3.11's application log.
 
 
+### 3.14 The re-pin to postgres@sha256:83148c0b… (2026-10-22) — the twelve records re-issued, none retired
+
+**The owner's decision (2026-10-22), in the part that decides this.** Approve the governed PostgreSQL re-pin to
+`postgres@sha256:83148c0bc09eac4d598b70a61e1404d0212b76c95c504bfd6c81a4c59ec91792`, including CONDITIONAL re-issue of the
+twelve existing records where their evidence still applies: record provenance, the exact platform-child identities,
+inventories and full fresh scans with the pinned scanners for both platforms; extract each child's `gosu` and compare it with
+its previously approved binary — byte identity, and each disposition's finding tuple and justification still applicable;
+preserve each record's classification, advisory set, severity, package/version, target, exposure restrictions and the
+2026-11-05 expiry, and the distinction between RISK_ACCEPTED and NOT_AFFECTED; RETIRE records whose findings have disappeared
+(their history kept), never forcing all twelve to remain; report any difference that invalidates a justification rather than
+carrying its approval forward. No gate logic, threshold or freshness change.
+
+**What fired.** PR #97's `supply-chain` job (ci run 39714085695) ran the patched-image recheck: `postgres:18-alpine` now
+resolves to `83148c0b…`, a compatible official build NEWER than the configured `77f58511…`, every watched fix (openssl,
+util-linux/postgres, c-ares) on both platforms — the recheck fails on that by design.
+
+**What was scanned (2026-10-22; `infra/images/official/20261022/`).**
+
+| Item | linux/amd64 | linux/arm64 |
+|---|---|---|
+| Configured index | `postgres@sha256:83148c0b…` (10,293 raw bytes hashing to the digest — `index/postgres.index.raw.json`) | the same |
+| Child (new) | `sha256:3b0ef735388b2cb097fc29b8bb421d86d57d0ddbe7aa1fbd6493e06d65028503` | `sha256:b1c1673a890fba8fae71d37210b4fd9a0b5cd0df8bb994a6bcc01d9cf8e1670c` |
+| Child (previous) | `sha256:d8703cd7…` | `sha256:89f74717…` |
+| Source | `docker-library/postgres@e00e1bd3…`, `18.6-alpine3.24` — the same recipe as the previous children, rebuilt 2026-10-21 on a fresh `alpine:3.24` base (Alpine 3.24.3; openssl 3.5.9, c-ares 1.34.9) — `source/SOURCE-postgres.txt` | the same |
+| Inventory | `inventory/official-postgres-amd64.txt` | `inventory/official-postgres-arm64.txt` |
+| Scan (pinned trivy 0.73.0, DB built 2026-10-21T13:15:34Z, every severity, `--scanners vuln,secret --ignorefile /dev/null`) | 61 rows; **26 HIGH/CRITICAL, all `usr/local/bin/gosu` (`pkg:golang/stdlib@v1.24.6`)**; 0 OS-package rows; 0 secrets | the same |
+| `gosu` (`gosu/IDENTITY.txt`) | `52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0`, 1,769,900 bytes — **byte-identical** (`cmp`) to the approved binary | `3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44`, 1,830,424 bytes — **byte-identical** |
+
+**Against the previous children, same scanner, same database, same day** (`scans/postgres-record-applicability.txt`): the
+HIGH/CRITICAL sets are identical row for row on each platform (26 = 26; 0 gone, 0 new); at every severity the new children
+LOST four OS-package rows below the gate's filter (CVE-2026-107891 UNKNOWN in `musl`/`musl-utils`, CVE-2026-58055 MEDIUM in
+`nghttp2-libs`, CVE-2026-85091 MEDIUM in `zlib`) that no record governs, and gained none.
+
+**Each record, checked.** Every advisory of every record is present on the new child of its platform with the exact tuple
+(advisory, severity, package, PURL, installed version, result target): SCX-0002 14/14, SCX-0003 1/1, SCX-0004 1/1, SCX-0005
+6/6, SCX-0012 2/2, SCX-0014 1/1, SCX-0016 1/1 on `3b0ef735…`; SCX-0010 21/21, SCX-0011 1/1, SCX-0013 2/2, SCX-0015 1/1,
+SCX-0017 1/1 on `b1c1673a…`; no HIGH/CRITICAL row on either child is ungoverned. Every justification rests on the `gosu`
+binary — the RISK_ACCEPTED records on its runtime role (it runs once at container start, drops privileges, execs postgres and
+exits) and the NOT_AFFECTED records on the absence of the affected packages from THAT binary — and the binary is
+byte-identical, so every analysis bound to it (2026-09-22, 2026-10-09, 2026-10-10, 2026-10-21) applies unchanged; the exposure
+(§4: local-only development, loopback PostgreSQL) is unchanged. **No difference invalidates a justification; nothing is
+retired.**
+
+**Re-issued (in force from 2026-10-22).** The twelve records keep their ids, classifications (RISK_ACCEPTED: SCX-0002, 0003,
+0010, 0011; NOT_AFFECTED: the other eight), advisory sets, severities, package/PURL/version, target, prohibited use, owner,
+approver and the 2026-11-05 expiry; each now names the new index, carries `approved_on`/`reviewed_on` 2026-10-22 (the day of
+this approval), a `reason` prefixed with this re-issue (the previous reason kept after it), and the new evidence files beside
+its old ones. Their 2026-09-23 / 2026-10-09 / 2026-10-10 / 2026-10-21 versions are listed by identity under
+`superseded_records_2026_10_22` of `scripts/gate/scanner-exclusions.json`, full text in git history; the 2026-09-23 block
+`superseded_records` is unchanged.
+
+**The standing authorization of §3.11 ends here** for these artefacts, as it says ("any re-pin ends it for the new
+artefacts"): it named the children `d8703cd7…`/`89f74717…`. A later Go advisory in the new children goes to the owner. §3.13's
+narrow approval is carried forward by this re-issue (SCX-0016/0017), not widened.
+
 ## 4. Prohibited exposure
 
 These dispositions are valid **only** for the Phase 0 LOCAL-ONLY development profile

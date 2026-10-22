@@ -108,6 +108,8 @@ change. C15 stays blocking; no waiver is added.
 | **2026-10-09** (later) | the owner's approval of SCX-0012/0013 applied (dispositions §3.10), after the conditions were re-checked per architecture (`infra/images/official/20261009/govulncheck/BINDING.txt`); the gate's validation and matching code over the committed tree and the real scan reports; a real local run of the gate with the pinned scanners (§8.6) | unchanged | unchanged: `postgres:18-alpine` → `77f58511…` | the two gosu rows now governed: SCX-0012 (`linux/amd64`) and SCX-0013 (`linux/arm64`), NOT_AFFECTED, expiry 2026-11-05 | **8 records, 0 rejected; 48 findings, 0 unmatched, 0 unused**; the six re-bound to the document's new digest with nothing else changed |
 | **2026-10-10** | the `supply-chain` job on PR #84 (ci run **37988719052**, job 114017128886) + a local FINAL gate run on `1974624` with the pinned scanners (DB built 2026-10-09T19:06Z) | unchanged | unchanged: `postgres:18-alpine` → `77f58511…` | **a third Go stdlib row in `gosu`** on both platforms: CVE-2026-78669 (GO-2026-6611; `net/http`, `net/http/internal/http2`, `golang.org/x/net/http2`) | gate FAIL (50 findings, 8 records, 2 unmatched); the owner approved SCX-0014/0015 and a STANDING AUTHORIZATION for the 2026-10-08 release in these exact binaries (dispositions §3.11); application 1 applied after the per-architecture check (§3.12): **10 records, 0 rejected; 50 findings, 0 unmatched, 0 unused** |
 | **2026-10-21** | the `supply-chain` job on PR #95 (ci run **39575962445** at `02d4a13e`) + a local FINAL gate run on `46930e5` with the pinned scanners (DB built 2026-10-21T13:15Z) | unchanged | unchanged: `postgres:18-alpine` → `77f58511…` | **a fourth Go stdlib row in `gosu`** on both platforms, of a NEW release: CVE-2026-111943 (GO-2026-6809, published 2026-10-21; `crypto/x509`) | gate FAIL (52 findings, 10 records, 2 unmatched); outside the standing authorization (a different release), so to the owner; the owner approved SCX-0016/0017 narrowly for this advisory alone (dispositions §3.13), applied after an independent per-architecture qualification: **12 records, 0 rejected; 52 findings, 0 unmatched, 0 unused** |
+| **2026-10-22** | main's `supply-chain` job on the #96 merge `46a8569` (ci run **39699847376**), the patched-image recheck | **redis:8-alpine moved** `38117873…` → `615b4ced…`: BOTH runnable children rebuilt (`16b124a2…` / `0819246a…`) on a fresh alpine:3.23 base, redis 8.10.2 unchanged | unchanged: `postgres:18-alpine` → `77f58511…` | none — 0 findings at every severity on both new children | recheck FAIL by design ("a COMPATIBLE FIXED OFFICIAL image now exists … NEWER than the configured pin"); re-pinned through the update process (§8.9): **12 records, 52 findings (postgres), 0 unmatched, 0 unused** |
+| **2026-10-22** | PR #97's `supply-chain` job (ci run **39714085695**), the patched-image recheck | unchanged (`615b4ced…`, re-pinned the same day) | **postgres:18-alpine moved** `77f58511…` → `83148c0b…`: BOTH runnable children rebuilt (`3b0ef735…` / `b1c1673a…`) on Alpine 3.24.3, postgres 18.6 and `gosu` byte-identical | none new — the same 26 HIGH/CRITICAL `gosu` rows per child; four below-filter OS rows gone | recheck FAIL by design; the owner approved the re-pin with CONDITIONAL re-issue (dispositions §3.14); every record's evidence applied: **all twelve re-issued, none retired; 52 findings, 0 unmatched, 0 unused** |
 
 ## 8. The return to the official images (2026-09-22)
 
@@ -384,3 +386,68 @@ re-bound to the document's new digest, nothing else changed; the controls' recor
 gitleaks §6c scopes the reports' upstream fix-commit URLs as §6/§6b do; the C15 trace fixture and
 `real-image-results.json` re-recorded from the local FINAL run on `46930e5`: **supply-chain gate PASS** — 12 records,
 0 rejected, 52 findings (26 `gosu` rows per postgres child, redis 0), 0 unmatched, 0 unused, cache unchanged.
+
+### 8.9 The second update after the return: redis:8-alpine's runnable children rebuilt (2026-10-22)
+
+**What fired.** Main's `supply-chain` job on the #96 merge (ci run 39699847376) ran the patched-image recheck: postgres's
+configured pin is the compatible official image; `redis:8-alpine` resolved to the index `615b4ced…`, not the configured
+`38117873…`, with every watched fix (openssl, util-linux/redis) on both platforms, so it failed as §8.4's table requires.
+Its output is kept as `infra/images/official/20261022/RECHECK-run-39699847376.txt`. Build-test and browser-regression were
+green; C17 finalize skipped.
+
+**What changed upstream.** Unlike §8.5, the two runnable children this product pins, runs and scans changed:
+`linux/amd64` `2d3814be…` → `16b124a2…`, `linux/arm64` `41a10b18…` → `0819246a…` (12 of the index's 16 manifests changed;
+`index/redis.index.diff.txt`). The children are the same redis 8.10.2-alpine from the same upstream recipe
+(`docker-library-redis` `8104e63b…`), rebuilt 2026-10-21 on a fresh `alpine:3.23` base (Alpine 3.23.7): libcrypto3/libssl3
+3.5.8-r0 → 3.5.9-r0, musl 1.2.5-r23 → r24 (`source/SOURCE.txt`, `inventory/`).
+
+**The update process (§8.4), each step.**
+1. Re-pinned `docker-compose.yml`, `apps/api/test/gate/docker-compose.yml` and `conformance.manifest.json`
+   (`pinned_images.redis.digest` → `redis@sha256:615b4ced…`; `platform_children` the two new children; `previous` names
+   `38117873…` and its children; `pinned_at` 2026-10-22); the R3.4 evidence helper's table of runnable children likewise.
+2. Provenance: the raw index bytes hash to `615b4ced…`; each child's raw manifest hashes to its digest; the annotations name
+   the Docker Official Image source and revision (`source/SOURCE.txt`). Inventories per child (`inventory/`). Scans with the
+   pinned trivy 0.73.0 (DB built 2026-10-21T13:15Z): **0 findings at every severity, 0 secrets, on both children**
+   (`scans/`). Compatibility (`compat/compat.txt`): the linux/arm64 child under exactly the compose file's protections —
+   uid 999 / gid 1000, CapPrm/CapEff/CapBnd 0, NoNewPrivs 1, the compose healthcheck, PING/SET/GET/SAVE, unauthenticated
+   access refused — and the acceptance suite (58/58: migrate, bootstrap, the built API) against it; the hosted build-test
+   runs the amd64 child.
+3. SCX records: **none names the redis pin** — all twelve are scoped to the postgres pin `77f58511…`, which did not move.
+   Nothing is re-issued or retired; no disposition needs the owner. `docs/SCANNER_DISPOSITIONS.md` is unchanged (its
+   tables record the scope of 2026-09-23).
+4. Evidence: the C15 trace fixture and `real-image-results.json` re-recorded from a real local FINAL run of the gate on the
+   re-pinned head (below).
+5. The FINAL chain runs on the merge. The live `eye-redis` container (queues only, rebuildable) is recreated onto the new
+   index only as a later recorded operation; it is NOT recreated by this change.
+
+### 8.10 The third update: postgres:18-alpine's runnable children rebuilt; the twelve records re-issued (2026-10-22)
+
+**What fired.** PR #97's `supply-chain` job (ci run 39714085695), with redis already re-pinned (§8.9), ran the recheck:
+`postgres:18-alpine` now resolves to `83148c0b…`, newer than the configured `77f58511…`, every watched fix on both platforms.
+(The same run's `pnpm-audit-human` step failed on a registry timeout — `TimeoutError` from the bulk advisory endpoint, the gate
+failing closed — not on an advisory; the audit is clean.) Unlike redis, the postgres pin is named by all twelve SCX records, so
+the re-pin needed the owner.
+
+**The owner's decision (2026-10-22).** The governed re-pin, with CONDITIONAL re-issue of the twelve records where their evidence
+still applies — quoted in `docs/SCANNER_DISPOSITIONS.md` §3.14 with every check it requires.
+
+**The update process (§8.4), each step.**
+1. Provenance (`infra/images/official/20261022/index/postgres.*`, `source/SOURCE-postgres.txt`): the raw index bytes hash to
+   `83148c0b…`; the children `3b0ef735…` (amd64) and `b1c1673a…` (arm64) hash to their digests; the annotations name
+   `docker-library/postgres@e00e1bd3…` `18.6-alpine3.24` — the same recipe, rebuilt 2026-10-21 on Alpine 3.24.3.
+2. Inventories per child; full scans with the pinned trivy at every severity (`scans/official-postgres-*`): 61 rows, 26
+   HIGH/CRITICAL, all in `gosu`, 0 OS-package rows, 0 secrets; against the previous children with the same scanner and database
+   the HIGH/CRITICAL sets are identical and four below-filter OS rows are gone (`scans/postgres-record-applicability.txt`).
+3. `gosu` extracted from each new child and compared byte for byte with the approved binaries: identical on both
+   (`gosu/IDENTITY.txt`, with `go version -m`).
+4. Each record checked: every advisory present with its exact tuple on its platform's new child; justification and exposure
+   unchanged — all twelve re-issued in place (classification, advisory set, severity, package/version, target, prohibited use and
+   expiry unchanged; `approved_on`/`reviewed_on` 2026-10-22); their previous versions listed by identity under
+   `superseded_records_2026_10_22`; none retired. §3.11's standing authorization ends for these artefacts.
+5. Compatibility (`compat/compat-postgres.txt`): the linux/arm64 child under exactly the compose protections (uid 70, capability
+   masks 0, NoNewPrivs 1, the compose healthcheck), the three extensions the migrations use available, all 123 migrations on a
+   fresh cluster, and the acceptance suite 58/58 against it and the re-pinned redis together.
+6. Pins moved: both compose files, `conformance.manifest.json` (digest, children, previous, `pinned_at` 2026-10-22), the R3.4
+   helper; the controls' approval and run dates moved to 2026-10-22; the C15 trace fixture re-recorded from a real FINAL run.
+7. The live `eye-postgres` (the demonstration's database) is NOT recreated by this change: replacing it is a separate recorded
+   operation, after a fresh backup.

@@ -1,0 +1,18 @@
+# the redis:8-alpine index 20260925 (38117873…) vs 20261022 (615b4ced…), manifest by manifest in index order
+CHANGED  linux/amd64  old sha256:2d3814be5e9b… ref None  new sha256:16b124a2d3ea… ref None
+CHANGED  unknown/unknown  old sha256:557c8995ce93… ref sha256:2d3814be5e9b  new sha256:f79a7876c664… ref sha256:16b124a2d3ea
+CHANGED  linux/arm/v6  old sha256:bf1d5dea00d4… ref None  new sha256:877e73ece613… ref None
+CHANGED  unknown/unknown  old sha256:daafac7946a2… ref sha256:bf1d5dea00d4  new sha256:2f1a67285209… ref sha256:877e73ece613
+CHANGED  linux/arm/v7  old sha256:a5065b18fe46… ref None  new sha256:92d1b3d859ce… ref None
+CHANGED  unknown/unknown  old sha256:bd46e86130ee… ref sha256:a5065b18fe46  new sha256:271f98eebdd5… ref sha256:92d1b3d859ce
+CHANGED  linux/arm64/v8  old sha256:41a10b18bd23… ref None  new sha256:0819246a2bb1… ref None
+CHANGED  unknown/unknown  old sha256:db982895182e… ref sha256:41a10b18bd23  new sha256:a172bd220652… ref sha256:0819246a2bb1
+CHANGED  linux/386  old sha256:d07015abebff… ref None  new sha256:26e2996b8f8b… ref None
+CHANGED  unknown/unknown  old sha256:473eb042f515… ref sha256:d07015abebff  new sha256:76193f40a856… ref sha256:26e2996b8f8b
+same     linux/ppc64le  old sha256:255648352249… ref None  new sha256:255648352249… ref None
+same     unknown/unknown  old sha256:83193676e030… ref sha256:255648352249  new sha256:83193676e030… ref sha256:255648352249
+same     linux/riscv64  old sha256:718505e2000e… ref None  new sha256:718505e2000e… ref None
+same     unknown/unknown  old sha256:fd262166e77c… ref sha256:718505e2000e  new sha256:fd262166e77c… ref sha256:718505e2000e
+CHANGED  linux/s390x  old sha256:80c94b28fb28… ref None  new sha256:5be8b7e307fe… ref None
+CHANGED  unknown/unknown  old sha256:dae9c633bbf4… ref sha256:80c94b28fb28  new sha256:9faa7cfdb18c… ref sha256:5be8b7e307fe
+old manifests 16 new manifests 16

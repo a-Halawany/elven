@@ -147,23 +147,23 @@
     "$comment": "Remediation R7/R8 — local Compose infrastructure pinned by immutable digest; CI and the verification harness scan EXACTLY these digests (blocking at HIGH/CRITICAL; scripts/gate/scanner-exclusions.json carries the governed, target-specific dispositions). 2026-09-22: RETURN to the OFFICIAL images (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8) — the C15 recheck (run 35728647457) found postgres:18-alpine and redis:8-alpine rebuilt with every watched fix (util-linux, OpenSSL, c-ares) on both platforms; provenance and compatibility verified under infra/images/official/20260922/. The TEMPORARY re-pin of 2026-09-10 to the owner-approved derived maintenance images (docs/images/DERIVED_IMAGES_APPROVAL.md; published by run 34502081248, receipts in infra/images/published/20260910/) ended with it. Each `digest` is the OCI INDEX reference the gate resolves per platform; `platform_children` are the two runnable children it scans; `previous` names the reference pinned before this one (informational — not a pinned reference).",
     "postgres": {
       "human_tag": "postgres:18-alpine",
-      "digest": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "digest": "postgres@sha256:83148c0bc09eac4d598b70a61e1404d0212b76c95c504bfd6c81a4c59ec91792",
       "platform_children": {
-        "linux/amd64": "sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66",
-        "linux/arm64": "sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f"
+        "linux/amd64": "sha256:3b0ef735388b2cb097fc29b8bb421d86d57d0ddbe7aa1fbd6493e06d65028503",
+        "linux/arm64": "sha256:b1c1673a890fba8fae71d37210b4fd9a0b5cd0df8bb994a6bcc01d9cf8e1670c"
       },
-      "previous": "ghcr.io/a-halawany/elven/postgres:18-alpine-maint-20260910, index digest 69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7 (derived, pinned 2026-09-10 to 2026-09-22; itself derived from postgres:18-alpine 9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15, pinned 2026-08-05 to 2026-09-10)",
-      "pinned_at": "2026-09-22"
+      "previous": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 (the official postgres:18-alpine index pinned 2026-09-22 to 2026-10-22 — children linux/amd64 sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66 and linux/arm64 sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f; the tag moved when both were rebuilt on Alpine 3.24.3, gosu byte-identical); before it: ghcr.io/a-halawany/elven/postgres:18-alpine-maint-20260910, index digest 69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7 (derived, pinned 2026-09-10 to 2026-09-22; itself derived from postgres:18-alpine 9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15, pinned 2026-08-05 to 2026-09-10)",
+      "pinned_at": "2026-10-22"
     },
     "redis": {
       "human_tag": "redis:8-alpine",
-      "digest": "redis@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0",
+      "digest": "redis@sha256:615b4cedaff0c1437a1548acae4222572df8c021eeb7382d64cb8b5e3a13ac7a",
       "platform_children": {
-        "linux/amd64": "sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23",
-        "linux/arm64": "sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44"
+        "linux/amd64": "sha256:16b124a2d3eacd620d917ead6fd26cbf1f1d7117fa94122398971931cfe2d403",
+        "linux/arm64": "sha256:0819246a2bb1979f7745a8bae2559a2ffa49071ef7a5e7213b3e347e162aeb26"
       },
-      "previous": "redis@sha256:ba6e394f6acc2a695ef1b6944f161b9ca813711739be68319fa0db3470673f1d (the official redis:8-alpine index pinned 2026-09-22 to 2026-09-25 — the same linux/amd64 and linux/arm64 children; the tag moved when its linux/riscv64 child was rebuilt); before it: ghcr.io/a-halawany/elven/redis:8-alpine-maint-20260910, index digest 1ad0ff24136a22ef4b2457aa3fde26c65c51bebe6c1f719158e21219f6ae3e15 (derived, pinned 2026-09-10 to 2026-09-22; itself derived from redis:8-alpine 978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241, pinned 2026-08-05 to 2026-09-10)",
-      "pinned_at": "2026-09-25"
+      "previous": "redis@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0 (the official redis:8-alpine index pinned 2026-09-25 to 2026-10-22 — children linux/amd64 sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23 and linux/arm64 sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44; the tag moved when both were rebuilt on a fresh alpine:3.23 base); before it: redis@sha256:ba6e394f6acc2a695ef1b6944f161b9ca813711739be68319fa0db3470673f1d (the official redis:8-alpine index pinned 2026-09-22 to 2026-09-25 — the same linux/amd64 and linux/arm64 children; the tag moved when its linux/riscv64 child was rebuilt); before it: ghcr.io/a-halawany/elven/redis:8-alpine-maint-20260910, index digest 1ad0ff24136a22ef4b2457aa3fde26c65c51bebe6c1f719158e21219f6ae3e15 (derived, pinned 2026-09-10 to 2026-09-22; itself derived from redis:8-alpine 978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241, pinned 2026-08-05 to 2026-09-10)",
+      "pinned_at": "2026-10-22"
     }
   },
   "sbom_generator": {

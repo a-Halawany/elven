@@ -1,0 +1,22 @@
+# Provenance of the new official postgres:18-alpine index, as verifiable on 2026-10-22T11:53:10Z (read-only fetches; nothing signed by this repository)
+
+postgres:18-alpine -> index sha256:83148c0bc09eac4d598b70a61e1404d0212b76c95c504bfd6c81a4c59ec91792
+  raw index bytes: 10293, sha256 of the bytes == the index digest (index/postgres.index.raw.json)
+  linux/amd64 child sha256:3b0ef735388b2cb097fc29b8bb421d86d57d0ddbe7aa1fbd6493e06d65028503 (manifest 2678 bytes; sha256 of the bytes 3b0ef735388b2cb097fc29b8bb421d86d57d0ddbe7aa1fbd6493e06d65028503)
+    com.docker.official-images.bashbrew.arch=amd64
+    org.opencontainers.image.base.digest=sha256:c26612752c78b18faacd63c7d50f4592c2e7b0f25e0e20e82bd74e465c57ab0d
+    org.opencontainers.image.base.name=alpine:3.24
+    org.opencontainers.image.created=2026-10-21T22:54:26Z
+    org.opencontainers.image.revision=e00e1bd34ec5c8a8e7ad89b273b3d42efaf6d5bc
+    org.opencontainers.image.source=https://github.com/docker-library/postgres.git#e00e1bd34ec5c8a8e7ad89b273b3d42efaf6d5bc:18/alpine3.24
+    org.opencontainers.image.url=https://hub.docker.com/_/postgres
+    org.opencontainers.image.version=18.6-alpine3.24
+  linux/arm64 child sha256:b1c1673a890fba8fae71d37210b4fd9a0b5cd0df8bb994a6bcc01d9cf8e1670c (manifest 2680 bytes; sha256 of the bytes b1c1673a890fba8fae71d37210b4fd9a0b5cd0df8bb994a6bcc01d9cf8e1670c)
+    com.docker.official-images.bashbrew.arch=arm64v8
+    org.opencontainers.image.base.digest=sha256:e311ae748be7f56ae5cba304bc488f0786df68ee507513f654a5cc8597cffb42
+    org.opencontainers.image.base.name=alpine:3.24
+    org.opencontainers.image.created=2026-10-21T23:16:44Z
+    org.opencontainers.image.revision=e00e1bd34ec5c8a8e7ad89b273b3d42efaf6d5bc
+    org.opencontainers.image.source=https://github.com/docker-library/postgres.git#e00e1bd34ec5c8a8e7ad89b273b3d42efaf6d5bc:18/alpine3.24
+    org.opencontainers.image.url=https://hub.docker.com/_/postgres
+    org.opencontainers.image.version=18.6-alpine3.24
