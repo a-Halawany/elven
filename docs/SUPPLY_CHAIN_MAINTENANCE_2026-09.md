@@ -111,6 +111,7 @@ change. C15 stays blocking; no waiver is added.
 | **2026-10-22** | main's `supply-chain` job on the #96 merge `46a8569` (ci run **39699847376**), the patched-image recheck | **redis:8-alpine moved** `38117873…` → `615b4ced…`: BOTH runnable children rebuilt (`16b124a2…` / `0819246a…`) on a fresh alpine:3.23 base, redis 8.10.2 unchanged | unchanged: `postgres:18-alpine` → `77f58511…` | none — 0 findings at every severity on both new children | recheck FAIL by design ("a COMPATIBLE FIXED OFFICIAL image now exists … NEWER than the configured pin"); re-pinned through the update process (§8.9): **12 records, 52 findings (postgres), 0 unmatched, 0 unused** |
 | **2026-10-22** | PR #97's `supply-chain` job (ci run **39714085695**), the patched-image recheck | unchanged (`615b4ced…`, re-pinned the same day) | **postgres:18-alpine moved** `77f58511…` → `83148c0b…`: BOTH runnable children rebuilt (`3b0ef735…` / `b1c1673a…`) on Alpine 3.24.3, postgres 18.6 and `gosu` byte-identical | none new — the same 26 HIGH/CRITICAL `gosu` rows per child; four below-filter OS rows gone | recheck FAIL by design; the owner approved the re-pin with CONDITIONAL re-issue (dispositions §3.14); every record's evidence applied: **all twelve re-issued, none retired; 52 findings, 0 unmatched, 0 unused** |
 | **2026-10-22** | main's `supply-chain` job on the #97 merge `1a4633b` (ci run **39790599202**), the patched-image recheck | unchanged (`615b4ced…`) | **postgres:18-alpine moved again** `83148c0b…` → `898c60cb…`: only the `linux/ppc64le` child and its attestation changed; the amd64/arm64 children, `gosu` and findings identical | none | recheck FAIL by design; the owner approved the re-pin and the re-scope of the twelve records (dispositions §3.15): **12 records re-scoped, none retired; 52 findings, 0 unmatched, 0 unused** |
+| **2026-10-22** | a pre-merge check of #98 (`redis:8-alpine` resolved again) | **redis:8-alpine moved again** `615b4ced…` → `0bf6577d…`: only the `linux/ppc64le` child and its attestation changed | unchanged (`898c60cb…`) | none | re-pinned through the update process like §8.5 (no record names the redis pin): **12 records, 52 findings, 0 unmatched, 0 unused** |
 
 ## 8. The return to the official images (2026-09-22)
 
@@ -466,3 +467,12 @@ severity.
 **The owner's decision (2026-10-22)** approved the re-pin and the re-scope of SCX-0002…0017 under §3.14's conditions; every
 condition held (`docs/SCANNER_DISPOSITIONS.md` §3.15). Pins moved in both compose files and `conformance.manifest.json`
 (`pinned_at` stays 2026-10-22); the C15 trace fixture re-recorded from a real FINAL run. The live containers are not recreated.
+
+### 8.12 The same evening: redis:8-alpine's ppc64le child rebuilt (2026-10-22)
+
+**What changed** (`infra/images/official/20261022/repin-redis-0bf6577d/`): the tag moved from `615b4ced…` (§8.9) to `0bf6577d…`;
+2 of 16 manifests changed — the `linux/ppc64le` child and its attestation. The `linux/amd64` (`16b124a2…`) and `linux/arm64`
+(`0819246a…`) children are the same manifests, so §8.9's provenance, inventories, scans (0 findings) and compatibility pass apply
+to them unchanged — the §8.5 case exactly. **No SCX record names the redis pin**; nothing needs the owner. Re-pinned in both
+compose files and `conformance.manifest.json` (digest and `previous`; children and `pinned_at` unchanged); the C15 trace fixture
+re-recorded from a real FINAL run. The live `eye-redis` is not recreated.

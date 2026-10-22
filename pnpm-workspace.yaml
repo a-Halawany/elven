@@ -23,6 +23,11 @@ allowBuilds:
 # version, a patch release on the 16.3 line; it declares the same dependencies as 16.3.6 (only @next/env and
 # the eight @next/swc-* binaries move with it, at 16.3.8), so the development closure (C17's
 # DEVELOPMENT_COMPONENTS, 313) is unchanged. No eslint-config-next or other @next/* pin exists to move.
+# Then 16.3.8 → 16.4.1 (2026-10-22): main's C15 after #98 (5cc4bed) found GHSA-2464-fhr4-w9xw (CRITICAL) and GHSA-p3m5-59mp-jv5r
+# (HIGH) in next >=16.0.0 <=16.4.0 (path apps__web>next), patched >=16.4.1, published after #98's green run. EXACT REVIEWED VERSION:
+# 16.4.1 is the first patched version (2026-10-14); it declares the same dependencies as 16.3.8 (@next/env and the eight
+# @next/swc-* binaries move with it, at 16.4.1; its sharp floor ^0.35.5 is met by the exact override below), so the closure's
+# shape is unchanged; react/react-dom 19.2.8 stay inside its peer range.
 overrides:
   # C15 at 9aaf0311 (run 34343317671): sharp <0.35.4 carries GHSA-rgj7-g3m4-5g8c (HIGH — libheif
   # GHSA-g89c-p67h-r497 / GHSA-2jg2-4ch7-h545), reached only as next's optional image dependency.

@@ -19,6 +19,9 @@ d7e79eea264902e42fa3f06b9ea005b9e719fb86758242d7bf2451cc78d7d4b8  ./inventory/of
 898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5  ./repin-898c60cb/postgres.index.raw.json
 049693a8db98275a410a4a29e2037fea74c2c39fb1901b0009f56f18a10556ad  ./repin-898c60cb/postgres.index.txt
 d4176ba4101cfcaffb65972d913c0d79067296f5aa664ce541d8e528961284c8  ./repin-898c60cb/record-applicability.txt
+bcd25daf40a0fb9340f02fa66922ab5a655d39196a5315665b1cbb9af8cb8d47  ./repin-redis-0bf6577d/redis.index.diff.txt
+0bf6577d7774e592b29d093e3ac9390eb91e13d72c21e506afce736de5e0eeb0  ./repin-redis-0bf6577d/redis.index.raw.json
+e7b72ea6d442f157bb7ee8d5337d4003896afd8e160cf66eb35cbd2d9985a940  ./repin-redis-0bf6577d/redis.index.txt
 95735ae73317099e726dc684a3ad670d0f63186524164fda18bfdce421f418e8  ./scans/official-postgres-amd64.high-critical.tsv
 71c3052a384bf0ca31f82e5733151ddb136629fa8bee8ba4ac32214a02bbaca6  ./scans/official-postgres-amd64.meta.txt
 58b017c0427257a6e0bc277119072a4cdf65bfcebebe759c0012692e8adbccc9  ./scans/official-postgres-amd64.trivy.txt
