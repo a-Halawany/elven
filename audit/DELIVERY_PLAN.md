@@ -277,7 +277,7 @@ Feature IDs are shown without the `F-` prefix. The stages are listed in plan ord
 | B49 | A | Assessments, summaries, analyst review, context manifests | P2-11, P2-12, P2-13, P2-17 | — | B45, B48, B53 | 7–12 | A3 | 2027-04-23 → 2027-05-12 |
 | B50 | A | Knowledge core: canonical headers, lifecycle, provenance, timeline, correction closure | P3-01, P3-02, P3-03, P3-04, P3-05 | — | — | 8.25–14.5 | A2 | 2026-09-28 → 2026-10-20 |
 | B51 | A | Ontology, atomic graph revisions, graph reasoning | P3-07, P3-08, P3-09 | — | B50 | 6.5–11.5 | A2 | 2026-11-18 → 2026-12-25 |
-| B52 | A | Entity resolution and graph curation workspace | P3-10, P3-12 | — | B46, B51 | 4.5–7.5 | A2 | 2027-06-07 → 2027-06-21 |
+| B52 | A | Entity resolution and graph curation workspace | P3-10, P3-12 | — | B46, B51 | 4.55–7.6 | A2 | 2027-06-07 → 2027-06-21 |
 | B53 | A | Hybrid semantic retrieval and context assembly | P3-15, P3-16 | — | B45, B51 | 5.6–9.2 | A2 | 2027-03-02 → 2027-03-19 |
 | B54 | A | Enterprise Memory completion and retention across derivatives | P3-06, P3-14 | — | B50, B53 | 4–7.5 | A2 | 2027-06-15 → 2027-07-05 |
 | B55 | A | Strategy Graph alignment diagnostics and research workspace | P3-13, P3-17 | — | B44, B49, B51, B53 | 4.1–7.2 | A2 | 2027-05-12 → 2027-05-28 |
