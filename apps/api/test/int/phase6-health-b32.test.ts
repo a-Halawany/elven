@@ -65,7 +65,7 @@ let executive: AuthenticatedPrincipal; let exec2: AuthenticatedPrincipal; let da
 let I1 = ''; let I2 = ''; let I3 = '';
 /** A measure no branch provides on this branch — the component reads it and is declared MISSING. */
 const MISSING_MEASURE = uuidv7();
-let V1 = ''; let S1: Row = {}; let S2: Row = {}; let S3: Row = {};
+let V1 = ''; let S1: Row = {}; let S2: Row = {}; let S3: Row = {}; let supplierObserved = 0; let supplierDays = 9;
 const T = () => h.fx.tenantId; const D = () => h.fx.domainId;
 const obj = (v: unknown): Row => (v ?? {}) as Row;
 const arr = (v: unknown): Row[] => (Array.isArray(v) ? (v as Row[]) : []);
@@ -198,6 +198,10 @@ describe('B32 · the decomposable Strategic Health Score (0089 §H)', () => {
     await plantEvaluation(I1, 52, 4, '4 days');
     await plantEvaluation(I2, 18, 4, '4 days');
     await plantEvaluation(I3, 82.5, 9, '4 days');
+    // The supplier's observation is a DATE (current_date − 9, midnight in the database's zone), the instant a timestamp: its age is
+    // 9 days and a fraction of a day, and 0089 floors it after rounding to 0.01 day — so from 23:52:48 to midnight it reads 10
+    // (hosted run 39871008217 computed at 23:57 UTC). The scene states the age the database derives from the two, not a constant.
+    supplierObserved = Date.parse((await sql<{ t: Date }>`select (current_date - 9)::timestamptz t`.execute(su)).rows[0]!.t.toISOString());
     // the decision world's corridor indicator evaluated through the REAL route — known NOW (not at the first instant)
     await w.prediction.evaluateIndicator(h.req(w.twinOwner, 'prediction.indicator.evaluate', 'IND', w.indicatorId, 'prediction'), T(), D(), w.indicatorId, { payload: { knownAt: await dbInstant('1 second') } });
     const at1 = await dbInstant('3 days');
@@ -229,8 +233,10 @@ describe('B32 · the decomposable Strategic Health Score (0089 §H)', () => {
     expect(obj(corridor['lineage'])).toMatchObject({ input_kind: 'indicator', input_id: I1 });
     expect(compOf(d2, 'inventory_cover')).toMatchObject({ state: 'included', normalised: 60, contribution: 22.5 });
     const supplier = compOf(d2, 'supplier_on_time');
-    expect(supplier).toMatchObject({ state: 'stale', stale: true, missing: false, normalised: null, contribution: null, reason: 'observed 9 days before the instant; stale after 7 days' });
-    expect(Math.floor(Number(supplier['freshness_days']))).toBe(9);
+    supplierDays = Math.floor(Math.round(((Date.parse(String(S2['at'])) - supplierObserved) / 86_400_000) * 100) / 100);
+    expect([9, 10], 'nine days and a fraction of a day (10 only in the last minutes before midnight)').toContain(supplierDays);
+    expect(supplier).toMatchObject({ state: 'stale', stale: true, missing: false, normalised: null, contribution: null, reason: `observed ${supplierDays} days before the instant; stale after 7 days` });
+    expect(Math.floor(Number(supplier['freshness_days']))).toBe(supplierDays);
     // the missing-data analysis on the stale component: where the dimension could lie had it been current
     expect(obj(supplier['sensitivity'])).toMatchObject({ if_0: 46.4, if_100: 66.4 });
     expect(compOf(d2, 'commitment_delivery')).toMatchObject({ state: 'missing', missing: true, normalised: null });
@@ -270,7 +276,7 @@ describe('B32 · the decomposable Strategic Health Score (0089 §H)', () => {
     expect(listed.map((s) => s['snapshot_id'])).toEqual([S3['snapshot_id'], S2['snapshot_id'], replay['snapshot_id'], S1['snapshot_id']]);
     expect(listed.map((s) => s['kind'])).toEqual(['current', 'current', 'as_of', 'current']);
     expect(listed.find((s) => s['snapshot_id'] === S1['snapshot_id'])).toMatchObject({ status: 'indeterminate', aggregate: null });
-    sixEvidence('C1', { fault_trace: { stale: 'supplier_on_time 9 d (bound 7)', missing: 'commitment_delivery (no measure input)', future_instant: 422, pdp: 403 },
+    sixEvidence('C1', { fault_trace: { stale: `supplier_on_time ${supplierDays} d (bound 7)`, missing: 'commitment_delivery (no measure input)', future_instant: 422, pdp: 403 },
       watermark: { s1: S1['snapshot_id'], s2: S2['snapshot_id'], s3: S3['snapshot_id'], s2_inputs_digest: S2['inputs_digest'] },
       consumer_behaviour: { supply_resilience: '71 → 58 → 70.5', aggregate: ['withheld', S2['aggregate'], S3['aggregate']], flags: flags.map((f) => f['flag']) },
       operator_action: 'the analyst and the executive compute; the strategy owner drills down', recovery: 'the as_of replay at the first instant reproduces it (digests equal)',
