@@ -106,8 +106,23 @@ export const REQUIRED_FINALIZER_STEPS = Object.freeze([
  * The other moves are version swaps that leave the count unchanged: next 16.3.3 → 16.3.6
  * (with @next/env and the @next/swc-* binaries), fast-uri 3.1.6 → 3.1.8 and multer itself.
  * 320 − 7 = 313, reconciled against the pnpm-lock.yaml diff of 5165a97..1f51373.
+ *
+ * 313 → 307 after `92baa26` (2026-10-23; the C17 finalize of that merge, run 39921031027, measured 307 on both
+ * hosts and refused the recorded 313 — the first finalize to run since `219846f`, every main ci between them having
+ * failed for other reasons). The move is the reviewed C15 override vite 8.2.0 → 8.2.4 (`3dfbafa6`, B40;
+ * GHSA-587h-7wmj-h5pm): the rolldown it resolves no longer carries the wasm32-wasi optional binding, and its
+ * subtree leaves the linux-x64-glibc development closure with it — exactly six packages:
+ *
+ *   @rolldown/binding-wasm32-wasi@1.2.1 → @napi-rs/wasm-runtime@1.2.2
+ *   @napi-rs/wasm-runtime@1.2.2         → @emnapi/core@2.0.0-alpha.3, @emnapi/runtime@2.0.0-alpha.3, @tybys/wasm-util@0.10.3
+ *   @emnapi/core@2.0.0-alpha.3          → @emnapi/wasi-threads@2.0.1
+ *
+ * Nothing entered the closure; the other moves are version swaps that leave the count unchanged: vite, rolldown and
+ * its linux-x64-gnu binding, @oxc-project/types, vitest 4.1.11 → 4.1.12 with its seven @vitest/* packages (#96), and
+ * next 16.3.8 → 16.4.1 with @next/env and @next/swc-linux-x64-gnu (#99). 313 − 6 = 307, reconciled by diffing the
+ * development SBOM C16 generates at 219846f and at 92baa26 (312 → 306 components, plus the subject root).
  */
-export const DEVELOPMENT_COMPONENTS = 313;
+export const DEVELOPMENT_COMPONENTS = 307;
 
 /**
  * The measured closure THE VERIFIED SOURCE declares (2026-10-02, with the 320 → 313 move).
